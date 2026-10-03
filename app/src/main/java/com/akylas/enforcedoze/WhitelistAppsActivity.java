@@ -216,7 +216,8 @@ public class WhitelistAppsActivity extends AppCompatActivity {
             if (fields.length == 3 && PackageNames.isValid(fields[1].trim())
                     && fields[2].trim().matches("[0-9]+")
                     && (fields[0].equals("system") || fields[0].equals("system-excidle") || fields[0].equals("user"))) {
-                packages.add(fields[1].trim());
+                // Except-idle exemptions do not establish deep-Doze whitelist membership.
+                if (!fields[0].equals("system-excidle")) packages.add(fields[1].trim());
             } else {
                 parsed = false;
             }

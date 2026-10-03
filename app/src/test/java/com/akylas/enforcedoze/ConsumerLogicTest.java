@@ -54,6 +54,16 @@ public class ConsumerLogicTest {
         assertEquals("cmd deviceidle whitelist -com.example.app", control.commands.get(1));
     }
 
+    @Test public void exceptIdleMembershipDoesNotVerifyDeepWhitelistAdd() {
+        Runner control = new Runner(AccessLevel.SHELL, result(0));
+        Runner reads = new Runner(AccessLevel.SHELL, result(0, "system-excidle,com.example.app,10123"));
+        WhitelistAppsActivity.WhitelistResult outcome = WhitelistAppsActivity.editWhitelist(control, reads, 36,
+                new Grants(false, false), "com.example.app", false);
+        assertFalse(outcome.verified);
+        assertTrue(outcome.packages.isEmpty());
+        assertEquals(Reason.UNVERIFIED, outcome.reason);
+    }
+
     @Test public void whitelistRejectsInjectionAndUnavailableAccessWithoutExecuting() {
         Runner control = new Runner(AccessLevel.SHELL, result(0));
         Runner reads = new Runner(AccessLevel.SHELL, result(0));
