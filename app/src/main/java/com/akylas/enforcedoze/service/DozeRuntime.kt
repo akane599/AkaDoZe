@@ -19,6 +19,7 @@ import com.akylas.enforcedoze.access.Grants
 import com.akylas.enforcedoze.access.PackageNames
 import com.akylas.enforcedoze.doze.Action
 import com.akylas.enforcedoze.doze.DeepState
+import com.akylas.enforcedoze.doze.DozeConfig
 import com.akylas.enforcedoze.doze.DozeController
 import com.akylas.enforcedoze.doze.DozeEvent
 import com.akylas.enforcedoze.doze.EventType
@@ -40,12 +41,14 @@ class DozeRuntime(context: Context) {
     val journal = JournalSink(app, clock)
     val store = SharedPrefsLedgerStore(app, journal)
     private var commandDeadline: Long? = null // Only accessed on doze-worker.
+    private var selfTestRecorder: MutableList<SelfTestCommand>? = null // Only accessed on doze-worker.
     val control: CommandRunner = object : CommandRunner {
         override val level: AccessLevel get() = access.level
         override fun run(command: String, timeoutMs: Long): CommandResult {
             val remaining = commandDeadline?.minus(clock.elapsedRealtime())
             if (remaining != null && remaining <= 0) return CommandResult(-1, emptyList(), emptyList(), 0, true)
             return access.control().run(command, minOf(timeoutMs, remaining ?: timeoutMs))
+                .also { selfTestRecorder?.add(SelfTestCommand.of(command, it)) }
         }
     }
     val controller = DozeController(
@@ -112,14 +115,45 @@ class DozeRuntime(context: Context) {
         worker().postDelayed(callback, maxOf(0, untilElapsed - clock.elapsedRealtime()))
     }
 
+    /** Runs on doze-worker after every exit-time import attempt, including skipped imports. */
+    @Volatile var afterHistoryImport: Runnable? = null
+
     fun importHistory() {
-        if (!grants().dump && access.level < AccessLevel.SHELL) return
         try {
+            if (!grants().dump && access.level < AccessLevel.SHELL) return
             val result = access.reads().run("dumpsys deviceidle", 8_000)
             val now = clock.elapsedRealtime()
             if (result.ok) journal.importHistory(result.stdout, now)
             else journal.emit(DozeEvent(EventType.ERROR, "HISTORY_READ_FAILED"))
-        } catch (_: Exception) { journal.emit(DozeEvent(EventType.ERROR, "HISTORY_READ_FAILED")) }
+        } catch (_: Exception) {
+            journal.emit(DozeEvent(EventType.ERROR, "HISTORY_READ_FAILED"))
+        } finally {
+            try { afterHistoryImport?.run() } catch (_: Exception) { /* Presentation only. */ }
+        }
+    }
+
+    /** doze-worker only. Raw outputs are recorded for this run alone; BUSY while a session is active. */
+    fun runSelfTest(kind: SelfTestKind): SelfTestResult {
+        val commands = mutableListOf<SelfTestCommand>()
+        selfTestRecorder = commands
+        val result = try {
+            SelfTest(controller, CapabilityResolver, journal::addSink, journal::removeSink, { sessionActive }, ::checkSafety)
+                .run(kind, DozeConfig(Build.VERSION.SDK_INT, access.level, grants(), allowToken = allowToken))
+        } finally {
+            selfTestRecorder = null
+        }
+        return result.copy(commands = commands.toList())
+    }
+
+    /** The callback runs on doze-worker; presentation must post to its own thread. */
+    @Synchronized
+    fun requestSelfTest(kind: SelfTestKind, callback: SelfTestCallback) {
+        worker().post {
+            try {
+                val result = try { runSelfTest(kind) } catch (_: Exception) { SelfTestResult(kind, SelfTestOutcome.FAILED) }
+                callback.onResult(result)
+            } finally { quitIfDetached() }
+        }
     }
 
     fun recordAccessDebt() {

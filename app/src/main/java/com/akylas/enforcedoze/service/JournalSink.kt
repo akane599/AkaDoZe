@@ -10,17 +10,23 @@ import com.akylas.enforcedoze.monitor.JournalDb
 import com.akylas.enforcedoze.monitor.JournalEvent
 import com.akylas.enforcedoze.monitor.HistoryMerger
 import com.akylas.enforcedoze.doze.parse.IdlingHistoryParser
+import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 
 /** Process-lifetime sink. Journal failures are diagnostic and must never interrupt restoration. */
 class JournalSink(context: Context, private val clock: Clock) : DozeEventSink {
     private val db = JournalDb(context)
-    private val bootId = JournalDb.currentBootId(context)
+    val bootId = JournalDb.currentBootId(context)
     private val sinks = EventSinks()
     fun addSink(sink: DozeEventSink) = sinks.addSink(sink)
     fun removeSink(sink: DozeEventSink) = sinks.removeSink(sink)
     @Volatile var sessionId: Long = 0L
         private set
+
+    /** Read-only journal access for the Monitor; futures complete on the journal worker, never block main. */
+    @JvmOverloads
+    fun queryRecent(limit: Int = JournalDb.MAX_ROWS): Future<List<JournalEvent>> = db.queryRecent(limit)
+    fun querySession(sessionId: Long, bootId: Int): Future<List<JournalEvent>> = db.querySession(sessionId, bootId)
 
     fun beginSession() {
         sessionId = maxOf(sessionId + 1, clock.wallTime())

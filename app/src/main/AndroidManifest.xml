@@ -49,9 +49,6 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <intent-filter>
-                <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
-            </intent-filter>
             <meta-data android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
         </activity>
@@ -192,6 +189,15 @@
         <activity
             android:name="com.akylas.enforcedoze.DozeTunablesActivity"
             android:label="Doze Tunables" />
+        <!-- Exported only for the Doze tile long-press; other tiles are forwarded to MainActivity. -->
+        <activity
+            android:name="com.akylas.enforcedoze.ui.DozeMonitorActivity"
+            android:exported="true"
+            android:label="@string/monitor_title">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
+            </intent-filter>
+        </activity>
         <activity android:name="com.akylas.enforcedoze.RequestIgnoreBatteryActivity"
             android:exported="false"
             android:theme="@style/Transparent.NoTitleBar" />

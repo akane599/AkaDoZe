@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="8dp"
+    android:layout_marginBottom="8dp"
+    app:cardBackgroundColor="?attr/colorSurfaceVariant"
+    app:cardElevation="0dp"
+    app:strokeWidth="0dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/liveTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/monitor_live_title"
+                android:textAppearance="?attr/textAppearanceTitleMedium"
+                android:textColor="?attr/colorOnSurfaceVariant" />
+
+            <Button
+                android:id="@+id/liveRefresh"
+                style="?attr/materialIconButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:contentDescription="@string/monitor_refresh"
+                android:tooltipText="@string/monitor_refresh"
+                app:icon="@drawable/ic_monitor_refresh"
+                tools:targetApi="o" />
+        </LinearLayout>
+
+        <!-- One line per value: wraps cleanly at large font scales; read in order by TalkBack. -->
+        <TextView
+            android:id="@+id/liveAccess"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="?attr/colorOnSurface"
+            tools:text="Access: Shizuku (shell)" />
+
+        <TextView
+            android:id="@+id/liveUnavailable"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textColor="?attr/colorError"
+            android:visibility="gone"
+            tools:text="Doze state can't be read: Needs DUMP permission"
+            tools:visibility="visible" />
+
+        <TextView
+            android:id="@+id/liveDeep"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textColor="?attr/colorOnSurface"
+            tools:text="Deep Doze: Active" />
+
+        <TextView
+            android:id="@+id/liveLight"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="?attr/colorOnSurface"
+            tools:text="Light Doze: Active" />
+
+        <TextView
+            android:id="@+id/liveForced"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="?attr/colorOnSurface"
+            tools:text="Forced idle: No" />
+
+        <TextView
+            android:id="@+id/liveQuick"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="?attr/colorOnSurface"
+            tools:text="Quick Doze: No" />
+
+        <TextView
+            android:id="@+id/liveSensors"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="?attr/colorOnSurface"
+            tools:text="Motion sensors: Normal (not restricted)" />
+
+        <TextView
+            android:id="@+id/liveWatchdog"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="?attr/colorOnSurface"
+            tools:text="Keep Doze enforced: On" />
+
+        <TextView
+            android:id="@+id/liveDebtNone"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/monitor_live_debt_none"
+            android:textColor="?attr/colorOnSurface" />
+
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/liveDebtCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:visibility="gone"
+            app:cardBackgroundColor="?attr/colorErrorContainer"
+            app:cardElevation="0dp"
+            app:strokeWidth="0dp"
+            tools:visibility="visible">
+
+            <TextView
+                android:id="@+id/liveDebtText"
+                android:textAppearance="?attr/textAppearanceBodyMedium"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:accessibilityLiveRegion="polite"
+                android:padding="12dp"
+                android:textColor="?attr/colorOnErrorContainer"
+                tools:text="@string/access_debt_generic" />
+        </com.google.android.material.card.MaterialCardView>
+
+        <TextView
+            android:id="@+id/liveUpdated"
+            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:accessibilityLiveRegion="polite"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            tools:text="Read at 22:14:03" />
+
+        <!-- Buttons wrap their label instead of clipping at large font scales. -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="end"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/liveRestore"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:contentDescription="@string/monitor_restore_system_description"
+                android:maxLines="3"
+                android:text="@string/monitor_restore_system" />
+
+            <Button
+                android:id="@+id/liveShare"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:maxLines="3"
+                android:text="@string/monitor_share_report"
+                app:icon="@drawable/share_variant" />
+        </LinearLayout>
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

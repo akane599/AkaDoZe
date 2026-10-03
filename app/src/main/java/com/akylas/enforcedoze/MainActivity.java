@@ -330,6 +330,8 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
             showEnableDozeOnUnsupportedDeviceDialog();
         } else if (id == R.id.action_donate_dev) {
             openDonatePage();
+        } else if (id == R.id.action_doze_monitor) {
+            startActivity(new Intent(MainActivity.this, com.akylas.enforcedoze.ui.DozeMonitorActivity.class));
         } else if (id == R.id.action_doze_batterystats) {
             startActivity(new Intent(MainActivity.this, DozeBatteryStatsActivity.class));
         } else if (id == R.id.action_app_settings) {
