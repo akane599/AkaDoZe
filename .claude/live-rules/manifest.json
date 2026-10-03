@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "path": "rules/android-build.md",
+      "hash": "78c9c93fe47923f3b06fa26a92a0c574773c0227704311fb21ea8ead0f2f2777",
+      "description": "Android build, test and dependency rules",
+      "globs": [],
+      "dirs": [],
+      "prompt": [],
+      "priority": 20,
+      "enabled": true,
+      "include": []
+    },
+    {
+      "path": "rules/android-code.md",
+      "hash": "2e619c89ac637eb7e4be3aaf979785c403bef8664de3bca68ad7b4884b34b537",
+      "description": "Kotlin and Jetpack Compose conventions",
+      "globs": [],
+      "dirs": [],
+      "prompt": [],
+      "priority": 10,
+      "enabled": true,
+      "include": []
+    },
+    {
+      "path": "rules/android-orchestration.md",
+      "hash": "b83d1833900f19dd4b0f37d31564fce1ad81ffdbe80c0389e3015ec4778c551e",
+      "description": "How Android work is ticketed, routed and dispatched (Sidequest, routing profile android-kit)",
+      "globs": [],
+      "dirs": [],
+      "prompt": [],
+      "priority": 15,
+      "enabled": true,
+      "include": []
+    }
+  ]
+}
