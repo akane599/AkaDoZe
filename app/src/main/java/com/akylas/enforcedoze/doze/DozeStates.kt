@@ -1,0 +1,13 @@
+package com.akylas.enforcedoze.doze
+
+enum class DeepState {
+    ACTIVE, INACTIVE, IDLE_PENDING, SENSING, LOCATING, IDLE, IDLE_MAINTENANCE,
+    QUICK_DOZE_DELAY, UNKNOWN,
+}
+
+enum class LightState {
+    ACTIVE, INACTIVE, IDLE, WAITING_FOR_NETWORK, IDLE_MAINTENANCE, OVERRIDE,
+    PRE_IDLE, UNKNOWN,
+}
+
+enum class SensorMode { NORMAL, RESTRICTED, OTHER, UNVERIFIED }

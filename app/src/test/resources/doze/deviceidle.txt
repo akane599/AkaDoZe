@@ -1,0 +1,27 @@
+DeviceIdleController state:
+  Settings:
+    light_after_inactive_to=+3m0s0ms
+    light_idle_to=+5m0s0ms
+    inactive_to=+30m0s0ms
+    sensing_to=+4m0s0ms
+    idle_factor=2.0
+  Whitelist system apps:
+    com.android.providers.downloads
+    com.android.shell
+  Whitelist user apps:
+    com.akylas.enforcedoze
+  mLightEnabled=true  mDeepEnabled=true
+  mForceIdle=true
+  mQuickDozeActivated=false
+  mScreenOn=false mScreenLocked=true mNetworkConnected=true
+  mCharging=false
+  mState=IDLE mLightState=OVERRIDE
+  mNextAlarmTime=+15m0s0ms
+  Idling history:
+         normal: -1h2m3s456ms (screen)
+     light-idle: -55m0s12ms
+    light-maint: -50m0s0ms
+      deep-idle: -45m3s0ms
+     deep-maint: -40m0s0ms (alarm)
+  Active idle ops: 0
+  normal: -1s0ms (outside history)
