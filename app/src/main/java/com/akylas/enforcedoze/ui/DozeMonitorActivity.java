@@ -402,10 +402,11 @@ public final class DozeMonitorActivity extends AppCompatActivity implements Moni
         AccessState state = accessState();
         boolean shizuku = shizukuMode();
         boolean service = serviceRunning();
+        // Self-tests run through the session engine: below SHELL they get the session reason too.
         bindTestButton(card, R.id.testDoze, R.id.testDozeUnavailable, SelfTestKind.DOZE,
-                AccessUi.unavailableReason(Feature.FORCE_DOZE, state, shizuku), shizuku, service);
+                AccessUi.unavailableText(this, Feature.FORCE_DOZE, state, shizuku), service);
         bindTestButton(card, R.id.testSensors, R.id.testSensorsUnavailable, SelfTestKind.SENSORS,
-                AccessUi.unavailableReason(Feature.MOTION_SENSORS, state, shizuku), shizuku, service);
+                AccessUi.unavailableText(this, Feature.MOTION_SENSORS, state, shizuku), service);
 
         boolean running = runningTest != null;
         card.findViewById(R.id.testProgress).setVisibility(running ? View.VISIBLE : View.GONE);
@@ -419,7 +420,8 @@ public final class DozeMonitorActivity extends AppCompatActivity implements Moni
         if (result == null || running) return;
         text(card, R.id.testResultTitle, getString(R.string.monitor_test_result_title,
                 MonitorFormat.testName(this, result.getKind()), MonitorFormat.outcome(this, result.getOutcome())));
-        text(card, R.id.testResultText, MonitorFormat.resultText(this, result, shizuku));
+        text(card, R.id.testResultText, MonitorFormat.resultText(this, result, shizuku,
+                AccessUi.sessionsAvailable(state)));
         // The capped text is only laid out while expanded.
         text(card, R.id.testRaw, rawExpanded && lastRaw != null ? lastRaw : "");
         card.findViewById(R.id.testRawScroll).setVisibility(rawExpanded ? View.VISIBLE : View.GONE);
@@ -431,16 +433,14 @@ public final class DozeMonitorActivity extends AppCompatActivity implements Moni
         });
     }
 
-    private void bindTestButton(View card, int buttonId, int reasonId, SelfTestKind kind, Reason reason, boolean shizuku,
-                                boolean service) {
+    private void bindTestButton(View card, int buttonId, int reasonId, SelfTestKind kind, String reason, boolean service) {
         Button button = card.findViewById(buttonId);
         button.setEnabled(reason == null && runningTest == null && service);
         button.setOnClickListener(v -> confirmTest(kind));
         TextView why = card.findViewById(reasonId);
         why.setVisibility(reason == null ? View.GONE : View.VISIBLE);
         if (reason != null) {
-            why.setText(getString(R.string.monitor_test_unavailable, MonitorFormat.testName(this, kind),
-                    AccessUi.reasonText(this, reason, shizuku)));
+            why.setText(getString(R.string.monitor_test_unavailable, MonitorFormat.testName(this, kind), reason));
         }
     }
 
@@ -464,6 +464,7 @@ public final class DozeMonitorActivity extends AppCompatActivity implements Moni
                 restoring = false;
                 // Event-raised debt is not ledger-backed; only a restore clears it (as on the access card).
                 if (!snapshot.debt && debtDetail == null) NoticeSink.cancelDebt(app);
+                else NoticeSink.ledgerChecked(app, snapshot.debt);
                 adapter.refreshType(MonitorAdapter.LIVE);
                 adapter.refreshType(MonitorAdapter.TESTS);
             });
@@ -565,7 +566,8 @@ public final class DozeMonitorActivity extends AppCompatActivity implements Moni
     private void startTest(SelfTestKind kind) {
         if (runningTest != null) return;
         // The running service (START_STICKY + startup reconcile) is what restores a test cut short.
-        if (!serviceRunning()) {
+        // Access can drop while the confirm dialog is open: the rebind shows the session reason.
+        if (!serviceRunning() || !AccessUi.sessionsAvailable(accessState())) {
             adapter.refreshType(MonitorAdapter.TESTS);
             return;
         }
