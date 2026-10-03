@@ -81,7 +81,9 @@ fun interface SelfTestCallback {
 }
 
 /** Admission and one-shot completion shared by the Android queue and JVM queue regressions. */
-internal class SelfTestQueue {
+internal class SelfTestQueue(
+    private val diagnosticLogger: (String, Throwable) -> Unit = { _, _ -> },
+) {
     @Volatile var attached = false
         private set
     private val pending = mutableSetOf<Request>()
@@ -94,7 +96,7 @@ internal class SelfTestQueue {
 
     @Synchronized
     fun request(kind: SelfTestKind, callback: SelfTestCallback, post: (Runnable) -> Boolean, run: () -> SelfTestResult) {
-        val request = Request(kind, callback)
+        val request = Request(kind, callback, diagnosticLogger)
         if (!attached) {
             request.complete(SelfTestResult(kind, SelfTestOutcome.CANCELLED))
             return
@@ -103,7 +105,12 @@ internal class SelfTestQueue {
         if (!post(Runnable {
             val admitted = synchronized(this) { pending.remove(request); attached && !request.cancelled }
             val result = if (!admitted) SelfTestResult(kind, SelfTestOutcome.CANCELLED) else {
-                try { run() } catch (_: Exception) { SelfTestResult(kind, SelfTestOutcome.FAILED) }
+                try {
+                    run()
+                } catch (error: Exception) {
+                    diagnosticLogger("Self-test work failed", error)
+                    SelfTestResult(kind, SelfTestOutcome.FAILED)
+                }
             }
             request.complete(result)
         })) {
@@ -112,13 +119,21 @@ internal class SelfTestQueue {
         }
     }
 
-    private class Request(val kind: SelfTestKind, val callback: SelfTestCallback) {
+    private class Request(
+        val kind: SelfTestKind,
+        val callback: SelfTestCallback,
+        val diagnosticLogger: (String, Throwable) -> Unit,
+    ) {
         var cancelled = false
         private var completed = false
         @Synchronized fun complete(result: SelfTestResult) {
             if (completed) return
             completed = true
-            try { callback.onResult(result) } catch (_: Exception) { /* Presentation only. */ }
+            try {
+                callback.onResult(result)
+            } catch (error: Exception) {
+                diagnosticLogger("Self-test callback failed", error)
+            }
         }
     }
 }
@@ -135,6 +150,7 @@ class SelfTest(
     private val sessionActive: () -> Boolean,
     private val safetyCheck: () -> Unit,
     private val admission: () -> Boolean = { true },
+    private val diagnosticLogger: (String, Throwable) -> Unit = { _, _ -> },
 ) {
     fun run(kind: SelfTestKind, config: DozeConfig): SelfTestResult {
         if (!admission()) return SelfTestResult(kind, SelfTestOutcome.CANCELLED)
@@ -177,7 +193,8 @@ class SelfTest(
             ) { admission() && (kind == SelfTestKind.DOZE || !concluded) }
             cancelled = !admission() || generation != controller.currentGeneration
             step = result.steps.lastOrNull { it.feature == feature }
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            diagnosticLogger("Self-test enter failed", error)
             failed = true
         } finally {
             applying = false
@@ -186,7 +203,8 @@ class SelfTest(
                 restoreComplete = ExitError.LEDGER_LOAD_FAILED !in exit.errors &&
                     exit.remaining.entries.none { it.feature == feature }
                 restoreErrors = exit.errors
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                diagnosticLogger("Self-test restore failed", error)
                 restoreComplete = false
             } finally {
                 try {

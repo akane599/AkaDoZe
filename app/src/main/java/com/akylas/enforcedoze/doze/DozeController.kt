@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicLong
  * Supply current API/grants at construction; exit/reconcile can refresh them without preferences.
  * Event sinks are diagnostic only; their failures cannot stop control work.
  */
-class DozeController(
+class DozeController @JvmOverloads constructor(
     private val control: CommandRunner,
     private val catalog: CommandCatalog,
     private val resolver: CapabilityResolver,
@@ -29,6 +29,7 @@ class DozeController(
     private val sink: DozeEventSink,
     private var apiLevel: Int,
     private var grants: Grants,
+    private val diagnosticLogger: (String, Throwable) -> Unit = { _, _ -> },
 ) {
     private val generation = AtomicLong()
     val currentGeneration: Long get() = generation.get()
@@ -47,6 +48,20 @@ class DozeController(
     @Synchronized
     fun enterGroups(config: DozeConfig, generation: Long, admission: () -> Boolean): EnterResult =
         enterConfigured(config, generation, admission, core = false)
+
+    /** Service boundary for deferred groups; null means the attempt failed, without retrying. */
+    fun enterGroupsSafely(
+        config: DozeConfig,
+        generation: Long,
+        admission: () -> Boolean,
+        errorDetail: String,
+    ): EnterResult? = try {
+        enterGroups(config, generation, admission)
+    } catch (error: Exception) {
+        diagnosticLogger("Deferred group enter failed", error)
+        emit(EventType.ERROR, detail = errorDetail)
+        null
+    }
 
     private fun enterConfigured(config: DozeConfig, generation: Long, admission: () -> Boolean, core: Boolean): EnterResult {
         apiLevel = config.apiLevel
@@ -414,12 +429,14 @@ class DozeController(
         reason: Reason? = null,
         deep: DeepState? = null,
         sensor: SensorMode? = null,
+        detail: String = feature?.name ?: type.name,
     ) {
         try {
-            sink.emit(DozeEvent(type, feature?.name ?: type.name, deep = deep, sensor = sensor,
+            sink.emit(DozeEvent(type, detail, deep = deep, sensor = sensor,
                 feature = feature, target = target, reason = reason))
-        } catch (_: Exception) {
-            // Diagnostics must not interrupt mutations or restoration; do not recursively emit.
+        } catch (error: Exception) {
+            // Do not recursively emit into a failed diagnostic sink.
+            diagnosticLogger("Doze event sink failed", error)
         }
     }
 

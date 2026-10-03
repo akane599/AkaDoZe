@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit
 class JournalSink(context: Context, private val clock: Clock) : DozeEventSink {
     private val db = JournalDb(context)
     val bootId = JournalDb.currentBootId(context)
-    private val sinks = EventSinks()
+    private val sinks = EventSinks { message, error -> Log.w("DozeJournal", message, error) }
     fun addSink(sink: DozeEventSink) = sinks.addSink(sink)
     fun removeSink(sink: DozeEventSink) = sinks.removeSink(sink)
     private val identity = JournalIdentity()
@@ -79,7 +79,7 @@ class JournalSink(context: Context, private val clock: Clock) : DozeEventSink {
         try {
             db.insert(JournalEvent.fromDozeEvent(
                 event, bootId, elapsedRealtime, wallTime, identity.forEvent(event.feature), battery, charging,
-            ))
+            )) { error -> Log.e("DozeJournal", "Journal write failed", error) }
         } catch (error: Exception) {
             Log.e("DozeJournal", "Journal enqueue failed", error)
         }

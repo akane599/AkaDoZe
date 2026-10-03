@@ -5,13 +5,19 @@ import com.akylas.enforcedoze.doze.DozeEventSink
 import java.util.concurrent.CopyOnWriteArrayList
 
 /** Subscribers are diagnostic only: a presentation failure cannot interrupt system restoration. */
-class EventSinks : DozeEventSink {
+class EventSinks(
+    private val diagnosticLogger: (String, Throwable) -> Unit = { _, _ -> },
+) : DozeEventSink {
     private val sinks = CopyOnWriteArrayList<DozeEventSink>()
     fun addSink(sink: DozeEventSink) { sinks.addIfAbsent(sink) }
     fun removeSink(sink: DozeEventSink) { sinks.remove(sink) }
     override fun emit(event: DozeEvent) {
         for (sink in sinks) {
-            try { sink.emit(event) } catch (_: Exception) { /* Keep every other subscriber alive. */ }
+            try {
+                sink.emit(event)
+            } catch (error: Exception) {
+                diagnosticLogger("Doze subscriber failed", error)
+            }
         }
     }
 }
