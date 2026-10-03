@@ -41,7 +41,6 @@ import com.jakewharton.processphoenix.ProcessPhoenix;
 import com.nanotasks.Completion;
 import com.nanotasks.Tasks;
 
-import java.util.List;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;

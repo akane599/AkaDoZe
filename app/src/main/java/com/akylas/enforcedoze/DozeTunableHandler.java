@@ -150,9 +150,25 @@ public class DozeTunableHandler {
     public static final class ApplyResult {
         public final Map<String, Outcome> keys;
         public final Reason reason;
+        public final List<String> applied;
+        public final List<String> notEffective;
+        public final List<String> failed;
         ApplyResult(Map<String, Outcome> keys, Reason reason) {
             this.keys = Collections.unmodifiableMap(new LinkedHashMap<>(keys));
             this.reason = reason;
+            ArrayList<String> appliedKeys = new ArrayList<>();
+            ArrayList<String> notEffectiveKeys = new ArrayList<>();
+            ArrayList<String> failedKeys = new ArrayList<>();
+            for (Map.Entry<String, Outcome> key : keys.entrySet()) {
+                switch (key.getValue()) {
+                    case APPLIED: appliedKeys.add(key.getKey()); break;
+                    case NOT_EFFECTIVE: notEffectiveKeys.add(key.getKey()); break;
+                    default: failedKeys.add(key.getKey());
+                }
+            }
+            applied = Collections.unmodifiableList(appliedKeys);
+            notEffective = Collections.unmodifiableList(notEffectiveKeys);
+            failed = Collections.unmodifiableList(failedKeys);
         }
         public boolean allApplied() {
             if (keys.isEmpty()) return false;

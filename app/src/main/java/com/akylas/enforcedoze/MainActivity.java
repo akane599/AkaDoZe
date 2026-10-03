@@ -17,9 +17,6 @@ import android.graphics.Color;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.HandlerThread;
-import android.preference.Preference;
 import android.preference.PreferenceManager;
 import android.service.quicksettings.TileService;
 
@@ -37,7 +34,6 @@ import androidx.appcompat.widget.SwitchCompat;
 
 import android.text.SpannableString;
 import android.text.method.ScrollingMovementMethod;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -46,10 +42,7 @@ import android.widget.CompoundButton;
 import android.widget.TextView;
 
 import com.afollestad.materialdialogs.MaterialDialog;
-import com.nanotasks.Completion;
-import com.nanotasks.Tasks;
 
-import java.util.List;
 
 //import de.cketti.library.changelog.ChangeLog;
 import com.akylas.enforcedoze.access.AccessManager;
@@ -124,7 +117,7 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
 //        showDonateDevDialog = settings.getBoolean("showDonateDevDialog2", true);
         isDozeDisabled = settings.getBoolean("isDozeDisabled", false);
         accessManager = AccessManager.getInstance(this);
-        Utils.repairPreferencesPermissions(this);
+        AsyncTask.execute(() -> Utils.repairPreferencesPermissions(getApplicationContext()));
         ignoreLockscreenTimeout = settings.getBoolean("ignoreLockscreenTimeout", true);
         toggleForceDozeSwitch = (SwitchCompat) findViewById(R.id.switch1);
         isDumpPermGranted = Utils.isDumpPermissionGranted(getApplicationContext());
@@ -203,8 +196,8 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         }
     }
 
-    final int POST_NOTIF_PERMISSION_REQUEST_CODE =112;
-    final int READ_PHONE_STATE_PERMISSION_REQUEST_CODE =113;
+    static final int POST_NOTIF_PERMISSION_REQUEST_CODE = 112;
+    static final int READ_PHONE_STATE_PERMISSION_REQUEST_CODE = 113;
     public void requestNotificationPermission(){
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -230,27 +223,19 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
-        switch (requestCode) {
-            case POST_NOTIF_PERMISSION_REQUEST_CODE:
-                if (grantResults.length > 0 &&
-                        grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                }  else {
-                    PreferenceManager.getDefaultSharedPreferences(getApplicationContext())
-                            .edit()
-                            .putBoolean("showPersistentNotif", false)
-                            .apply();
-                }
-                if (!Utils.isReadPhoneStatePermissionGranted(this)) {
-                    requestReadPhoneStatePermission();
-                }
-                break;
-
-            case READ_PHONE_STATE_PERMISSION_REQUEST_CODE:
-                // Phone-state denial must not change notification preferences.
-                break;
-
+        if (grantResults.length == 0 || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+            String preference = deniedPermissionPreference(requestCode);
+            if (preference != null) settings.edit().putBoolean(preference, false).apply();
         }
+        if (requestCode == POST_NOTIF_PERMISSION_REQUEST_CODE && !Utils.isReadPhoneStatePermissionGranted(this)) {
+            requestReadPhoneStatePermission();
+        }
+        accessManager.refresh();
+    }
 
+    static String deniedPermissionPreference(int requestCode) {
+        // Phone-state denial affects call detection, never notification preferences.
+        return requestCode == POST_NOTIF_PERMISSION_REQUEST_CODE ? "showPersistentNotif" : null;
     }
 
     @Override

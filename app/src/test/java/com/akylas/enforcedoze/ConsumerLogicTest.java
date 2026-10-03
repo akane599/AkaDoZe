@@ -77,6 +77,9 @@ public class ConsumerLogicTest {
         assertEquals(DozeTunableHandler.Outcome.APPLIED, applied.keys.get("idle_factor"));
         assertEquals(DozeTunableHandler.Outcome.NOT_EFFECTIVE, applied.keys.get("idle_to"));
         assertEquals(DozeTunableHandler.Outcome.NOT_EFFECTIVE, applied.keys.get("absent_to"));
+        assertEquals(Arrays.asList("inactive_to", "idle_factor"), applied.applied);
+        assertEquals(Arrays.asList("idle_to", "absent_to"), applied.notEffective);
+        assertTrue(applied.failed.isEmpty());
         assertFalse(applied.allApplied());
         assertEquals(Reason.NOT_EFFECTIVE_ON_THIS_VERSION, applied.reason);
     }
@@ -154,6 +157,12 @@ public class ConsumerLogicTest {
             for (File file : directory.listFiles()) file.delete();
             directory.delete();
         }
+    }
+
+    @Test public void phoneStateDenialDoesNotDisablePersistentNotifications() {
+        assertNull(MainActivity.deniedPermissionPreference(MainActivity.READ_PHONE_STATE_PERMISSION_REQUEST_CODE));
+        assertEquals("showPersistentNotif", MainActivity.deniedPermissionPreference(MainActivity.POST_NOTIF_PERMISSION_REQUEST_CODE));
+        assertNull(MainActivity.deniedPermissionPreference(999));
     }
 
     @Test public void logFilterIncludesActualServiceAndBridgeTags() {

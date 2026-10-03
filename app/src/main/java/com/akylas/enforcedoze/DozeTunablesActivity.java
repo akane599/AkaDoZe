@@ -28,7 +28,6 @@ import androidx.preference.PreferenceScreen;
 import androidx.recyclerview.widget.RecyclerView;
 
 import android.text.TextUtils;
-import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -36,7 +35,6 @@ import android.widget.Toast;
 
 import com.afollestad.materialdialogs.MaterialDialog;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
-import com.nanotasks.BackgroundWork;
 import com.nanotasks.Completion;
 import com.nanotasks.Tasks;
 
@@ -103,6 +101,7 @@ public class DozeTunablesActivity extends AppCompatActivity {
     }
 
     public void applyTunables() {
+        lastApplyResult = null;
         String tunables = DozeTunableHandler.getInstance().getTunableString();
         AccessManager manager = AccessManager.getInstance(this);
         Tasks.executeInBackground(this, () -> DozeTunableHandler.apply(manager.control(), manager.reads(),

@@ -4,7 +4,6 @@ import android.Manifest;
 import android.app.ActivityManager;
 import android.app.AlarmManager;
 import android.app.AppOpsManager;
-import android.app.ForegroundServiceStartNotAllowedException;
 import android.app.KeyguardManager;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -620,20 +619,20 @@ public class Utils {
     }
 
     static final class PreferencesPermissions {
-    static boolean repairDirectory(File directory) {
-        File[] files = directory.listFiles();
-        if (files == null) return !directory.exists();
-        boolean repaired = true;
-        for (File file : files) {
-            if (!file.isFile()) continue;
-            boolean readable = file.setReadable(false, false);
-            boolean writable = file.setWritable(false, false);
-            boolean ownerRead = file.setReadable(true, true);
-            boolean ownerWrite = file.setWritable(true, true);
-            repaired &= readable && writable && ownerRead && ownerWrite;
+        static boolean repairDirectory(File directory) {
+            File[] files = directory.listFiles();
+            if (files == null) return !directory.exists();
+            boolean repaired = true;
+            for (File file : files) {
+                if (!file.isFile()) continue;
+                boolean readable = file.setReadable(false, false);
+                boolean writable = file.setWritable(false, false);
+                boolean ownerRead = file.setReadable(true, true);
+                boolean ownerWrite = file.setWritable(true, true);
+                repaired &= readable && writable && ownerRead && ownerWrite;
+            }
+            return repaired;
         }
-        return repaired;
-    }
     }
 
     public static void openUrl(android.app.Activity activity, String url) {
