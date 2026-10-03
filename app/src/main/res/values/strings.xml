@@ -246,8 +246,8 @@
     <string name="access_mode_shizuku_root">Shizuku (root)</string>
     <string name="access_mode_none">No privileged access</string>
     <string name="access_mode_line">Mode: %1$s</string>
-    <string name="access_status_ready">Ready. AkaDoZe can force Doze and restrict motion sensors.</string>
-    <string name="access_status_root_unavailable">Root access isn\'t available. Grant root to AkaDoZe, or switch to Shizuku in Settings.</string>
+    <string name="access_status_ready">Ready. EnforceDoze can force Doze and restrict motion sensors.</string>
+    <string name="access_status_root_unavailable">Root access isn\'t available. Grant root to EnforceDoze, or switch to Shizuku in Settings.</string>
     <string name="access_status_checking">Checking access…</string>
     <string name="access_problem_line">• %1$s: %2$s</string>
     <string name="access_problem_plain">• %1$s</string>
@@ -255,9 +255,9 @@
     <string name="access_feature_motion_sensors">Motion sensor restriction</string>
     <string name="access_feature_doze_state">Doze state readback</string>
     <string name="access_problem_helpers_missing">Helper permissions not granted: %1$s</string>
-    <string name="access_problem_notifications_off">Notifications are off, so AkaDoZe can\'t warn you about problems</string>
+    <string name="access_problem_notifications_off">Notifications are off, so EnforceDoze can\'t warn you about problems</string>
     <string name="access_problem_music_listener">Music detection needs notification access</string>
-    <string name="access_problem_sessions">Doze sessions need Shizuku or root. Until then AkaDoZe doesn\'t force Doze or change anything at screen-off</string>
+    <string name="access_problem_sessions">Doze sessions need Shizuku or root. Until then EnforceDoze doesn\'t force Doze or change anything at screen-off</string>
     <string name="access_action_grant_helpers">Grant helper permissions</string>
     <string name="access_action_request_shizuku">Grant Shizuku permission</string>
     <string name="access_action_open_shizuku">Open Shizuku</string>
@@ -272,11 +272,11 @@
     <string name="grant_result_not_granted">%1$s: not granted</string>
     <string name="grant_result_accepted">%1$s: command accepted (not verified)</string>
     <string name="grant_result_failed">%1$s: failed</string>
-    <string name="access_debt_access_lost">Restore pending: access was lost before AkaDoZe could undo its changes. Sensors or Doze may still be restricted.</string>
-    <string name="access_debt_generic">Sensors or Doze may still be restricted. AkaDoZe couldn\'t confirm everything was restored.</string>
+    <string name="access_debt_access_lost">Restore pending: access was lost before EnforceDoze could undo its changes. Sensors or Doze may still be restricted.</string>
+    <string name="access_debt_generic">Sensors or Doze may still be restricted. EnforceDoze couldn\'t confirm everything was restored.</string>
     <string name="access_debt_needs_access">Restoring needs root or Shizuku access.</string>
     <string name="access_restore_now">Restore now</string>
-    <string name="access_restoring">Restoring… AkaDoZe is checking sensors and Doze.</string>
+    <string name="access_restoring">Restoring… EnforceDoze is checking sensors and Doze.</string>
     <string name="access_restore_description">Restore sensors and Doze to their original state</string>
 
     <string name="reason_requires_root">Requires root</string>
@@ -292,7 +292,7 @@
     <string name="reason_no_access_shizuku">Needs Shizuku access</string>
     <string name="reason_sessions_need_access">Doze sessions need Shizuku or root</string>
     <string name="root_tag_summary">Root · %1$s</string>
-    <string name="rotate_brightness_fix_retired_summary">No longer used. AkaDoZe now restores sensors from its own records, so this workaround isn\'t needed. Your saved choice is kept.</string>
+    <string name="rotate_brightness_fix_retired_summary">No longer used. EnforceDoze now restores sensors from its own records, so this workaround isn\'t needed. Your saved choice is kept.</string>
     <string name="whitelist_music_needs_listener_summary">%1$s. Needs notification access: without it, music is treated as not playing.</string>
 
     <string name="keep_doze_enforced_setting_title">Keep Doze enforced</string>
@@ -301,46 +301,46 @@
     <string name="screen_on_summary_setting_summary">After the screen turns on, show what happened while it was off</string>
     <string name="screen_on_summary_permission_denied">Notifications are blocked, so the summary can\'t be shown.</string>
     <string name="external_control_category_title">Other apps</string>
-    <string name="allow_external_basic_setting_title">Allow other apps to start/stop AkaDoZe</string>
-    <string name="allow_external_basic_setting_summary">Lets automation apps like Tasker turn AkaDoZe on or off and re-apply Doze</string>
+    <string name="allow_external_basic_setting_title">Allow other apps to start/stop EnforceDoze</string>
+    <string name="allow_external_basic_setting_summary">Lets automation apps like Tasker turn EnforceDoze on or off and re-apply Doze</string>
     <string name="allow_external_privileged_setting_title">Allow other apps to change whitelist &amp; settings</string>
-    <string name="allow_external_privileged_setting_summary">Warning: any installed app could then edit the Doze whitelist and change AkaDoZe settings. Only turn this on if you need it.</string>
+    <string name="allow_external_privileged_setting_summary">Warning: any installed app could then edit the Doze whitelist and change EnforceDoze settings. Only turn this on if you need it.</string>
 
     <string name="mode_switch_waiting_shizuku">Waiting for Shizuku permission…</string>
     <string name="mode_switch_denied_title">Shizuku permission denied</string>
-    <string name="mode_switch_denied_text">AkaDoZe went back to %1$s mode. To use Shizuku, choose it again and allow the permission in the Shizuku prompt.</string>
-    <string name="mode_switch_not_running_text">Shizuku mode is selected, but Shizuku isn\'t running. Start Shizuku and AkaDoZe will connect automatically.</string>
+    <string name="mode_switch_denied_text">EnforceDoze went back to %1$s mode. To use Shizuku, choose it again and allow the permission in the Shizuku prompt.</string>
+    <string name="mode_switch_not_running_text">Shizuku mode is selected, but Shizuku isn\'t running. Start Shizuku and EnforceDoze will connect automatically.</string>
     <string name="mode_switch_stopped_title">Shizuku stopped</string>
-    <string name="mode_switch_stopped_text">Shizuku stopped before it answered the permission request. AkaDoZe went back to %1$s mode. Start Shizuku, then choose it again.</string>
+    <string name="mode_switch_stopped_text">Shizuku stopped before it answered the permission request. EnforceDoze went back to %1$s mode. Start Shizuku, then choose it again.</string>
     <string name="mode_switch_waiting_root">Checking root access…</string>
     <string name="mode_switch_root_failed_title">Root access not granted</string>
-    <string name="mode_switch_root_failed_text">AkaDoZe couldn\'t get root access and went back to %1$s mode. Allow AkaDoZe in your root manager, then choose Root again.</string>
-    <string name="screen_on_summary_permission_blocked">Notifications for AkaDoZe are turned off, so the summary can\'t be shown. Turn them on in AkaDoZe\'s notification settings.</string>
+    <string name="mode_switch_root_failed_text">EnforceDoze couldn\'t get root access and went back to %1$s mode. Allow EnforceDoze in your root manager, then choose Root again.</string>
+    <string name="screen_on_summary_permission_blocked">Notifications for EnforceDoze are turned off, so the summary can\'t be shown. Turn them on in EnforceDoze\'s notification settings.</string>
     <string name="open_notification_settings_button">Notification settings</string>
     <string name="cancel_button_text">Cancel</string>
 
     <string name="notice_paused_title">Doze enforcement paused</string>
-    <string name="notice_paused_shizuku_text">Shizuku stopped while the device was dozing. AkaDoZe paused until Shizuku is running again.</string>
-    <string name="notice_paused_root_text">Root access was lost while the device was dozing. AkaDoZe paused until access returns.</string>
+    <string name="notice_paused_shizuku_text">Shizuku stopped while the device was dozing. EnforceDoze paused until Shizuku is running again.</string>
+    <string name="notice_paused_root_text">Root access was lost while the device was dozing. EnforceDoze paused until access returns.</string>
     <string name="notice_resumed_title">Access is back</string>
-    <string name="notice_resumed_text">AkaDoZe can enforce Doze again.</string>
-    <string name="notice_debt_title">Sensors/Doze may still be restricted — open AkaDoZe</string>
-    <string name="notice_debt_access_lost_text">Access was lost before AkaDoZe could undo its changes. Restore when access is back.</string>
-    <string name="notice_debt_generic_text">AkaDoZe couldn\'t confirm that sensors and Doze were restored.</string>
-    <string name="notice_external_basic_title">Another app tried to start or stop AkaDoZe</string>
-    <string name="notice_external_basic_text">It was blocked because “Allow other apps to start/stop AkaDoZe” is off. Turn it on in Settings if you use automation apps like Tasker.</string>
-    <string name="notice_external_privileged_title">Another app tried to change AkaDoZe</string>
+    <string name="notice_resumed_text">EnforceDoze can enforce Doze again.</string>
+    <string name="notice_debt_title">Sensors/Doze may still be restricted — open EnforceDoze</string>
+    <string name="notice_debt_access_lost_text">Access was lost before EnforceDoze could undo its changes. Restore when access is back.</string>
+    <string name="notice_debt_generic_text">EnforceDoze couldn\'t confirm that sensors and Doze were restored.</string>
+    <string name="notice_external_basic_title">Another app tried to start or stop EnforceDoze</string>
+    <string name="notice_external_basic_text">It was blocked because “Allow other apps to start/stop EnforceDoze” is off. Turn it on in Settings if you use automation apps like Tasker.</string>
+    <string name="notice_external_privileged_title">Another app tried to change EnforceDoze</string>
     <string name="notice_external_privileged_text">It was blocked because “Allow other apps to change whitelist &amp; settings” is off. Only turn it on in Settings if you trust your automation apps.</string>
-    <string name="notice_start_denied_title">AkaDoZe couldn\'t start</string>
-    <string name="notice_start_denied_text">Android blocked starting the service in the background. Open AkaDoZe to start it.</string>
+    <string name="notice_start_denied_title">EnforceDoze couldn\'t start</string>
+    <string name="notice_start_denied_text">Android blocked starting the service in the background. Open EnforceDoze to start it.</string>
 
     <string name="tasker_copied_toast">Copied broadcast!</string>
     <string name="tasker_no_values">Broadcast values required: none</string>
-    <string name="tasker_gate_basic">Needs “Allow other apps to start/stop AkaDoZe” (currently %1$s).</string>
+    <string name="tasker_gate_basic">Needs “Allow other apps to start/stop EnforceDoze” (currently %1$s).</string>
     <string name="tasker_gate_privileged">Needs “Allow other apps to change whitelist &amp; settings” (currently %1$s).</string>
     <string name="tasker_gate_on">on</string>
     <string name="tasker_gate_off">off</string>
-    <string name="tasker_reapply_desc">Send to the component com.akylas.enforcedoze/.ReenterDoze. Asks AkaDoZe to re-apply Doze; it never cancels or shortens your Doze delay.</string>
+    <string name="tasker_reapply_desc">Send to the component com.akylas.enforcedoze/.ReenterDoze. Asks EnforceDoze to re-apply Doze; it never cancels or shortens your Doze delay.</string>
     <string name="tasker_add_whitelist_desc">Broadcast values required:\npackageName\n\npackageName has to be the full package name of the app you want to add to the whitelist</string>
     <string name="tasker_remove_whitelist_desc">Broadcast values required:\npackageName\n\npackageName has to be the full package name of the app you want to remove from the whitelist</string>
     <!-- Doze monitor -->
@@ -367,7 +367,7 @@
     <string name="monitor_live_watchdog">Keep Doze enforced: %1$s</string>
     <string name="monitor_live_debt_none">Restore record: nothing left to restore</string>
     <string name="monitor_restore_system">Restore system state</string>
-    <string name="monitor_restore_system_description">Undo every sensor and Doze change AkaDoZe still has on record</string>
+    <string name="monitor_restore_system_description">Undo every sensor and Doze change EnforceDoze still has on record</string>
 
     <string name="monitor_value_yes">Yes</string>
     <string name="monitor_value_no">No</string>
@@ -395,9 +395,9 @@
     <string name="monitor_test_doze">Test Doze now</string>
     <string name="monitor_test_sensors">Test sensor restriction</string>
     <string name="monitor_test_doze_confirm_title">Test Doze now?</string>
-    <string name="monitor_test_doze_confirm_text">AkaDoZe will force the device into deep Doze, read the state back with “get deep”, then undo it and check that it\'s undone. The change is recorded first so it can be undone even if something fails. Notifications and syncs may pause for a few seconds.</string>
+    <string name="monitor_test_doze_confirm_text">EnforceDoze will force the device into deep Doze, read the state back with “get deep”, then undo it and check that it\'s undone. The change is recorded first so it can be undone even if something fails. Notifications and syncs may pause for a few seconds.</string>
     <string name="monitor_test_sensors_confirm_title">Test sensor restriction?</string>
-    <string name="monitor_test_sensors_confirm_text">AkaDoZe will restrict motion sensors, read the sensor mode back, then turn them on again and read the mode once more. The change is recorded first so it can be undone even if something fails. Auto-rotate and step counting pause for a few seconds.</string>
+    <string name="monitor_test_sensors_confirm_text">EnforceDoze will restrict motion sensors, read the sensor mode back, then turn them on again and read the mode once more. The change is recorded first so it can be undone even if something fails. Auto-rotate and step counting pause for a few seconds.</string>
     <string name="monitor_test_run">Run test</string>
     <string name="monitor_test_running">Running: %1$s…</string>
     <string name="monitor_test_unavailable">%1$s: %2$s</string>
@@ -412,10 +412,10 @@
     <string name="monitor_result_doze_passed">The readback showed deep Doze “%1$s”. Forced idle was then undone and checked.</string>
     <string name="monitor_result_sensors_passed">The readback showed motion sensors “%1$s”. Normal mode was then restored and checked.</string>
     <string name="monitor_result_not_verified">The change was sent, but the readback showed “%1$s”, so it can\'t be confirmed on this device. Everything was put back.</string>
-    <string name="monitor_result_restore_incomplete">AkaDoZe couldn\'t confirm that everything was put back. It stays on record as restore pending: use Restore system state.</string>
+    <string name="monitor_result_restore_incomplete">EnforceDoze couldn\'t confirm that everything was put back. It stays on record as restore pending: use Restore system state.</string>
     <string name="monitor_result_cancelled">The screen turned off or on during the test, so it stopped early. Anything that was changed was put back.</string>
     <string name="monitor_result_busy">A screen-off session is in progress, so nothing was run. Try again in a moment.</string>
-    <string name="monitor_result_failed">AkaDoZe couldn\'t record the change safely, so it wasn\'t applied. Anything that was changed was put back.</string>
+    <string name="monitor_result_failed">EnforceDoze couldn\'t record the change safely, so it wasn\'t applied. Anything that was changed was put back.</string>
     <string name="monitor_test_raw_show">Show raw output</string>
     <string name="monitor_test_raw_hide">Hide raw output</string>
     <string name="monitor_test_raw_empty">No commands were run.</string>
@@ -425,11 +425,11 @@
         <item quantity="one">… %d more line not shown</item>
         <item quantity="other">… %d more lines not shown</item>
     </plurals>
-    <string name="monitor_test_needs_service">Turn on AkaDoZe to run self-tests. If the app stops during a test, the running service is what undoes it.</string>
+    <string name="monitor_test_needs_service">Turn on EnforceDoze to run self-tests. If the app stops during a test, the running service is what undoes it.</string>
 
     <string name="monitor_sessions_title">Screen-off sessions</string>
     <string name="monitor_sessions_loading">Loading sessions…</string>
-    <string name="monitor_sessions_empty">No sessions recorded yet. Turn the screen off with AkaDoZe enabled, then come back.</string>
+    <string name="monitor_sessions_empty">No sessions recorded yet. Turn the screen off with EnforceDoze enabled, then come back.</string>
     <string name="monitor_journal_failed">Couldn\'t read the journal.</string>
     <string name="monitor_duration_hm">%1$dh%2$02d</string>
     <string name="monitor_duration_m">%1$d min</string>
@@ -471,7 +471,7 @@
         <item quantity="other">%d minutes</item>
     </plurals>
 
-    <string name="monitor_banner_truncated">History truncated: Android\'s Doze history didn\'t reach back to the start of this session, so its first part is covered only by AkaDoZe\'s own records.</string>
+    <string name="monitor_banner_truncated">History truncated: Android\'s Doze history didn\'t reach back to the start of this session, so its first part is covered only by EnforceDoze\'s own records.</string>
     <string name="monitor_banner_partial">Partial session: screen-off or screen-on wasn\'t recorded (or the boot couldn\'t be identified), so these figures cover only what was recorded.</string>
     <string name="monitor_detail_coverage">Deep %1$s · Light %2$s · Active %3$s · Unknown %4$s</string>
     <string name="monitor_detail_first_deep">First verified deep Doze after %1$s</string>
