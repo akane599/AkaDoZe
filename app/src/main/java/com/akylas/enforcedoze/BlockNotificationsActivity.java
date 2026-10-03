@@ -10,6 +10,10 @@ import android.os.Bundle;
 import android.preference.PreferenceManager;
 
 import androidx.appcompat.widget.Toolbar;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.ItemTouchHelper;
@@ -20,7 +24,7 @@ import android.text.InputType;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.widget.ListView;
+import android.view.View;
 
 import com.afollestad.materialdialogs.MaterialDialog;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -34,6 +38,7 @@ import java.util.List;
 
 public class BlockNotificationsActivity extends AppCompatActivity {
     RecyclerView recyclerView;
+    View emptyView;
     SharedPreferences sharedPreferences;
     AppsAdapter blockNotificationApps;
     ArrayList<String> blockedPackages;
@@ -49,6 +54,7 @@ public class BlockNotificationsActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         setContentView(R.layout.activity_notification_blocklist_apps);
 
         Toolbar toolbar = findViewById(R.id.toolbar);
@@ -56,6 +62,16 @@ public class BlockNotificationsActivity extends AppCompatActivity {
         getSupportActionBar().setDisplayHomeAsUpEnabled(true);
 
         recyclerView = findViewById(R.id.recycler_view);
+        emptyView = findViewById(R.id.empty_view);
+        View appBar = findViewById(R.id.appbarlayout);
+        int emptyPadding = emptyView.getPaddingTop();
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.coordinatorLayout), (v, windowInsets) -> {
+            Insets bars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            appBar.setPadding(bars.left, bars.top, bars.right, 0);
+            recyclerView.setPadding(bars.left, 0, bars.right, bars.bottom);
+            emptyView.setPadding(emptyPadding + bars.left, emptyPadding, emptyPadding + bars.right, emptyPadding + bars.bottom);
+            return WindowInsetsCompat.CONSUMED;
+        });
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
         recyclerView.setHasFixedSize(true);
         ItemTouchHelper.SimpleCallback simpleItemTouchCallback = new ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT) {
@@ -107,7 +123,7 @@ public class BlockNotificationsActivity extends AppCompatActivity {
         } else if (id == R.id.action_notification_blacklist_more_info) {
             displayDialog(getString(R.string.notif_blocklist_dialog_title), getString(R.string.notif_blocklist_dialog_text));
         } else if (id == android.R.id.home) {
-            onBackPressed();
+            getOnBackPressedDispatcher().onBackPressed();
             return true;
         }
         return super.onOptionsItemSelected(item);
@@ -150,24 +166,22 @@ public class BlockNotificationsActivity extends AppCompatActivity {
                     progressDialog.dismiss();
                 }
 
-                if (!result.isEmpty()) {
-                    if (!listData.isEmpty() || !blockedPackages.isEmpty()) {
-                        listData.clear();
-                        blockedPackages.clear();
+                // Always rebuild: an empty result must clear the list (last entry removed).
+                listData.clear();
+                blockedPackages.clear();
+                for (String r : result) {
+                    AppsItem appItem = new AppsItem();
+                    appItem.setAppPackageName(r);
+                    blockedPackages.add(r);
+                    try {
+                        appItem.setAppName(getPackageManager().getApplicationLabel(getPackageManager().getApplicationInfo(r, PackageManager.GET_META_DATA)).toString());
+                    } catch (PackageManager.NameNotFoundException e) {
+                        appItem.setAppName("System package");
                     }
-                    for (String r : result) {
-                        AppsItem appItem = new AppsItem();
-                        appItem.setAppPackageName(r);
-                        blockedPackages.add(r);
-                        try {
-                            appItem.setAppName(getPackageManager().getApplicationLabel(getPackageManager().getApplicationInfo(r, PackageManager.GET_META_DATA)).toString());
-                        } catch (PackageManager.NameNotFoundException e) {
-                            appItem.setAppName("System package");
-                        }
-                        listData.add(appItem);
-                    }
-                    blockNotificationApps.notifyDataSetChanged();
+                    listData.add(appItem);
                 }
+                blockNotificationApps.notifyDataSetChanged();
+                emptyView.setVisibility(listData.isEmpty() ? View.VISIBLE : View.GONE);
 
                 log("Blocked packages: " + listData.size() + " packages in total");
             }

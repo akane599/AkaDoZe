@@ -1,6 +1,5 @@
 package com.akylas.enforcedoze;
 
-import android.app.ListActivity;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -9,6 +8,7 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
@@ -16,7 +16,12 @@ import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.TextView;
 
+import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import com.afollestad.materialdialogs.MaterialDialog;
 import com.nanotasks.BackgroundWork;
@@ -26,8 +31,9 @@ import com.nanotasks.Tasks;
 import java.util.Collections;
 import java.util.List;
 
-public class PackageChooserActivity extends ListActivity {
+public class PackageChooserActivity extends AppCompatActivity {
     AppAdapter adapter = null;
+    ListView listView;
     MaterialDialog progressDialog = null;
     public static String TAG = "EnforceDoze";
     PackageManager pm;
@@ -35,7 +41,22 @@ public class PackageChooserActivity extends ListActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         setContentView(R.layout.package_chooser_layout);
+
+        Toolbar toolbar = findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
+        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+
+        listView = findViewById(R.id.list);
+        View appBar = findViewById(R.id.appbarlayout);
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.coordinatorLayout), (v, windowInsets) -> {
+            Insets bars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            appBar.setPadding(bars.left, bars.top, bars.right, 0);
+            listView.setPadding(bars.left, 0, bars.right, bars.bottom);
+            return WindowInsetsCompat.CONSUMED;
+        });
+        listView.setOnItemClickListener((parent, view, position, id) -> onPackageChosen(position));
 
         pm = getPackageManager();
 
@@ -64,7 +85,7 @@ public class PackageChooserActivity extends ListActivity {
                     progressDialog.dismiss();
                 }
                 adapter = new AppAdapter(pm, result);
-                setListAdapter(adapter);
+                listView.setAdapter(adapter);
             }
 
             @Override
@@ -76,7 +97,15 @@ public class PackageChooserActivity extends ListActivity {
     }
 
     @Override
-    protected void onListItemClick(ListView l, View v, int position, long id) {
+    public boolean onOptionsItemSelected(MenuItem item) {
+        if (item.getItemId() == android.R.id.home) {
+            getOnBackPressedDispatcher().onBackPressed();
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
+    private void onPackageChosen(int position) {
 
         ResolveInfo launchable = adapter.getItem(position);
         ActivityInfo activity = launchable.activityInfo;
