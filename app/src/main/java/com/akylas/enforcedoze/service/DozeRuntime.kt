@@ -241,17 +241,32 @@ class DozeRuntime(context: Context) {
         }
     }
 
+    /** User-confirmed dismiss. Call on doze-worker; commits before returning and preserves valid entries. */
+    fun clearRetainedCorruption() = synchronized(controller) {
+        store.clearRetainedCorruption()
+        recordCorruptionDebt()
+    }
+
+    private fun recordCorruptionDebt() {
+        try {
+            store.recordCorruptionDebt()
+        } catch (_: Exception) {
+            journal.emit(DozeEvent(EventType.RECOVERY_DEBT, "LEDGER_RECOVERY_COMMIT_FAILED"))
+        }
+    }
+
     /** DUMP readbacks are the oracle; fail safe on damaged/lost intent, preserving all evidence. */
     fun checkSafety() = synchronized(controller) { checkSafetyLocked() }
 
     private fun checkSafetyLocked() {
         val ledger = try { store.load() } catch (_: Exception) { RestoreLedger() }
-        val damaged = store.loadFailed || store.corruptLines.isNotEmpty()
+        val recoveryNeeded = LedgerRecovery.needsRecovery(store.corruptLines, store.loadFailed)
         val hasForce = LedgerRecovery.hasForceIntent(ledger, store.corruptLines, store.loadFailed)
         if (CapabilityResolver.status(Feature.DOZE_STATE_READ, control.level, Build.VERSION.SDK_INT, grants())
             != FeatureStatus.Available
         ) {
-            if (damaged || ledger.entries.isNotEmpty()) journal.emit(DozeEvent(EventType.RECOVERY_DEBT, "SAFETY_READ_UNAVAILABLE"))
+            recordCorruptionDebt()
+            if (recoveryNeeded || ledger.entries.isNotEmpty()) journal.emit(DozeEvent(EventType.RECOVERY_DEBT, "SAFETY_READ_UNAVAILABLE"))
             return
         }
         val token = ledger.entries.firstOrNull { it.feature == Feature.MOTION_SENSORS }?.target ?: allowToken
@@ -260,7 +275,7 @@ class DozeRuntime(context: Context) {
         val actions = SafetyNet.check(sensor, idle.forceIdle, control.level, token, hasForce)
         for (action in actions) {
             // Healthy ledger-backed restriction/force belongs to the active session, not an orphan.
-            if (sessionActive && !damaged && control.level >= AccessLevel.SHELL &&
+            if (sessionActive && !recoveryNeeded && control.level >= AccessLevel.SHELL &&
                 (action == Action.UNFORCE || action == Action.RESTORE_SENSORS &&
                     ledger.entries.any { it.feature == Feature.MOTION_SENSORS })
             ) continue
@@ -290,19 +305,20 @@ class DozeRuntime(context: Context) {
                 }
             }
         }
-        if (damaged) {
+        if (recoveryNeeded) {
             val recovered = LedgerRecovery.recoveryVerified(
                 SensorModeParser.parse(runRead("dumpsys sensorservice")).mode,
                 DozeStateParser.parse(runRead("dumpsys deviceidle")).forceIdle,
             )
             if (recovered && !store.loadFailed) {
                 try {
-                    store.clearCorruptionAfterRecovery(ledger)
+                    store.clearCorruptionAfterRecovery()
                 } catch (_: Exception) {
                     journal.emit(DozeEvent(EventType.RECOVERY_DEBT, "LEDGER_RECOVERY_COMMIT_FAILED"))
                 }
-            } else journal.emit(DozeEvent(EventType.RECOVERY_DEBT, "LEDGER_DAMAGED"))
+            }
         }
+        recordCorruptionDebt()
     }
 
     /** Teardown shares a single command-time budget; durable debt survives any exhausted budget. */

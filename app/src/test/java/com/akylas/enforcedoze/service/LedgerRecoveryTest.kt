@@ -63,6 +63,20 @@ class LedgerRecoveryTest {
         assertTrue(SafetyNet.check(normal, true, AccessLevel.SHELL, token, hasForce).isEmpty())
     }
 
+    @Test fun retainedNonSensorDamageDoesNotOwnRecoveryOnLaterStartup() {
+        val retained = RestoreLedgerCodec.decode(listOf(
+            "1|WIFI|~|true|broken|0|false|36",
+            "1|AIRPLANE|~|false|broken|0|false|36",
+            "1|FUTURE_RADIO|~|true|10|0|false|37",
+            "unreadable",
+        ).joinToString("\n"))
+        assertEquals(4, retained.corruptLines.size)
+        val hasForce = LedgerRecovery.hasForceIntent(retained.ledger, retained.corruptLines, false)
+        assertFalse("Retained damage must not own force recovery", hasForce)
+        assertTrue("A later unowned session must not be unforced",
+            SafetyNet.check(normal, true, AccessLevel.SHELL, token, hasForce).isEmpty())
+    }
+
     @Test fun healthyForceIntentStillOwnsRecoveryAndEmptyLedgerDoesNot() {
         val ledger = RestoreLedger(listOf(LedgerEntry(Feature.FORCE_DOZE, null, "false", 10, apiLevel = 36)))
         assertTrue(LedgerRecovery.hasForceIntent(ledger, emptyList(), false))
