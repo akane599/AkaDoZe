@@ -45,6 +45,20 @@ before, and nothing should be reset.
     and check that a summary appears after a session. With the permission denied, nothing should be posted.
 11. **Update/boot.** Reboot with the service enabled, and install an update over it. The service should
     come back, and no leftover RESTRICTED or forced state should remain.
+12. **Honest UI (SQ-51).**
+    - DUMP only (no root, Shizuku off or not permitted, DUMP granted over ADB): turning the main switch on
+      shows "Not enforcing yet", and the status line reads "…on, but not enforcing: Doze sessions need
+      Shizuku or root". It never shows "That's it".
+    - Settings → Reset: a progress dialog, then "Reset complete" only if every step was confirmed. Without
+      root/Shizuku, expect "Reset incomplete" listing each step as "couldn't be checked". With leftover
+      debt, the execution mode survives the reset.
+    - Re-picking the execution mode that is already active doesn't restart the service (no new
+      foreground notification, no stop/start in logcat).
+    - Whitelist with a failing read (e.g. no DUMP/Shizuku/root) shows "The Doze whitelist couldn't be read",
+      not "Error".
+    - Android 6 or 7 (API < 26), if available: Settings → Whitelist music app → Open doesn't crash.
+    - A damaged record for anything other than forced Doze or motion sensors shows "Dismiss damaged
+      records" on the access card and in the monitor. Confirming removes it. Cancelling keeps it.
 
 **If something fails:** Doze monitor → "Share report", plus
 `adb logcat -d --pid=$(adb shell pidof -s com.akylas.enforcedoze) | tail -200`.

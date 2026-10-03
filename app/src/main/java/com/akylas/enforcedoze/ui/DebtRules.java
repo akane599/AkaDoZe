@@ -1,12 +1,16 @@
 package com.akylas.enforcedoze.ui;
 
 import com.akylas.enforcedoze.access.Feature;
+import com.akylas.enforcedoze.doze.CorruptLedgerLine;
 import com.akylas.enforcedoze.doze.LedgerEntry;
+import com.akylas.enforcedoze.service.LedgerRecovery;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -25,6 +29,19 @@ public final class DebtRules {
             if (entry.getDebt() || entry.getAttempts() > 0) return true;
         }
         return false;
+    }
+
+    /**
+     * Feature tokens of the damaged records the user may dismiss (LedgerRecovery: forced Doze and motion
+     * sensor records are recovered automatically and never offered). Null stands for an unnamed record.
+     * Empty when nothing can be dismissed.
+     */
+    public static List<String> dismissibleDamage(List<CorruptLedgerLine> corruptLines) {
+        Set<String> tokens = new LinkedHashSet<>();
+        for (CorruptLedgerLine line : corruptLines) {
+            if (!LedgerRecovery.recoverable(line)) tokens.add(LedgerRecovery.featureToken(line));
+        }
+        return new ArrayList<>(tokens);
     }
 
     /** One debt item: a controller entry is detail(feature)+target, a runtime debt is its detail. */
@@ -105,7 +122,7 @@ public final class DebtRules {
         return false;
     }
 
-    /** Runtime debts a clean ledger read disproves (MonitorData.hasDebt fails closed on load errors). */
+    /** Runtime debts a clean ledger read disproves (MonitorData.checkDebt fails closed on load errors). */
     private static final Set<String> LEDGER_KEYS = new HashSet<>(Arrays.asList(
             "TEARDOWN_TIMEOUT", "LEDGER_DAMAGED", "SAFETY_READ_UNAVAILABLE",
             "LEDGER_LOAD_FAILED", "LEDGER_RECOVERY_COMMIT_FAILED"));

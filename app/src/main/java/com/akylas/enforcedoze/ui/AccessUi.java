@@ -72,6 +72,18 @@ public final class AccessUi {
         return SessionAccess.canRunSessions(state.getLevel());
     }
 
+    public enum ServiceStatus { ACTIVE, INACTIVE, NEEDS_SESSION_ACCESS }
+
+    /**
+     * The main switch's status. Switched on without Shizuku or root (e.g. DUMP granted over ADB) the
+     * service only reads state and restores; it never runs a session, so it is not reported as enforcing.
+     * A null state (access not known yet) keeps the plain on/off status.
+     */
+    public static ServiceStatus serviceStatus(boolean enabled, AccessState state) {
+        if (!enabled) return ServiceStatus.INACTIVE;
+        return state == null || sessionsAvailable(state) ? ServiceStatus.ACTIVE : ServiceStatus.NEEDS_SESSION_ACCESS;
+    }
+
     /** Features that only act inside an admitted Doze session (force Doze and every in-Doze change). */
     public static boolean isSessionFeature(Feature feature) {
         switch (feature) {

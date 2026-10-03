@@ -14,6 +14,7 @@ import com.akylas.enforcedoze.access.CommandResult;
 import com.akylas.enforcedoze.access.Feature;
 import com.akylas.enforcedoze.access.Prefs;
 import com.akylas.enforcedoze.access.Reason;
+import com.akylas.enforcedoze.doze.CorruptLedgerLine;
 import com.akylas.enforcedoze.doze.EventType;
 import com.akylas.enforcedoze.doze.RestoreLedger;
 import com.akylas.enforcedoze.doze.parse.DozeStateParser;
@@ -65,6 +66,7 @@ final class MonitorData {
         SensorModeReading sensor;
         boolean watchdog;
         boolean debt;
+        List<String> dismissible = Collections.emptyList();
         long readAt;
     }
 
@@ -87,7 +89,9 @@ final class MonitorData {
         }
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(app);
         live.watchdog = prefs.getBoolean(Prefs.KEEP_DOZE_ENFORCED, Prefs.DEFAULT_KEEP_DOZE_ENFORCED);
-        live.debt = hasDebt(runtime);
+        DebtCheck debt = checkDebt(runtime);
+        live.debt = debt.debt;
+        live.dismissible = debt.dismissible;
         live.readAt = System.currentTimeMillis();
         return live;
     }
@@ -105,16 +109,31 @@ final class MonitorData {
     /**
      * Shared by the access card and the monitor (DebtRules.isDebt; unreadable fails closed). Blocking: the
      * controller lock waits out an exit/reconcile walk that is already running, so its saves are seen.
+     * Also lists the damaged records the user may dismiss: none during a session or while unreadable.
      */
-    static boolean hasDebt(DozeRuntime runtime) {
+    static DebtCheck checkDebt(DozeRuntime runtime) {
         synchronized (runtime.getController()) {
             boolean sessionActive = runtime.getSessionActive();
             try {
                 RestoreLedger ledger = runtime.getStore().load();
-                return DebtRules.isDebt(ledger.getEntries(), !runtime.getStore().getCorruptLines().isEmpty(), sessionActive);
+                List<CorruptLedgerLine> corrupt = runtime.getStore().getCorruptLines();
+                return new DebtCheck(DebtRules.isDebt(ledger.getEntries(), !corrupt.isEmpty(), sessionActive),
+                        sessionActive ? Collections.emptyList() : DebtRules.dismissibleDamage(corrupt));
             } catch (Exception unreadable) {
-                return DebtRules.isDebt(Collections.emptyList(), true, sessionActive);
+                return new DebtCheck(DebtRules.isDebt(Collections.emptyList(), true, sessionActive),
+                        Collections.emptyList());
             }
+        }
+    }
+
+    static final class DebtCheck {
+        final boolean debt;
+        /** Feature tokens (null = unnamed) of damaged records that can't be restored automatically. */
+        final List<String> dismissible;
+
+        DebtCheck(boolean debt, List<String> dismissible) {
+            this.debt = debt;
+            this.dismissible = dismissible;
         }
     }
 

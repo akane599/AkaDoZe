@@ -131,15 +131,33 @@
             app:strokeWidth="0dp"
             tools:visibility="visible">
 
-            <TextView
-                android:id="@+id/liveDebtText"
-                android:textAppearance="?attr/textAppearanceBodyMedium"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:accessibilityLiveRegion="polite"
-                android:padding="12dp"
-                android:textColor="?attr/colorOnErrorContainer"
-                tools:text="@string/access_debt_generic" />
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView
+                    android:id="@+id/liveDebtText"
+                    android:textAppearance="?attr/textAppearanceBodyMedium"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:accessibilityLiveRegion="polite"
+                    android:textColor="?attr/colorOnErrorContainer"
+                    tools:text="@string/access_debt_generic" />
+
+                <Button
+                    android:id="@+id/liveDismiss"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="end"
+                    android:layout_marginTop="4dp"
+                    android:contentDescription="@string/damaged_records_dismiss_description"
+                    android:text="@string/damaged_records_dismiss"
+                    android:textColor="?attr/colorOnErrorContainer"
+                    android:visibility="gone" />
+            </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
         <TextView

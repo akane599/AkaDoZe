@@ -22,11 +22,13 @@ import com.akylas.enforcedoze.doze.DozeEvent;
 import com.akylas.enforcedoze.doze.DozeEventSink;
 import com.akylas.enforcedoze.doze.EventType;
 
+import java.util.Collections;
 import java.util.List;
 
 /**
- * Main-screen access card. Subscribed only between start() and stop(); event callbacks arrive on the
- * doze-worker thread and are posted to main, so nothing outlives the Activity's visible lifetime.
+ * Main-screen access card. Subscribed only between start() and stop(). Journal sinks run on whichever
+ * thread emits (mostly doze-worker, the service's teardown timeout on main), so event callbacks are
+ * posted to main and dropped once stopped; access callbacks already arrive on main.
  */
 public final class AccessCard {
     private static final long[] RESTORE_RECHECK_MS = {2_000, 6_000};
@@ -40,6 +42,7 @@ public final class AccessCard {
     private final View debtCard;
     private final TextView debtText;
     private final Button restore;
+    private final Button dismiss;
     private final Button action;
     private final AccessManager.Listener accessListener = this::bind;
     private final DozeEventSink events = this::onEvent;
@@ -47,6 +50,7 @@ public final class AccessCard {
     private boolean started;
     private AccessState state;
     private boolean ledgerDebt;
+    private List<String> dismissible = Collections.emptyList();
     private String debtDetail;
     private boolean restoring;
 
@@ -59,6 +63,7 @@ public final class AccessCard {
         debtCard = activity.findViewById(R.id.accessDebtCard);
         debtText = activity.findViewById(R.id.accessDebtText);
         restore = activity.findViewById(R.id.accessRestoreButton);
+        dismiss = activity.findViewById(R.id.accessDismissButton);
         action = activity.findViewById(R.id.accessActionButton);
         ViewCompat.setAccessibilityHeading(activity.findViewById(R.id.accessCardTitle), true);
         action.setOnClickListener(v -> {
@@ -67,6 +72,12 @@ public final class AccessCard {
             }
         });
         restore.setOnClickListener(v -> restoreNow());
+        dismiss.setOnClickListener(v -> DamagedRecords.confirmDismiss(activity, dismissible, () -> {
+            if (!started) return;
+            // The dismissed records were what LEDGER_DAMAGED announced; the ledger read decides now.
+            if ("LEDGER_DAMAGED".equals(debtDetail)) debtDetail = null;
+            checkLedger();
+        }));
     }
 
     public void start() {
@@ -129,12 +140,14 @@ public final class AccessCard {
     private void checkLedger() {
         if (!started) return;
         Context app = activity.getApplicationContext();
-        // Not the serial executor: hasDebt can wait for a running exit walk to finish.
+        // Not the serial executor: checkDebt can wait for a running exit walk to finish.
         AsyncTask.THREAD_POOL_EXECUTOR.execute(() -> {
-            boolean result = MonitorData.hasDebt(MyApplication.getDozeRuntime(app));
+            MonitorData.DebtCheck check = MonitorData.checkDebt(MyApplication.getDozeRuntime(app));
+            boolean result = check.debt;
             main.post(() -> {
                 if (!started) return;
                 ledgerDebt = result;
+                dismissible = check.dismissible;
                 restoring = false;
                 // Event-raised debt (e.g. SafetyNet RAISE_DEBT) is not ledger-backed; only Restore clears it.
                 if (!result && debtDetail == null) NoticeSink.cancelDebt(app);
@@ -155,9 +168,12 @@ public final class AccessCard {
         } else {
             text = activity.getString("ACCESS_LOST".equals(debtDetail)
                     ? R.string.access_debt_access_lost : R.string.access_debt_generic);
+            if (!dismissible.isEmpty()) text = text + "\n\n" + DamagedRecords.debtText(activity, dismissible);
             if (!privileged) text = text + "\n" + activity.getString(R.string.access_debt_needs_access);
         }
         debtText.setText(text);
         restore.setEnabled(privileged && !(restoring && debtDetail == null));
+        // A local ledger edit: no access needed, but not while a restore may still settle the records.
+        dismiss.setVisibility(!dismissible.isEmpty() && !restoring ? View.VISIBLE : View.GONE);
     }
 }

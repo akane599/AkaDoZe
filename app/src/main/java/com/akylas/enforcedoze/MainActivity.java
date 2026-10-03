@@ -61,6 +61,8 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
 
     private AccessManager accessManager;
     private AccessCard accessCard;
+    /** Last published access, null until the first callback. */
+    private AccessState lastAccess;
     private boolean helpersRequested;
     private final AccessManager.Listener accessListener = this::onAccessChanged;
     private UpdateForceDozeEnabledState updateStateFromTile;
@@ -91,11 +93,7 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         toggleForceDozeSwitch.setChecked(serviceEnabled);
         toggleForceDozeSwitch.setOnCheckedChangeListener(this);
 
-        if (serviceEnabled) {
-            textViewStatus.setText(R.string.service_active);
-        } else {
-            textViewStatus.setText(R.string.service_inactive);
-        }
+        renderServiceStatus();
     }
     private void updateToggleEnabled() {
         serviceEnabled = settings.getBoolean("serviceEnabled", false);
@@ -103,10 +101,20 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         toggleForceDozeSwitch.setChecked(serviceEnabled);
         toggleForceDozeSwitch.setOnCheckedChangeListener(this);
 
-        if (serviceEnabled) {
-            textViewStatus.setText(R.string.service_active);
-        } else {
-            textViewStatus.setText(R.string.service_inactive);
+        renderServiceStatus();
+    }
+
+    /** On without Shizuku or root (DUMP only) reads and restores but never enforces: say so. */
+    private void renderServiceStatus() {
+        switch (AccessUi.serviceStatus(serviceEnabled, lastAccess)) {
+            case ACTIVE:
+                textViewStatus.setText(R.string.service_active);
+                break;
+            case NEEDS_SESSION_ACCESS:
+                textViewStatus.setText(R.string.service_needs_session_access);
+                break;
+            default:
+                textViewStatus.setText(R.string.service_inactive);
         }
     }
 
@@ -279,6 +287,7 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
     }
 
     private void onAccessChanged(AccessState state) {
+        lastAccess = state;
         isSuAvailable = state.getLevel() == AccessLevel.ROOT;
         isShizukuAvailable = Utils.isShizukuMode(this)
                 && (state.getLevel() == AccessLevel.SHELL || isSuAvailable);
@@ -353,14 +362,18 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
             }
             settings.edit().putBoolean("serviceEnabled", true).apply();
             serviceEnabled = true;
-            textViewStatus.setText(R.string.service_active);
-            showForceDozeActiveDialog();
+            renderServiceStatus();
+            if (AccessUi.sessionsAvailable(lastAccess != null ? lastAccess : accessManager.getState())) {
+                showForceDozeActiveDialog();
+            } else {
+                showSessionsNeedAccessDialog();
+            }
         } else {
             editor = settings.edit();
             editor.putBoolean("serviceEnabled", false);
             editor.apply();
             serviceEnabled = false;
-            textViewStatus.setText(R.string.service_inactive);
+            renderServiceStatus();
             if (Utils.isMyServiceRunning(ForceDozeService.class, MainActivity.this)) {
                 log("Disabling ForceDoze");
                 Utils.stopForceDozeService(MainActivity.this);
@@ -469,6 +482,15 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         builder.setMessage(getString(R.string.how_doze_works_dialog_text));
         builder.setPositiveButton(getString(R.string.okay_button_text), (dialogInterface, i) -> dialogInterface.dismiss());
         builder.show();
+    }
+
+    /** Switched on with DUMP only: the service runs for readback and recovery, but no session starts. */
+    public void showSessionsNeedAccessDialog() {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.sessions_need_access_dialog_title)
+                .setMessage(R.string.sessions_need_access_dialog_text)
+                .setPositiveButton(R.string.okay_button_text, null)
+                .show();
     }
 
     public void showForceDozeActiveDialog() {

@@ -111,7 +111,7 @@ public final class DozeMonitorActivity extends AppCompatActivity implements Moni
         adapter.refreshType(MonitorAdapter.TESTS);
     };
 
-    /** emit() runs on doze-worker: hop to main, and only while visible. */
+    /** Sinks run on whichever thread emits (mostly doze-worker, sometimes main): hop to main, only while visible. */
     private final DozeEventSink events = event -> {
         if (event.getType() != EventType.RECOVERY_DEBT) return;
         String detail = event.getDetail();
@@ -378,10 +378,26 @@ public final class DozeMonitorActivity extends AppCompatActivity implements Moni
                 message = getString(R.string.access_restoring);
             } else {
                 message = getString("ACCESS_LOST".equals(debtDetail) ? R.string.access_debt_access_lost : R.string.access_debt_generic);
+                if (dismissible(snapshot, testing)) {
+                    message = message + "\n\n" + DamagedRecords.debtText(this, snapshot.dismissible);
+                }
                 if (!privileged) message = message + "\n" + getString(R.string.access_debt_needs_access);
             }
             text(card, R.id.liveDebtText, message);
         }
+        Button dismiss = card.findViewById(R.id.liveDismiss);
+        // A local ledger edit: no access needed, but not while a restore or self-test may still settle it.
+        dismiss.setVisibility(debt && !restoring && dismissible(snapshot, testing) ? View.VISIBLE : View.GONE);
+        dismiss.setOnClickListener(v -> {
+            MonitorData.Live shown = live;
+            if (shown == null || shown.dismissible.isEmpty()) return;
+            DamagedRecords.confirmDismiss(this, shown.dismissible, () -> {
+                if (!resumed) return;
+                if ("LEDGER_DAMAGED".equals(debtDetail)) debtDetail = null;
+                liveLoading = false;
+                refreshLive();
+            });
+        });
 
         text(card, R.id.liveUpdated, liveLoading || snapshot == null ? getString(R.string.monitor_live_reading)
                 : getString(R.string.monitor_live_updated, MonitorFormat.clock(snapshot.readAt)));
@@ -442,6 +458,10 @@ public final class DozeMonitorActivity extends AppCompatActivity implements Moni
         if (reason != null) {
             why.setText(getString(R.string.monitor_test_unavailable, MonitorFormat.testName(this, kind), reason));
         }
+    }
+
+    private static boolean dismissible(MonitorData.Live snapshot, boolean testing) {
+        return !testing && snapshot != null && !snapshot.dismissible.isEmpty();
     }
 
     private static void text(View root, int id, CharSequence value) {
