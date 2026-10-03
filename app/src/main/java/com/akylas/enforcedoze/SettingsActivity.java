@@ -59,6 +59,7 @@ import com.akylas.enforcedoze.access.Prefs;
 import com.akylas.enforcedoze.access.ShizukuState;
 import com.akylas.enforcedoze.ui.AccessUi;
 import com.akylas.enforcedoze.ui.ModeSwitchRules;
+import com.akylas.enforcedoze.ui.ResetReport;
 
 import android.Manifest;
 import android.os.Handler;
@@ -148,6 +149,7 @@ public class SettingsActivity extends AppCompatActivity {
         /** The su probe is one bounded lane command; allow one probe already queued ahead of it. */
         private static final long ROOT_PROBE_WAIT_MS = 2 * CommandRunner.DEFAULT_TIMEOUT_MS + 1_000;
         private MaterialDialog modeProgress;
+        private MaterialDialog resetProgress;
         private String modeBeforeSwitch;
         private boolean awaitingShizukuResult;
         /** The Activity was covered after the Shizuku request, so no prompt is in flight once it resumes. */
@@ -241,6 +243,7 @@ public class SettingsActivity extends AppCompatActivity {
             Shizuku.removeRequestPermissionResultListener(shizukuResult);
             mainHandler.removeCallbacksAndMessages(null);
             dismissModeProgress();
+            dismissResetProgress();
             super.onDestroy();
         }
 
@@ -409,8 +412,9 @@ public class SettingsActivity extends AppCompatActivity {
 
             executionMode.setOnPreferenceChangeListener((preference, value) -> {
                 String previous = sharedPreferences.getString(Prefs.EXECUTION_MODE, Prefs.DEFAULT_EXECUTION_MODE);
+                if (!ModeSwitchRules.isSwitch(previous, (String) value)) return true;
                 modeSwitch.select((String) value);
-                if (Prefs.MODE_SHIZUKU.equals(value) && !value.equals(previous)) {
+                if (Prefs.MODE_SHIZUKU.equals(value)) {
                     accessManager.refreshShizuku();
                     Reason reason = accessManager.getShizukuState().getReason();
                     if (reason == Reason.SHIZUKU_PERMISSION_MISSING) {
@@ -422,7 +426,7 @@ public class SettingsActivity extends AppCompatActivity {
                                 .setPositiveButton(R.string.okay_button_text, null)
                                 .show();
                     }
-                } else if (Prefs.MODE_ROOT.equals(value) && !value.equals(previous)) {
+                } else if (Prefs.MODE_ROOT.equals(value)) {
                     awaitRoot(previous);
                 }
                 // SharedPreferences and AccessManager publish the selected mode before we consume it.
@@ -553,13 +557,19 @@ public class SettingsActivity extends AppCompatActivity {
                         builder.setTitle(getString(R.string.notifications_permission));
                         builder.setMessage(getString(R.string.notifications_permission_explanation));
                         builder.setPositiveButton(getString(R.string.open_button_text), (dialogInterface, i) -> {
-                            Intent settingsIntent = null;
+                            // The listener-settings action exists on every supported API (22+); only the
+                            // package extra is API 26+. Never launch a null intent.
+                            Intent settingsIntent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                settingsIntent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
-                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        .putExtra(Settings.EXTRA_APP_PACKAGE, getActivity().getPackageName());
+                                settingsIntent.putExtra(Settings.EXTRA_APP_PACKAGE, requireActivity().getPackageName());
                             }
-                            getActivity().startActivity(settingsIntent);
+                            try {
+                                requireActivity().startActivity(settingsIntent);
+                            } catch (android.content.ActivityNotFoundException missing) {
+                                Toast.makeText(requireContext(), R.string.notification_listener_settings_missing,
+                                        Toast.LENGTH_LONG).show();
+                            }
                             dialogInterface.dismiss();
                         });
                         builder.show();
@@ -755,28 +765,44 @@ public class SettingsActivity extends AppCompatActivity {
         public void resetForceDoze() {
             Context context = requireContext().getApplicationContext();
             context.stopService(new Intent(context, ForceDozeService.class));
-            ForceDozeService.requestSafetyCheck(context);
-            AsyncTask.execute(() -> {
-                String suffix = Utils.isDeviceRunningOnN() ? " all" : "";
-                accessManager.control().run("dumpsys deviceidle disable" + suffix);
-                accessManager.control().run("dumpsys deviceidle enable" + suffix);
-                for (String permission : new String[]{"DUMP", "READ_LOGS", "READ_PHONE_STATE", "WRITE_SECURE_SETTINGS", "WRITE_SETTINGS"}) {
-                    accessManager.control().run("pm revoke " + context.getPackageName() + " android.permission." + permission);
+            dismissResetProgress();
+            resetProgress = new MaterialDialog.Builder(requireActivity())
+                    .title(R.string.please_wait_text)
+                    .content(R.string.reset_running_text)
+                    .progress(true, 0)
+                    .cancelable(false)
+                    .show();
+            // Restores through the ledger first, then the reset steps; the callback runs on doze-worker.
+            MyApplication.getDozeRuntime(context).resetSystemState(result -> {
+                // Only after the result, and never the restore intent that remaining debt still needs.
+                boolean cleared;
+                try {
+                    cleared = ResetReport.clearPreferences(PreferenceManager.getDefaultSharedPreferences(context), result);
+                } catch (RuntimeException failed) {
+                    cleared = false;
                 }
-                // Preserve the selected runner until all resets/revocations have completed.
-                PreferenceManager.getDefaultSharedPreferences(context).edit().clear().commit();
-                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                int title = ResetReport.title(result, cleared);
+                String message = ResetReport.message(context, result, cleared);
+                mainHandler.post(() -> {
+                    dismissResetProgress();
                     if (!isAdded()) return;
-                    MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(requireContext());
-                    builder.setTitle(getString(R.string.reset_complete_dialog_title));
-                    builder.setMessage(getString(R.string.reset_complete_dialog_text));
-                    builder.setPositiveButton(getString(R.string.okay_button_text), (dialogInterface, i) -> {
-                        dialogInterface.dismiss();
-                        ProcessPhoenix.triggerRebirth(requireContext());
-                    });
-                    builder.show();
+                    new MaterialAlertDialogBuilder(requireContext())
+                            .setTitle(title)
+                            .setMessage(message)
+                            .setPositiveButton(R.string.okay_button_text, (dialogInterface, i) -> {
+                                dialogInterface.dismiss();
+                                ProcessPhoenix.triggerRebirth(requireContext());
+                            })
+                            .show();
                 });
             });
+        }
+
+        private void dismissResetProgress() {
+            if (resetProgress != null) {
+                if (resetProgress.isShowing()) resetProgress.dismiss();
+                resetProgress = null;
+            }
         }
 
         /**

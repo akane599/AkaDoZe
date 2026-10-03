@@ -11,11 +11,11 @@
     <string name="doze_unsupported_more_info">Some devices have Doze mode disabled by the OEM. This option can enable Doze mode on devices which do not have it enabled by default.\n\nNote: You will have to turn this option on every time you restart your phone.</string>
     <string name="doze_unsupported_more_info_title">Enable Doze on unsupported device</string>
     <string name="enable_doze_button_text">Enable Doze mode</string>
-    <string name="no_root_workaround_dialog_title">No-root workaround</string>
+    <string name="no_root_workaround_dialog_title">ADB permissions</string>
     <string name="okay_button_text">Okay</string>
     <string name="copy_command_button_text">Copy Command</string>
     <string name="share_command_button_text">Share command</string>
-    <string name="no_root_workaround_dialog_text">If your device isn\'t rooted, you can manually grant the permission \'android.permission.DUMP\' (and \'android.permission.WRITE_SECURE_SETTINGS\' if you\'re on Nougat) to this app by executing the following ADB command from your computer: </string>
+    <string name="no_root_workaround_dialog_text">Without root, EnforceDoze needs Shizuku to force Doze. Granting \'android.permission.DUMP\' (and \'android.permission.WRITE_SECURE_SETTINGS\') with the ADB commands below only lets it read the Doze state and restore sensors; Doze sessions still need Shizuku or root.</string>
     <string name="lockscreen_timeout_dialog_title">Lockscreen timeout</string>
     <string name="open_security_settings_button_text">Open Security Settings</string>
     <string name="lockscreen_timeout_dialog_text_p1">The lockscreen timeout value on your device is too high (</string>
@@ -520,4 +520,67 @@
     <string name="notice_summary_sensors_unverified">sensors ?</string>
 
     <string name="tasker_change_setting_desc">Broadcast values required:\nsettingName\nsettingValue\n\nsettingName can be one of the following:\n%1$s\n\nsettingValue is true or false, or a number of seconds from 0 to 1800 for dozeEnterDelay. Other settings are rejected.</string>
+    <!-- SQ-51: honest results from the 2.0 review -->
+    <string name="service_needs_session_access">EnforceDoze is on, but not enforcing: Doze sessions need Shizuku or root</string>
+    <string name="sessions_need_access_dialog_title">Not enforcing yet</string>
+    <string name="sessions_need_access_dialog_text">EnforceDoze is on, but it can\'t force Doze yet. With the DUMP permission alone it can read the Doze state and restore sensors, nothing more. Doze sessions start once Shizuku or root is available.</string>
+
+    <string name="whitelist_system_package">System package</string>
+    <string name="whitelist_read_problem_title">Whitelist not fully read</string>
+    <string name="whitelist_edit_problem_title">Whitelist change not confirmed</string>
+    <string name="whitelist_read_failed">The Doze whitelist couldn\'t be read.</string>
+    <string name="whitelist_read_timed_out">Reading the Doze whitelist timed out.</string>
+    <plurals name="whitelist_read_partial">
+        <item quantity="one">%d line of the Doze whitelist couldn\'t be read. The apps that could be read are listed.</item>
+        <item quantity="other">%d lines of the Doze whitelist couldn\'t be read. The apps that could be read are listed.</item>
+    </plurals>
+    <string name="whitelist_edit_unconfirmed">The change was sent, but couldn\'t be checked: %1$s</string>
+    <string name="whitelist_add_not_applied">The app was not added: it still isn\'t in the Doze whitelist.</string>
+    <string name="whitelist_remove_not_applied">The app was not removed: it is still in the Doze whitelist.</string>
+    <string name="whitelist_invalid_package">That isn\'t a valid package name.</string>
+    <string name="whitelist_not_installed">No app with that package name is installed.</string>
+    <string name="whitelist_add_error">The app couldn\'t be added to the Doze whitelist.</string>
+    <string name="whitelist_remove_error">The app couldn\'t be removed from the Doze whitelist.</string>
+
+    <string name="log_loading_text">Reading the log…</string>
+    <string name="log_unavailable_text">Unable to read the log</string>
+
+    <string name="notification_listener_settings_missing">This device has no notification access settings screen.</string>
+
+    <string name="reset_running_text">Restoring what EnforceDoze changed, then resetting…</string>
+    <string name="reset_incomplete_title">Reset incomplete</string>
+    <string name="reset_debt_remaining">Some changes EnforceDoze made couldn\'t be confirmed as restored. Their restore records and your execution mode were kept, so EnforceDoze can still restore them: use Restore now on the main screen once root or Shizuku is available.</string>
+    <string name="reset_steps_unconfirmed">These reset steps weren\'t confirmed:</string>
+    <string name="reset_step_line">• %1$s: %2$s</string>
+    <string name="reset_step_disable_doze">turn Doze off</string>
+    <string name="reset_step_enable_doze">turn Doze back on</string>
+    <string name="reset_step_revoke">revoke %1$s</string>
+    <string name="reset_outcome_failed">failed</string>
+    <string name="reset_outcome_timeout">timed out</string>
+    <string name="reset_outcome_unverified">couldn\'t be checked</string>
+    <string name="reset_prefs_cleared">Settings were reset.</string>
+    <string name="reset_prefs_cleared_kept">Other settings were reset.</string>
+    <string name="reset_prefs_failed">Settings couldn\'t be reset.</string>
+    <string name="reset_restart_text">The app will restart now.</string>
+
+    <string name="damaged_records_debt">Some restore records are damaged, so EnforceDoze can\'t restore them automatically: %1$s. Check those settings yourself, then dismiss the records.</string>
+    <string name="damaged_records_dismiss">Dismiss damaged records</string>
+    <string name="damaged_records_dismiss_description">Dismiss the damaged restore records that can\'t be restored automatically</string>
+    <string name="damaged_records_dismiss_title">Dismiss damaged records?</string>
+    <string name="damaged_records_dismiss_text">EnforceDoze can\'t read these records well enough to undo the change they stand for (%1$s), so it can\'t restore them automatically. Dismissing deletes them and EnforceDoze won\'t try again. Records for forced Doze and motion sensors are kept until they\'re restored.</string>
+    <string name="damaged_records_dismiss_confirm">Dismiss</string>
+    <string name="damaged_records_dismissed">Damaged records dismissed</string>
+    <string name="damaged_records_unreadable">Can\'t dismiss: the restore records are unreadable</string>
+    <string name="damaged_records_dismiss_failed">Couldn\'t dismiss the damaged records. Try again.</string>
+    <string name="damaged_feature_wifi">Wi-Fi</string>
+    <string name="damaged_feature_mobile_data">mobile data</string>
+    <string name="damaged_feature_bluetooth">Bluetooth</string>
+    <string name="damaged_feature_airplane">airplane mode</string>
+    <string name="damaged_feature_location">location</string>
+    <string name="damaged_feature_biometrics">biometrics</string>
+    <string name="damaged_feature_app_suspend">suspended apps</string>
+    <string name="damaged_feature_pm_disable">disabled apps</string>
+    <string name="damaged_feature_notification_block">blocked notifications</string>
+    <string name="damaged_feature_sensor_privacy">all sensors off</string>
+    <string name="damaged_feature_unknown">an unnamed setting</string>
 </resources>

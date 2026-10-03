@@ -64,10 +64,10 @@ public class LogActivity extends AppCompatActivity {
         });
 
         progressDialog = new MaterialDialog.Builder(this)
-                .title("Please wait")
+                .title(R.string.please_wait_text)
                 .cancelable(false)
                 .autoDismiss(false)
-                .content("Requesting SU access and fetching log")
+                .content(R.string.log_loading_text)
                 .progress(true, 0)
                 .show();
         grantLogsPermissionAndPrintLog();
@@ -86,8 +86,8 @@ public class LogActivity extends AppCompatActivity {
             saveAndShareLog();
         } else if (id == R.id.action_share_fulllog) {
             progressDialog = new MaterialDialog.Builder(this)
-                    .title("Please wait")
-                    .content("Requesting SU access and fetching log...")
+                    .title(R.string.please_wait_text)
+                    .content(R.string.log_loading_text)
                     .progress(true, 0)
                     .show();
             getFullLogcat();
@@ -122,7 +122,7 @@ public class LogActivity extends AppCompatActivity {
                 view.setLongClickable(false);
                 view.setFocusable(false);
                 view.setClickable(true);
-                view.setText(result.getOk() ? android.text.TextUtils.join("\n", log) : "Unable to get logcat");
+                view.setText(result.getOk() ? android.text.TextUtils.join("\n", log) : getString(R.string.log_unavailable_text));
             }
             @Override
             public void onError(Context context, Exception error) {
@@ -130,7 +130,7 @@ public class LogActivity extends AppCompatActivity {
                 log("Error getting logcat: " + error.getMessage());
                 if (!full) {
                     log = Collections.emptyList();
-                    ((EditText) findViewById(R.id.editText)).setText("Unable to get logcat");
+                    ((EditText) findViewById(R.id.editText)).setText(R.string.log_unavailable_text);
                 }
             }
         });

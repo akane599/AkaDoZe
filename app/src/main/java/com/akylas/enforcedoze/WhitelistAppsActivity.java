@@ -47,6 +47,7 @@ import com.akylas.enforcedoze.access.Reason;
 import com.akylas.enforcedoze.access.WhitelistParser;
 import com.akylas.enforcedoze.access.WhitelistParseResult;
 import com.akylas.enforcedoze.access.WhitelistParseReason;
+import com.akylas.enforcedoze.ui.WhitelistUi;
 import java.util.Collections;
 
 public class WhitelistAppsActivity extends AppCompatActivity {
@@ -158,6 +159,11 @@ public class WhitelistAppsActivity extends AppCompatActivity {
     }
 
     public void loadPackagesFromWhitelist() {
+        loadPackagesFromWhitelist(true);
+    }
+
+    /** {@code reportProblems} false after an edit whose own dialog already said what went wrong. */
+    void loadPackagesFromWhitelist(boolean reportProblems) {
         log("Loading whitelisted packages...");
         progressDialog = new MaterialDialog.Builder(this)
                 .title(getString(R.string.please_wait_text))
@@ -172,11 +178,16 @@ public class WhitelistAppsActivity extends AppCompatActivity {
             public void onSuccess(Context context, WhitelistResult result) {
                 dismissProgress();
                 lastResult = result;
-                if (!result.verified) {
-                    displayDialog(getString(R.string.error_text), getString(R.string.error_text));
+                WhitelistUi.Problem problem = WhitelistUi.readProblem(result.parseReason);
+                if (problem != null && reportProblems) {
+                    displayDialog(getString(WhitelistUi.title(false)), WhitelistUi.text(WhitelistAppsActivity.this,
+                            problem, result.unparsedLineCount, result.reason, false, false));
+                }
+                if (!WhitelistUi.showsList(result.parseReason)) {
                     whitelistAppsAdapter.notifyDataSetChanged();
                     return;
                 }
+                // A partial read still lists every row it could parse.
                 listData.clear();
                 whitelistedPackages.clear();
                 for (String pkg : result.packages) {
@@ -187,7 +198,7 @@ public class WhitelistAppsActivity extends AppCompatActivity {
                         item.setAppName(getPackageManager().getApplicationLabel(getPackageManager()
                                 .getApplicationInfo(pkg, PackageManager.GET_META_DATA)).toString());
                     } catch (PackageManager.NameNotFoundException e) {
-                        item.setAppName("System package");
+                        item.setAppName(getString(R.string.whitelist_system_package));
                     }
                     listData.add(item);
                 }
@@ -197,7 +208,10 @@ public class WhitelistAppsActivity extends AppCompatActivity {
             public void onError(Context context, Exception error) {
                 dismissProgress();
                 log("Error loading packages: " + error.getMessage());
-                displayDialog(getString(R.string.error_text), getString(R.string.error_text));
+                if (reportProblems) {
+                    displayDialog(getString(WhitelistUi.title(false)), WhitelistUi.text(WhitelistAppsActivity.this,
+                            WhitelistUi.Problem.READ_FAILED, 0, null, false, false));
+                }
                 whitelistAppsAdapter.notifyDataSetChanged();
             }
         });
@@ -301,7 +315,8 @@ public class WhitelistAppsActivity extends AppCompatActivity {
 
     public void modifyWhitelist(String packageName, boolean remove) {
         if (packageName == null || !PackageNames.isValid(packageName)) {
-            displayDialog(getString(R.string.error_text), getString(R.string.error_text));
+            displayDialog(getString(WhitelistUi.title(true)), WhitelistUi.text(this,
+                    WhitelistUi.Problem.INVALID_PACKAGE, 0, null, true, remove));
             whitelistAppsAdapter.notifyDataSetChanged();
             return;
         }
@@ -313,13 +328,20 @@ public class WhitelistAppsActivity extends AppCompatActivity {
             @Override
             public void onSuccess(Context context, WhitelistResult result) {
                 lastResult = result;
-                if (!result.verified) displayDialog(getString(R.string.error_text), getString(R.string.error_text));
-                loadPackagesFromWhitelist();
+                WhitelistUi.Problem problem = WhitelistUi.editProblem(result.verified, result.reason, result.parseReason);
+                if (problem != null) {
+                    displayDialog(getString(WhitelistUi.title(true)), WhitelistUi.text(WhitelistAppsActivity.this,
+                            problem, result.unparsedLineCount, result.reason, true, remove));
+                }
+                loadPackagesFromWhitelist(problem == null);
             }
             @Override
             public void onError(Context context, Exception error) {
                 log("Error modifying whitelist: " + error.getMessage());
-                displayDialog(getString(R.string.error_text), getString(R.string.error_text));
+                WhitelistUi.Problem problem = error instanceof PackageManager.NameNotFoundException
+                        ? WhitelistUi.Problem.NOT_INSTALLED : WhitelistUi.Problem.ERROR;
+                displayDialog(getString(WhitelistUi.title(true)), WhitelistUi.text(WhitelistAppsActivity.this,
+                        problem, 0, null, true, remove));
                 whitelistAppsAdapter.notifyDataSetChanged();
             }
         });

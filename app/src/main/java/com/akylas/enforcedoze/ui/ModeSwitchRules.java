@@ -24,6 +24,14 @@ public final class ModeSwitchRules {
         return promptSettled ? ShizukuWait.REVERT_DENIED : ShizukuWait.KEEP;
     }
 
+    /**
+     * Only a different mode is a switch. Re-picking the active mode arms nothing, so the next access
+     * update can't restart the service for it.
+     */
+    public static boolean isSwitch(String previousMode, String pickedMode) {
+        return pickedMode != null && !pickedMode.equals(previousMode);
+    }
+
     /** The level that proves the selected transport works: Shizuku's own state in Shizuku mode. */
     public static AccessLevel selectedLevel(String selectedMode, AccessLevel publishedLevel, AccessLevel shizukuLevel) {
         return "shizuku".equals(selectedMode) ? shizukuLevel : publishedLevel;

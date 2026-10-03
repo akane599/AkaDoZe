@@ -127,6 +127,17 @@
                                 android:contentDescription="@string/access_restore_description"
                                 android:text="@string/access_restore_now"
                                 android:textColor="?attr/colorOnErrorContainer" />
+
+                            <Button
+                                android:id="@+id/accessDismissButton"
+                                style="@style/Widget.Material3.Button.TextButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_gravity="end"
+                                android:contentDescription="@string/damaged_records_dismiss_description"
+                                android:text="@string/damaged_records_dismiss"
+                                android:textColor="?attr/colorOnErrorContainer"
+                                android:visibility="gone" />
                         </LinearLayout>
                     </com.google.android.material.card.MaterialCardView>
 
