@@ -18,3 +18,7 @@
 -dontwarn com.squareup.okhttp.**
 -keep class com.squareup.okhttp.** { *; }
 -keep interface com.squareup.okhttp.** { *; }
+
+# Shizuku.newProcess is looked up by name and its remote process is cast by the adapters.
+-keep class rikka.shizuku.Shizuku { *; }
+-keep class rikka.shizuku.ShizukuRemoteProcess { *; }

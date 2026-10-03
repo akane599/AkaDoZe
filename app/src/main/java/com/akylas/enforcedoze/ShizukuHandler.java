@@ -2,6 +2,11 @@ package com.akylas.enforcedoze;
 
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.os.Handler;
+import android.os.Looper;
+
+import com.akylas.enforcedoze.access.AccessLevel;
+import com.akylas.enforcedoze.access.AccessManager;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -11,6 +16,7 @@ import java.io.InputStreamReader;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.FutureTask;
@@ -22,27 +28,24 @@ public class ShizukuHandler {
     private static final String TAG = "ShizukuHandler";
     private static ShizukuHandler instance;
     private static final ExecutorService COMMAND_EXECUTOR = Executors.newSingleThreadExecutor();
-    private Context context;
+    private final AccessManager access;
+    private final Handler main = new Handler(Looper.getMainLooper());
+    private final CopyOnWriteArraySet<OnAvailibilityChange> availabilityListeners = new CopyOnWriteArraySet<>();
     private volatile boolean isShizukuAvailable = false;
-    private volatile OnAvailibilityChange onAvailibilityChangeListener;
 
-    interface OnAvailibilityChange {
-        public void onChange(Boolean value);
+    public interface OnAvailibilityChange {
+        void onChange(Boolean value);
     }
 
-
-    private final Shizuku.OnRequestPermissionResultListener REQUEST_PERMISSION_RESULT_LISTENER =
-            (requestCode, grantResult) -> {
-                boolean granted = grantResult == PackageManager.PERMISSION_GRANTED;
-                Log.i(TAG, "Shizuku permission result: " + granted);
-                checkShizukuAvailability();
-            };
-
     private ShizukuHandler(Context context) {
-        this.context = context.getApplicationContext();
-        checkShizukuAvailability();
-        Shizuku.addBinderReceivedListenerSticky(this::checkShizukuAvailability);
-        Shizuku.addBinderDeadListener(this::checkShizukuAvailability);
+        access = AccessManager.getInstance(context);
+        isShizukuAvailable = access.getShizukuState().getLevel() != AccessLevel.NONE;
+        access.addShizukuListener(state -> {
+            isShizukuAvailable = state.getLevel() != AccessLevel.NONE;
+            for (OnAvailibilityChange listener : availabilityListeners) {
+                listener.onChange(isShizukuAvailable);
+            }
+        });
     }
 
     public static synchronized ShizukuHandler getInstance(Context context) {
@@ -52,32 +55,22 @@ public class ShizukuHandler {
         return instance;
     }
 
-    public void setOnAvailibilityChangeListener(OnAvailibilityChange onAvailibilityChangeListener) {
-        this.onAvailibilityChangeListener = onAvailibilityChangeListener;
+    // Compatibility name: registration is now additive, so activities cannot evict the service.
+    public void setOnAvailibilityChangeListener(OnAvailibilityChange listener) {
+        if (listener != null && availabilityListeners.add(listener)) {
+            main.post(() -> {
+                if (availabilityListeners.contains(listener)) listener.onChange(isShizukuAvailable);
+            });
+        }
+    }
+
+    public void removeOnAvailibilityChangeListener(OnAvailibilityChange listener) {
+        availabilityListeners.remove(listener);
     }
 
     public void checkShizukuAvailability() {
-        try {
-            isShizukuAvailable = Shizuku.pingBinder();
-            if (isShizukuAvailable) {
-                if (Shizuku.isPreV11()) {
-                    // Pre-v11 is not supported
-                    isShizukuAvailable = false;
-                    Log.w(TAG, "Shizuku pre-v11 is not supported");
-                } else {
-                    if (checkShizukuPermission() != PackageManager.PERMISSION_GRANTED) {
-                        isShizukuAvailable = false;
-                    }
-                }
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error checking Shizuku availability: " + e.getMessage());
-            isShizukuAvailable = false;
-        }
-        OnAvailibilityChange listener = onAvailibilityChangeListener;
-        if (listener != null) {
-            listener.onChange(isShizukuAvailable);
-        }
+        access.refreshShizuku();
+        isShizukuAvailable = access.getShizukuState().getLevel() != AccessLevel.NONE;
     }
 
     public boolean isShizukuAvailable() {
@@ -85,26 +78,15 @@ public class ShizukuHandler {
     }
 
     public int checkShizukuPermission() {
-        if (Shizuku.isPreV11()) {
-            return PackageManager.PERMISSION_DENIED;
-        }
-        return Shizuku.checkSelfPermission();
+        return access.checkShizukuPermission();
     }
 
     public void requestShizukuPermission() {
-        if (Shizuku.isPreV11()) {
-            Log.w(TAG, "Shizuku pre-v11 does not support runtime permission");
-            return;
-        }
-        
-        if (checkShizukuPermission() != PackageManager.PERMISSION_GRANTED) {
-            Shizuku.addRequestPermissionResultListener(REQUEST_PERMISSION_RESULT_LISTENER);
-            Shizuku.requestPermission(0);
-        }
+        access.requestShizukuPermission();
     }
 
     public void removePermissionResultListener() {
-        Shizuku.removeRequestPermissionResultListener(REQUEST_PERMISSION_RESULT_LISTENER);
+        // AccessManager owns the app-lifetime listener; one activity must not remove it for others.
     }
 
     /**
