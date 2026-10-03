@@ -15,7 +15,9 @@ object PackageNames {
 object CapabilityResolver {
     @JvmStatic
     fun status(feature: Feature, level: AccessLevel, apiLevel: Int, grants: Grants): FeatureStatus {
-        if (apiLevel < 23 || feature == Feature.APP_SUSPEND && apiLevel < 24) {
+        if (apiLevel < 23 || feature == Feature.APP_SUSPEND && apiLevel < 24 ||
+            feature == Feature.AIRPLANE && apiLevel < 30
+        ) {
             return FeatureStatus.Unavailable(Reason.API_TOO_OLD)
         }
         if (level == AccessLevel.NONE) return FeatureStatus.Unavailable(Reason.NO_ACCESS)
@@ -23,7 +25,6 @@ object CapabilityResolver {
         val rootOnly = when (feature) {
             Feature.SENSOR_PRIVACY_ALL, Feature.SETPROP_DOZE, Feature.PM_DISABLE -> true
             Feature.NOTIFICATION_BLOCK -> apiLevel < 33
-            Feature.AIRPLANE -> apiLevel < 30
             else -> false
         }
         if (rootOnly) {

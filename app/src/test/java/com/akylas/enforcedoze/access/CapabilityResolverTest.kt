@@ -15,8 +15,9 @@ class CapabilityResolverTest {
                     val privileged = level == AccessLevel.SHELL || level == AccessLevel.ROOT
                     val reason = when {
                         feature == Feature.APP_SUSPEND && api == 23 -> Reason.API_TOO_OLD
+                        feature == Feature.AIRPLANE && api < 30 -> Reason.API_TOO_OLD
                         level == AccessLevel.NONE -> Reason.NO_ACCESS
-                        (feature in rootFeatures || feature == Feature.AIRPLANE && api < 30 ||
+                        (feature in rootFeatures ||
                             feature == Feature.NOTIFICATION_BLOCK && api < 33) && level != AccessLevel.ROOT -> Reason.REQUIRES_ROOT
                         feature in dumpFeatures && !privileged && !dump -> Reason.NEEDS_DUMP
                         feature in wssFeatures && !privileged && !wss -> Reason.NEEDS_WRITE_SECURE_SETTINGS
@@ -43,6 +44,14 @@ class CapabilityResolverTest {
         for (feature in listOf(Feature.MOTION_SENSORS, Feature.DOZE_STATE_READ, Feature.TUNABLES, Feature.BIOMETRICS)) {
             assertEquals(FeatureStatus.Available,
                 CapabilityResolver.status(feature, AccessLevel.SHELL, 36, Grants(false, false)))
+        }
+    }
+
+    @Test
+    fun airplaneBelow30IsUnavailableEvenWithRootAndAllGrants() {
+        for (level in AccessLevel.entries) for (api in listOf(23, 24, 29)) {
+            assertEquals("$level/api=$api", FeatureStatus.Unavailable(Reason.API_TOO_OLD),
+                CapabilityResolver.status(Feature.AIRPLANE, level, api, Grants(true, true)))
         }
     }
 
