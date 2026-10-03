@@ -38,6 +38,11 @@ object CommandCatalog {
             }
             // Grant AND flags must be captured; use restoreNotification for the structured snapshot.
             Feature.NOTIFICATION_BLOCK -> null
+            Feature.PM_DISABLE -> {
+                val state = mapOf("0" to "default-state", "1" to "enable", "2" to "disable",
+                    "3" to "disable-user", "4" to "disable-until-used")[originalValue] ?: return null
+                listOf("pm $state ${PackageNames.requireValid(target)}")
+            }
             Feature.LOCATION -> if (apiLevel < 30) {
                 require(originalValue in listOf("0", "1", "2", "3")) { "Invalid location mode" }
                 listOf("settings put secure location_mode $originalValue")
@@ -111,7 +116,7 @@ object CommandCatalog {
             Feature.LOCATION -> if (apiLevel >= 30) "cmd location is-location-enabled" else "settings get secure location_mode"
             Feature.BIOMETRICS -> "settings get secure biometric_keyguard_enabled"
             Feature.APP_SUSPEND -> if (apiLevel >= 24) "dumpsys package $pkg" else null
-            Feature.NOTIFICATION_BLOCK -> "dumpsys package $pkg"
+            Feature.NOTIFICATION_BLOCK -> if (apiLevel >= 33) "dumpsys package $pkg" else "dumpsys notification"
             Feature.WHITELIST_EDIT -> "dumpsys deviceidle whitelist"
             Feature.FOCUSED_APP -> "dumpsys activity activities"
             Feature.SENSOR_PRIVACY_ALL -> "dumpsys sensor_privacy"
@@ -141,6 +146,14 @@ object CommandCatalog {
             commands.add("pm ${if (set) "set" else "clear"}-permission-flags $pkg $POST_NOTIFICATIONS $flag")
         }
         return commands.toList()
+    }
+
+    /** Only a resolved hidden transaction and an observed user-0 uid authorize the legacy path. */
+    @JvmStatic
+    fun legacyNotification(apiLevel: Int, target: String, uid: Int, transaction: Int, enabled: Boolean): List<String>? {
+        val pkg = PackageNames.requireValid(target)
+        if (apiLevel !in 23..32 || uid !in 0..99_999 || transaction <= 0) return null
+        return listOf("service call notification $transaction s16 $pkg i32 $uid i32 ${if (enabled) 1 else 0}")
     }
 
     /** SHELL alternative to the APP+WSS global settings fallback. Null restores an absent override. */

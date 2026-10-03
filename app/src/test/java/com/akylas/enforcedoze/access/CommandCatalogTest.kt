@@ -130,6 +130,23 @@ class CommandCatalogTest {
         assertEquals("dumpsys deviceidle whitelist +$pkg", legacy["SELF_WHITELIST"])
     }
 
+    @Test
+    fun legacyCommandsRequireResolvedMetadataAndPreserveEnabledStates() {
+        assertEquals(listOf("service call notification 7 s16 $pkg i32 10123 i32 0"),
+            CommandCatalog.legacyNotification(32, pkg, 10123, 7, false))
+        assertNull(CommandCatalog.legacyNotification(32, pkg, 10123, 0, false))
+        assertNull(CommandCatalog.legacyNotification(32, pkg, 110123, 7, false))
+        assertNull(CommandCatalog.legacyNotification(33, pkg, 10123, 7, false))
+        rejects { CommandCatalog.legacyNotification(32, "a.b;reboot", 10123, 7, false) }
+        assertEquals(listOf("pm default-state $pkg"), CommandCatalog.restore(Feature.PM_DISABLE, 23, "0", pkg))
+        assertEquals(listOf("pm disable-user $pkg"), CommandCatalog.restore(Feature.PM_DISABLE, 23, "3", pkg))
+        assertNull(CommandCatalog.restore(Feature.PM_DISABLE, 23, "99", pkg))
+        for ((api, transaction) in listOf(30 to 4, 31 to 8, 33 to 9)) {
+            assertEquals(listOf("service call sensor_privacy $transaction i32 1"), CommandCatalog.apply(Feature.SENSOR_PRIVACY_ALL, api))
+            assertEquals(listOf("service call sensor_privacy $transaction i32 0"), CommandCatalog.restore(Feature.SENSOR_PRIVACY_ALL, api, "0"))
+        }
+    }
+
     private fun rejects(block: () -> Any?) {
         try {
             block()

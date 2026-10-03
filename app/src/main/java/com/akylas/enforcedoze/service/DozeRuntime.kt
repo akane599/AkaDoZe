@@ -52,7 +52,10 @@ class DozeRuntime(context: Context) {
         control, CommandCatalog, CapabilityResolver, store, clock, journal, Build.VERSION.SDK_INT, grants(),
     )
     val watchdog = WatchdogPolicy(clock)
-    @Volatile var sessionActive = false
+    val session = SessionLifecycle()
+    var sessionActive: Boolean
+        get() = session.active
+        set(value) { session.active = value }
     @Volatile var allowToken: String = app.packageName
     private var thread: HandlerThread? = null
     private var handler: Handler? = null

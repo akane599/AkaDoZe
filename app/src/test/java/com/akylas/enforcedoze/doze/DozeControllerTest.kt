@@ -128,8 +128,9 @@ class DozeControllerTest {
 
     @Test fun admissionIsCheckedBetweenCommandsOfNotificationMutation() {
         var admitted = true
-        // Skip force through an unknown original to focus the command group.
-        runner.replies("dumpsys deviceidle", "OEM")
+        // Observe already-forced IDLE to focus the notification command group without owning force.
+        runner.replies("dumpsys deviceidle", "mForceIdle=true")
+        runner.replies("cmd deviceidle get deep", "IDLE")
         runner.replies("dumpsys package $PKG", packageState(false, true, false, false))
         runner.afterCommand = { if (it.startsWith("pm revoke")) admitted = false }
         val result = controller.enter(config.copy(restrictSensors = false, packagesToBlockNotifications = setOf(PKG)), 0) { admitted }

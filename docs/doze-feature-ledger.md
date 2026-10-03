@@ -1,0 +1,41 @@
+# Doze feature ledger
+
+The service selects existing preferences into `DozeConfig`. The controller reads the actual original, durably saves intent, applies on the control runner, and verifies readback. Exit/restart recovery consumes only that ledger, not current preferences or blocklists. A successful command exit is never the state oracle. Unknown originals do not authorize mutations; unsupported output remains UNVERIFIED.
+
+## Commands and readback
+
+Restore uses the same API band recorded in the entry, reversing the command to the captured original rather than an assumed default. All physical effects below require device validation; JVM fixtures and Android compilation do not prove uid/OEM behavior.
+
+| Feature / existing preference | Apply command by API | Original / verification oracle |
+| --- | --- | --- |
+| Motion restriction / `disableMotionSensors` | 23+: `dumpsys sensorservice restrict <allow-package>`; restore `enable` | `dumpsys sensorservice`: original NORMAL; applied RESTRICTED with the exact allow token; restored NORMAL |
+| Battery saver / `turnOnBatterySaverInDoze` | 23–28: `settings put global low_power 1`; 29+: `cmd power set-mode 1` | `settings get global low_power`, strict boolean; restore original bit. Runs before force-idle. Quick-doze activation is not inferred from battery-saver success. |
+| Force-idle | 23: `dumpsys deviceidle force-idle`; 24+: `cmd deviceidle force-idle deep`; restore corresponding `unforce` | Original/restored `mForceIdle` from `dumpsys deviceidle`; applied `get deep`. Feature groups wait for verified deep IDLE, not UNKNOWN or maintenance. |
+| Wi-Fi / `turnOffWiFiInDoze` | 23–29: `svc wifi disable`; 30+: `cmd wifi set-wifi-enabled disabled` | `settings get global wifi_on`, strict bit |
+| Mobile data / `turnOffDataInDoze` | 23+: `svc data disable` (existing catalog fallback, no guessed `cmd phone` support) | `settings get global mobile_data`, strict bit; subscription/OEM behavior needs a device |
+| Bluetooth / `turnOffBluetoothInDoze` | 23–32: `svc bluetooth disable`; 33+: `cmd bluetooth_manager disable` | `settings get global bluetooth_on`, strict bit |
+| Location / `turnOffGPSInDoze` | 23–29: `settings put secure location_mode 0`; 30+: `cmd location set-location-enabled false` | Old band: exact original mode 0/1/2/3 from `settings get secure location_mode`; new band: `cmd location is-location-enabled`, strict boolean |
+| Airplane / `turnOnAirplaneInDoze` | 30+: `cmd connectivity airplane-mode enable`; below 30: no mutation | 30+: `cmd connectivity airplane-mode`, enabled/disabled. Below 30 SHELL skips REQUIRES_ROOT; ROOT skips UNVERIFIED because no supported non-broadcast physical-state command exists. No protected broadcast or settings-only success. |
+| Biometrics / `turnOffBiometricsInDoze` | 23+: `settings put secure biometric_keyguard_enabled 0` | `settings get secure biometric_keyguard_enabled`, strict bit; absent keys do not authorize mutation |
+| Apps / `dozeAppBlockList` | 24+: `pm suspend <pkg>`; restore `pm unsuspend <pkg>` | Structured `dumpsys package <pkg>`, exact package/User 0 `suspended` flag. Already-suspended packages are never adopted. Exit unsuspends the recorded set, not today's list. |
+| API-23 app disable / same blocklist | ROOT: `pm disable <pkg>` | Same package/User 0 `enabled=0..4`; restore `pm default-state`, `enable`, `disable`, `disable-user`, or `disable-until-used` respectively. SHELL skips REQUIRES_ROOT. |
+| Notifications / `notificationBlockList` | 33+: `pm revoke <pkg> android.permission.POST_NOTIFICATIONS`, then `pm set-permission-flags <pkg> android.permission.POST_NOTIFICATIONS user-set user-fixed` | Structured package/User 0 runtime-permission grant, USER_SET, USER_FIXED. Restore grant/revoke plus each captured flag; other flags are not changed. Own package is excluded from service selection. |
+| Legacy notifications / same blocklist | 23–32 ROOT only: `service call notification <resolved-tx> s16 <pkg> i32 <captured-uid> i32 0`; restore captured enabled bit | `dumpsys notification`, unique exact `PackagePreferences: <pkg> (<uid>) importance=UNSPECIFIED/-1000/NONE/0` fixture shape. Persist original bit, uid and resolved transaction. Custom importance, unknown output, missing/blocked hidden reflection, or unresolved transaction cannot authorize mutation. Never guess transaction 0; no self-package tests. |
+| All-sensors privacy / `turnOffAllSensorsInDoze` | ROOT: `service call sensor_privacy <tx> i32 1`; tx 4 below 31, 8 on 31–32, 9 on 33+; reverse to original bit | `dumpsys sensor_privacy`, one explicit `All sensor privacy[ enabled]: true/false` line only. Per-sensor/OEM output without that aggregate remains UNVERIFIED. Transactions/readback compatibility are device-only seams. |
+| Unsupported-device property / no new preference | ROOT: `setprop persist.sys.doze_powersave true` | `getprop persist.sys.doze_powersave`, strict boolean; restore captured value. Pure config/catalog support only. Existing MainActivity dialog migration belongs to SQ-13; no invented Doze-time preference. |
+
+ROOT means the runner's live uid authority, including root-Shizuku, not a direct SU pool. Resolver skips retain typed reasons in the journal. Package targets pass `PackageNames` before interpolation.
+
+## Maintenance and lifetime
+
+There is no maintenance-specific restore preference in the existing code. Preserve the selected radio groups (Wi-Fi, mobile data, Bluetooth, airplane, location) during deep **or** light maintenance: restore their ledger originals temporarily, retain their entries, and reapply from those same entries on a known idle transition. Current preferences cannot replace originals, including AirplaneTile changes mid-session. Every command checks generation/admission/access; unknown transitions do not authorize reapplication, and watchdog does not run during maintenance. Failed reads leave recovery intent intact.
+
+Existing hotspot and music exemptions remain entry-selection rules, as does focused-app exclusion. Generation-checked music callbacks cannot apply after exit. Apps/notifications exclude the app's own package.
+
+The pure lifecycle helper sets active before rechecking epoch/screen, exits on charger only for an active screen-off session, and pairs one ENTER at the first verified IDLE (including a later reforce) with one EXIT. Teardown waits at most 4 seconds and all command work shares a 3.5-second deadline; unverified restorations remain in durable recovery debt. No installed-package scan or preference-driven feature restore runs at teardown/start.
+
+The old rotation/brightness toggle workaround is removed: it performed unrecorded user-setting mutations on exit. Its preference/string keys remain untouched; SQ-17 owns honest UI availability. Motion restoration is JVM/compile-checked, not device-verified.
+
+## Verification boundary
+
+`SessionLifecycleTest` first reproduced the four reviewed lifecycle assertion failures. Feature/controller/catalog tests cover durable originals, battery-before-force, delayed first IDLE, exact package ownership and notification flags, maintenance cancellation/access loss, root gating, strict legacy originals and API bands. The exact ticket verifier runs unit tests and assembles debug. No physical device, Shizuku uid, OEM dump, sensor-privacy transaction, notification hidden API, or real radio state was tested here.

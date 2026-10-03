@@ -3,6 +3,7 @@ package com.akylas.enforcedoze;
 import static com.akylas.enforcedoze.Utils.logToLogcat;
 
 import android.content.SharedPreferences;
+import com.akylas.enforcedoze.access.Prefs;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -30,7 +31,7 @@ public class AirplaneTileService extends TileService {
         super.onTileAdded();
         log("Airplane QuickTile added");
         settings = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
-        airplaneModeEnabled = settings.getBoolean("turnOnAirplaneInDoze", false);
+        airplaneModeEnabled = settings.getBoolean(Prefs.TURN_ON_AIRPLANE, false);
         updateTileState(airplaneModeEnabled);
     }
 
@@ -45,7 +46,7 @@ public class AirplaneTileService extends TileService {
         super.onStartListening();
         log("Airplane QuickTile onStartListening");
         settings = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
-        airplaneModeEnabled = settings.getBoolean("turnOnAirplaneInDoze", false);
+        airplaneModeEnabled = settings.getBoolean(Prefs.TURN_ON_AIRPLANE, false);
         updateTileState(airplaneModeEnabled);
     }
 
@@ -54,15 +55,15 @@ public class AirplaneTileService extends TileService {
     public void onClick() {
         super.onClick();
         settings = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
-        airplaneModeEnabled = settings.getBoolean("turnOnAirplaneInDoze", false);
+        airplaneModeEnabled = settings.getBoolean(Prefs.TURN_ON_AIRPLANE, false);
         
         // Toggle the setting
         boolean newValue = !airplaneModeEnabled;
         
         log(String.format("%s airplane mode in Doze", newValue ? "Enabling" : "Disabling"));
         
-        // Save the new value
-        settings.edit().putBoolean("turnOnAirplaneInDoze", newValue).apply();
+        // Select future entry behaviour only; current restoration is ledger-owned
+        settings.edit().putBoolean(Prefs.TURN_ON_AIRPLANE, newValue).apply();
         
         // Update the tile
         updateTileState(newValue);
