@@ -58,6 +58,7 @@ class DozeRuntime(context: Context) {
     val controller = DozeController(
         control, CommandCatalog, CapabilityResolver, store, clock, journal, Build.VERSION.SDK_INT, grants(),
         diagnosticLogger,
+        { access.state.resolved },
     )
     val watchdog = WatchdogPolicy(clock)
     val session = SessionLifecycle()
@@ -78,6 +79,7 @@ class DozeRuntime(context: Context) {
     private var handler: Handler? = null
     private val selfTests = SelfTestQueue(diagnosticLogger)
     private var shutdownQueued = false
+    private var pendingRecoveries = 0
     private var deferred: Runnable? = null
 
     @Synchronized
@@ -105,11 +107,11 @@ class DozeRuntime(context: Context) {
     /** Called at the end of queued teardown; a newly attached service can retain the same worker. */
     @Synchronized
     fun quitIfDetached() {
-        if (selfTests.attached || shutdownQueued) return
+        if (selfTests.attached || pendingRecoveries > 0 || shutdownQueued) return
         shutdownQueued = true
         worker().looper.queue.addIdleHandler {
             synchronized(this) {
-                if (selfTests.attached) {
+                if (selfTests.attached || pendingRecoveries > 0) {
                     shutdownQueued = false
                     false
                 } else if (handler?.hasMessages(0) == true) {
@@ -167,7 +169,7 @@ class DozeRuntime(context: Context) {
 
     /** doze-worker only. Raw outputs are recorded for this run alone; BUSY while a session is active. */
     fun runSelfTest(kind: SelfTestKind): SelfTestResult {
-        if (!selfTests.attached) return SelfTestResult(kind, SelfTestOutcome.CANCELLED)
+        if (!selfTests.attached || !recoverAccess()) return SelfTestResult(kind, SelfTestOutcome.CANCELLED)
         val commands = mutableListOf<SelfTestCommand>()
         val feature = if (kind == SelfTestKind.DOZE) Feature.FORCE_DOZE else Feature.MOTION_SENSORS
         journal.beginSelfTest(feature)
@@ -195,7 +197,18 @@ class DozeRuntime(context: Context) {
         }, { runSelfTest(kind) })
     }
 
+    private var announcedAccess: com.akylas.enforcedoze.access.AccessState? = null
+
+    /** doze-worker only: feed both the timeline and NoticeSink, once per resolved change. */
+    fun announceAccess() {
+        val state = access.state
+        if (!state.resolved || state == announcedAccess) return
+        announcedAccess = state
+        AccessRecovery.announce(state, journal, Runnable { recordAccessDebt() })
+    }
+
     fun recordAccessDebt() {
+        if (!access.state.resolved) return
         try {
             val ledger = store.load()
             if (AccessRecovery.hasShellDebt(ledger, Build.VERSION.SDK_INT)) journal.emit(DozeEvent(EventType.RECOVERY_DEBT, "ACCESS_LOST"))
@@ -232,12 +245,17 @@ class DozeRuntime(context: Context) {
         }
     }
 
-    /** Never reconcile an admitted screen-off session: doing so has exit semantics. */
-    fun reconcileAndCheck() {
-        if (!sessionActive) {
-            bumpGeneration()
-            recordExit(controller.reconcile(Build.VERSION.SDK_INT, grants()))
-        }
+    private val readiness = AccessReadiness()
+
+    /** Main-thread invalidation wins over a recovery already running on the worker. */
+    fun invalidateAccess() = readiness.invalidate()
+
+    fun accessReadyForEnter(): Boolean = readiness.ready(access.state)
+
+    /** doze-worker only: access-return recovery precedes resuming even an existing session. */
+    fun recoverAccess(): Boolean = readiness.recover(access.state, { access.state }) {
+        bumpGeneration()
+        recordExit(controller.reconcile(Build.VERSION.SDK_INT, grants()))
         checkSafety()
     }
 
@@ -271,10 +289,84 @@ class DozeRuntime(context: Context) {
         }
     }
 
+    fun hasPendingRestore(): Boolean = try {
+        store.load().entries.isNotEmpty() || LedgerRecovery.needsRecovery(store.corruptLines, store.loadFailed)
+    } catch (_: Exception) { true }
+
+    /** Healthy sessions are not reconciled; unresolved access leaves durable intent untouched. */
+    fun reconcileAndCheck() {
+        if (!access.state.resolved) {
+            invalidateAccess()
+            return
+        }
+        if (!sessionActive) invalidateAccess()
+        if (accessReadyForEnter()) checkSafety() else recoverAccess()
+    }
+
+    fun requestSafetyCheck() = requestRestoreOnly(Runnable {})
+
+    /** No FGS: a bounded wakeful window plus one passive, process-lifetime access continuation. */
+    @JvmOverloads
+    fun requestRestoreOnly(completed: Runnable, source: RecoveryAccess = access) =
+        requestRestoreOnly(completed, source, true)
+
     @Synchronized
-    fun requestSafetyCheck() {
-        worker().post {
-            try { reconcileAndCheck() } finally { quitIfDetached() }
+    private fun requestRestoreOnly(completed: Runnable, source: RecoveryAccess, allowContinuation: Boolean) {
+        pendingRecoveries++
+        val worker = worker()
+        val main = Handler(android.os.Looper.getMainLooper())
+        val power = app.getSystemService(PowerManager::class.java)
+        val wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "forcedoze:restore")
+        wakeLock.acquire(30_000L)
+        val deadline = clock.elapsedRealtime() + 9_000L
+        main.post {
+            RestoreOnlyRequest(source, clock::elapsedRealtime, { action -> main.post { action() } },
+                { deadline, action ->
+                    val timer = object : android.os.CountDownTimer(
+                        maxOf(1, deadline - clock.elapsedRealtime()), 9_000L,
+                    ) {
+                        override fun onTick(remaining: Long) = Unit
+                        override fun onFinish() { action() }
+                    }.start()
+                    ({ timer.cancel() })
+                },
+                { deadline, finished ->
+                    worker.post {
+                        try {
+                            withDeadline(deadline, Runnable {
+                                announceAccess()
+                                reconcileAndCheck()
+                            })
+                        } finally { finished() }
+                    }
+                },
+                {
+                    synchronized(this@DozeRuntime) { pendingRecoveries-- }
+                    try {
+                        if (!selfTests.attached) access.finishRootDiscovery()
+                        completed.run()
+                    } finally {
+                        try { if (wakeLock.isHeld) wakeLock.release() }
+                        catch (_: RuntimeException) { /* Timeout release may race on API 23-27. */ }
+                        worker.post { quitIfDetached() }
+                    }
+                },
+                { requestRestoreOnly(Runnable {}, source, false) },
+                {
+                    // Never post to a retired window's worker; late debt briefly owns a fresh worker.
+                    synchronized(this@DozeRuntime) {
+                        pendingRecoveries++
+                        worker().post {
+                            try { announceAccess(); recordCorruptionDebt() }
+                            finally {
+                                synchronized(this@DozeRuntime) { pendingRecoveries-- }
+                                quitIfDetached()
+                            }
+                        }
+                    }
+                },
+                allowContinuation,
+            ).start(deadline)
         }
     }
 
@@ -296,6 +388,7 @@ class DozeRuntime(context: Context) {
     fun checkSafety() = synchronized(controller) { checkSafetyLocked() }
 
     private fun checkSafetyLocked() {
+        if (!access.state.resolved) return
         val ledger = try { store.load() } catch (_: Exception) { RestoreLedger() }
         val recoveryNeeded = LedgerRecovery.needsRecovery(store.corruptLines, store.loadFailed)
         val hasForce = LedgerRecovery.hasForceIntent(ledger, store.corruptLines, store.loadFailed)
@@ -309,8 +402,10 @@ class DozeRuntime(context: Context) {
         val token = ledger.entries.firstOrNull { it.feature == Feature.MOTION_SENSORS }?.target ?: allowToken
         val sensor = SensorModeParser.parse(runRead("dumpsys sensorservice"))
         val idle = DozeStateParser.parse(runRead("dumpsys deviceidle"))
+        if (!access.state.resolved) return
         val actions = SafetyNet.check(sensor, idle.forceIdle, control.level, token, hasForce)
         for (action in actions) {
+            if (!access.state.resolved) return
             // Healthy ledger-backed restriction/force belongs to the active session, not an orphan.
             if (sessionActive && !recoveryNeeded && control.level >= AccessLevel.SHELL &&
                 (action == Action.UNFORCE || action == Action.RESTORE_SENSORS &&
@@ -326,13 +421,17 @@ class DozeRuntime(context: Context) {
                     }
                     bumpGeneration()
                     try {
-                        CommandCatalog.setEnabled(feature, Build.VERSION.SDK_INT, false)?.forEach { control.run(it, 8_000) }
+                        CommandCatalog.setEnabled(feature, Build.VERSION.SDK_INT, false)?.forEach {
+                            if (!access.state.resolved) return
+                            control.run(it, 8_000)
+                        }
                     } catch (_: Exception) {
                         journal.emit(DozeEvent(EventType.ERROR, "SAFETY_COMMAND_FAILED"))
                     }
                     val verified = if (action == Action.RESTORE_SENSORS) {
                         SensorModeParser.parse(runRead("dumpsys sensorservice")).mode == SensorMode.NORMAL
                     } else DozeStateParser.parse(runRead("dumpsys deviceidle")).forceIdle == false
+                    if (!access.state.resolved) return
                     journal.emit(DozeEvent(
                         if (!verified) EventType.RESTORE_FAILED else if (action == Action.RESTORE_SENSORS)
                             EventType.SENSORS_RESTORED else EventType.VERIFY,
@@ -347,6 +446,7 @@ class DozeRuntime(context: Context) {
                 SensorModeParser.parse(runRead("dumpsys sensorservice")).mode,
                 DozeStateParser.parse(runRead("dumpsys deviceidle")).forceIdle,
             )
+            if (!access.state.resolved) return
             if (recovered && !store.loadFailed) {
                 try {
                     store.clearCorruptionAfterRecovery()

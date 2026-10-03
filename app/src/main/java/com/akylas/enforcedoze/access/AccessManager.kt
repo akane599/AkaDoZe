@@ -16,11 +16,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuRemoteProcess
 
-data class AccessState(val level: AccessLevel, val reason: Reason?, val grants: Grants, val uid: Int?)
+data class AccessState @JvmOverloads constructor(
+    val level: AccessLevel, val reason: Reason?, val grants: Grants, val uid: Int?,
+    val resolved: Boolean = true, val rootProbeTimedOut: Boolean = false,
+)
 data class ShizukuState(val level: AccessLevel, val reason: Reason?, val uid: Int?)
 
 /** App-lifetime Android adapter. Blocking work and su discovery never run on the main thread. */
-class AccessManager private constructor(context: Context) {
+class AccessManager private constructor(context: Context) : com.akylas.enforcedoze.service.RecoveryAccess {
     private val app = context.applicationContext
     private val prefs = PreferenceManager.getDefaultSharedPreferences(app)
     private val main = Handler(Looper.getMainLooper())
@@ -29,11 +32,11 @@ class AccessManager private constructor(context: Context) {
     private val shizukuListeners = CopyOnWriteArraySet<ShizukuListener>()
     private val probePending = AtomicBoolean(false)
     private val probes = Executors.newSingleThreadExecutor { Thread(it, "access-probe").apply { isDaemon = true } }
-    @Volatile private var rootAvailable = false
+    private val resolution = AccessResolution()
     @Volatile private var mode = prefs.getString(Prefs.EXECUTION_MODE, Prefs.DEFAULT_EXECUTION_MODE)
     @Volatile var shizukuState = ShizukuState(AccessLevel.NONE, Reason.SHIZUKU_NOT_RUNNING, null)
         private set
-    @Volatile var state = AccessState(AccessLevel.APP, null, readGrants(), android.os.Process.myUid())
+    @Volatile override var state = AccessState(AccessLevel.APP, null, readGrants(), android.os.Process.myUid(), resolved = false)
         private set
     val level: AccessLevel get() = state.level
 
@@ -41,19 +44,29 @@ class AccessManager private constructor(context: Context) {
     fun interface ShizukuListener { fun onShizukuChanged(state: ShizukuState) }
 
     private val permissionListener = Shizuku.OnRequestPermissionResultListener { _, _ -> refreshShizuku() }
-    private val binderReceived = Shizuku.OnBinderReceivedListener { refreshShizuku() }
+    private val binderReceived = Shizuku.OnBinderReceivedListener { resolution.sawBinder(); refreshShizuku() }
     private val binderDead = Shizuku.OnBinderDeadListener { refreshShizuku() }
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == Prefs.EXECUTION_MODE) {
             mode = prefs.getString(Prefs.EXECUTION_MODE, Prefs.DEFAULT_EXECUTION_MODE)
-            publish()
-            if (mode == Prefs.MODE_ROOT) probeRoot()
+            if (mode == Prefs.MODE_ROOT) probeRoot() else publish()
         }
     }
     private val controlRunner = guardedLane("access-control")
     private val readRunner = guardedLane("access-reads")
 
     init {
+        val discoveryStart = android.os.SystemClock.elapsedRealtime()
+        resolution.startDiscovery(discoveryStart)
+        // CountDownTimer measures its deadline with elapsedRealtime, including sleep.
+        main.post {
+            object : android.os.CountDownTimer(
+                maxOf(1, discoveryStart + 10_000L - android.os.SystemClock.elapsedRealtime()), 10_000L,
+            ) {
+                override fun onTick(remaining: Long) = Unit
+                override fun onFinish() { publish() }
+            }.start()
+        }
         prefs.registerOnSharedPreferenceChangeListener(prefListener)
         // Shared ownership: a legacy activity cannot unregister this listener for the service.
         Shizuku.addRequestPermissionResultListener(permissionListener)
@@ -70,7 +83,7 @@ class AccessManager private constructor(context: Context) {
     fun controlWithDeadline(command: String, deadlineNanos: Long, admission: CommandLane.Admission): CommandResult =
         controlRunner.runWithDeadline(command, deadlineNanos, admission)
 
-    fun addListener(listener: Listener) {
+    override fun addListener(listener: Listener) {
         synchronized(lock) {
             if (listeners.add(listener)) {
                 val initial = state
@@ -79,7 +92,7 @@ class AccessManager private constructor(context: Context) {
         }
     }
 
-    fun removeListener(listener: Listener) { listeners.remove(listener) }
+    override fun removeListener(listener: Listener) { listeners.remove(listener) }
 
     /** Independent of executionMode, for ShizukuHandler's still-unmigrated callers. */
     fun addShizukuListener(listener: ShizukuListener) {
@@ -100,8 +113,10 @@ class AccessManager private constructor(context: Context) {
 
     fun refreshShizuku() {
         val next = try {
+            val alive = Shizuku.pingBinder()
+            if (alive) resolution.sawBinder()
             when {
-                !Shizuku.pingBinder() || Shizuku.isPreV11() ->
+                !alive || Shizuku.isPreV11() ->
                     ShizukuState(AccessLevel.NONE, Reason.SHIZUKU_NOT_RUNNING, null)
                 Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED ->
                     ShizukuState(AccessLevel.NONE, Reason.SHIZUKU_PERMISSION_MISSING, null)
@@ -161,15 +176,8 @@ class AccessManager private constructor(context: Context) {
     private fun publish() = synchronized(lock) {
         val shizuku = shizukuState
         val next = when (mode) {
-            Prefs.MODE_SHIZUKU -> if (shizuku.level != AccessLevel.NONE) {
-                AccessState(shizuku.level, shizuku.reason, readGrants(), shizuku.uid)
-            } else AccessState(AccessLevel.APP, shizuku.reason, readGrants(), android.os.Process.myUid())
-            Prefs.MODE_ROOT -> AccessState(
-                if (rootAvailable) AccessLevel.ROOT else AccessLevel.APP,
-                if (rootAvailable) null else Reason.NO_ACCESS,
-                readGrants(),
-                if (rootAvailable) 0 else android.os.Process.myUid(),
-            )
+            Prefs.MODE_SHIZUKU -> resolution.shizuku(shizuku, readGrants(), android.os.Process.myUid(), android.os.SystemClock.elapsedRealtime())
+            Prefs.MODE_ROOT -> resolution.root(readGrants(), android.os.Process.myUid())
             else -> AccessState(AccessLevel.APP, Reason.NO_ACCESS, readGrants(), android.os.Process.myUid())
         }
         if (next != state) {
@@ -178,17 +186,31 @@ class AccessManager private constructor(context: Context) {
         }
     }
 
+    /** Callers own bounded backoff and only retry discovery while recovery/session work needs it. */
+    fun retryRootProbe() {
+        if (mode == Prefs.MODE_ROOT && resolution.canRetryRoot()) probeRoot()
+    }
+
+    fun finishRootDiscovery() {
+        resolution.finishRootDiscovery()
+        publish()
+    }
+
     private fun probeRoot() {
         if (!probePending.compareAndSet(false, true)) return
+        resolution.rootProbeStarted()
+        publish()
         probes.execute {
             try {
                 CommandLane(RootCommandRunner(), "access-su-probe").use { probe ->
                     val result = probe.run("id -u")
-                    rootAvailable = result.ok && result.stdout.singleOrNull()?.trim() == "0"
+                    resolution.rootProbeFinished(result.ok && result.stdout.singleOrNull()?.trim() == "0", result.timedOut)
                 }
-                publish()
+            } catch (_: Exception) {
+                resolution.rootProbeFinished(false, false)
             } finally {
                 probePending.set(false)
+                publish()
             }
         }
     }
@@ -214,7 +236,7 @@ class AccessManager private constructor(context: Context) {
             override fun execute(command: String): CommandResult {
                 val selected = when (mode) {
                     Prefs.MODE_SHIZUKU -> if (shizukuState.level != AccessLevel.NONE) shizuku else appShell
-                    Prefs.MODE_ROOT -> if (rootAvailable) root else appShell
+                    Prefs.MODE_ROOT -> if (state.level == AccessLevel.ROOT) root else appShell
                     else -> appShell
                 }
                 active = selected
