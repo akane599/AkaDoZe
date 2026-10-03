@@ -85,8 +85,14 @@ public final class NoticeSink implements DozeEventSink {
 
     /** While a screen showing the debt is in front, a new debt is recorded without a notification. */
     public static void setDebtShownInApp(boolean shown) {
-        if (shown) debtViews.incrementAndGet();
-        else debtViews.updateAndGet(count -> Math.max(0, count - 1));
+        if (shown) {
+            debtViews.incrementAndGet();
+            return;
+        }
+        int count;
+        do {
+            count = debtViews.get();
+        } while (count > 0 && !debtViews.compareAndSet(count, count - 1));
     }
 
     public static NoticeSink get(Context context) {
