@@ -23,6 +23,7 @@ import android.view.Menu;
 import android.view.MenuItem;
 
 import com.afollestad.materialdialogs.MaterialDialog;
+import com.akylas.enforcedoze.service.LegacyDozeStats;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.nanotasks.BackgroundWork;
 import com.nanotasks.Completion;
@@ -96,58 +97,20 @@ public class DozeBatteryStatsActivity extends AppCompatActivity {
                 editor.remove("dozeUsageDataNew").commit();
             }
 
-            if (sortedDozeUsageStats.size() > 100) {
-                log("Trimming stats data to most recent 100 entries...");
-                int newSize = sortedDozeUsageStats.size() % 2 == 0 ? sortedDozeUsageStats.size() / 2 : (sortedDozeUsageStats.size() / 2) + 1;
-                ArrayList<String> tempArrayList1 = new ArrayList<>(sortedDozeUsageStats.subList(0, newSize));
-                ArrayList<String> tempArrayList2 = new ArrayList<>(sortedDozeUsageStats);
-                tempArrayList2.removeAll(tempArrayList1);
-                sortedDozeUsageStats.removeAll(tempArrayList2);
-                tempArrayList1.clear();
-                tempArrayList2.clear();
-                editor.putStringSet("dozeUsageDataAdvanced", new LinkedHashSet<String>(sortedDozeUsageStats));
-                editor.apply();
+            for (LegacyDozeStats.Interval interval : LegacyDozeStats.intervals(dozeUsageStats)) {
+                LegacyDozeStats.Entry enter = interval.getStart();
+                LegacyDozeStats.Entry exit = interval.getEnd();
+                int batteryUsed = (int) enter.getBattery() - (int) exit.getBattery();
+                DozeStatsCard card = new DozeStatsCard(
+                        interval.getMaintenance() ? "Doze Session (Maintenance)" : "Doze Session",
+                        "Start Time: " + Utils.getDateCurrentTimeZone(enter.getTime()) +
+                                "\nEnd Time: " + Utils.getDateCurrentTimeZone(exit.getTime()) +
+                                "\nTime spent: " + Utils.timeSpentString(enter.getTime(), exit.getTime()) +
+                                "\nBattery used: " + batteryUsed + "%",
+                        returnDrawableBattery(batteryUsed)
+                );
+                adapter.addCard(card);
             }
-
-//            if ((sortedDozeUsageStats.size() & 1) == 0) {
-                int count = sortedDozeUsageStats.size();
-                for (int i = 0; i < count - 1; ) {
-                    String[] exit_data = sortedDozeUsageStats.get(i).split(",");
-                    log("Exit data : [" + Arrays.toString(exit_data) + "]");
-                    String[] enter_data = sortedDozeUsageStats.get(i + 1).split(",");
-                    log("Enter data: [" + Arrays.toString(enter_data) + "]");
-
-                    if (enter_data[2].equals("ENTER") && exit_data[2].equals("EXIT")) {
-                        DozeStatsCard card = new DozeStatsCard(
-                                "Doze Session",
-                                "Start Time: " + Utils.getDateCurrentTimeZone(Long.valueOf(enter_data[0])) +
-                                        "\nEnd Time: " + Utils.getDateCurrentTimeZone(Long.valueOf(exit_data[0])) +
-                                        "\nTime spent: " + Utils.timeSpentString(Long.valueOf(enter_data[0]), Long.valueOf(exit_data[0])) +
-                                        "\nBattery used: " + (Float.valueOf(enter_data[1]).intValue() - Float.valueOf(exit_data[1]).intValue() + "%"),
-                                returnDrawableBattery(Float.valueOf(enter_data[1]).intValue() - Float.valueOf(exit_data[1]).intValue())
-                        );
-                        adapter.addCard(card);
-                        i = i + 2;
-                    } else if (enter_data[2].equals("ENTER_MAINTENANCE") && exit_data[2].equals("EXIT_MAINTENANCE")) {
-                        DozeStatsCard card = new DozeStatsCard(
-                                "Doze Session (Maintenance)",
-                                "Start Time: " + Utils.getDateCurrentTimeZone(Long.valueOf(enter_data[0])) +
-                                        "\nEnd Time: " + Utils.getDateCurrentTimeZone(Long.valueOf(exit_data[0])) +
-                                        "\nTime spent: " + Utils.timeSpentString(Long.valueOf(enter_data[0]), Long.valueOf(exit_data[0])) +
-                                        "\nBattery used: " + (Integer.valueOf(enter_data[1]) - Integer.valueOf(exit_data[1]) + "%"),
-                                returnDrawableBattery(Float.valueOf(enter_data[1]).intValue() - Float.valueOf(exit_data[1]).intValue())
-                        );
-                        adapter.addCard(card);
-                        i = i + 2;
-                    } else {
-                        i = i + 1;
-                    }
-                }
-//            } else {
-//                log("Missing log entries, redirecting users to old stats activity");
-//                startActivity(new Intent(this, DozeStatsActivity.class));
-//                finish();
-//            }
             mListView.scrollToPosition(0);
         }
     }

@@ -29,6 +29,7 @@ import com.akylas.enforcedoze.access.Feature;
 import com.akylas.enforcedoze.doze.*;
 import com.akylas.enforcedoze.doze.parse.DozeStateReading;
 import com.akylas.enforcedoze.service.DozeRuntime;
+import com.akylas.enforcedoze.service.LegacyDozeStats;
 import com.akylas.enforcedoze.service.SessionLifecycle;
 import com.akylas.enforcedoze.service.FeatureSelection;
 import com.akylas.enforcedoze.service.DeferredFeatureSelection;
@@ -71,6 +72,13 @@ public class ForceDozeService extends Service {
     private static final int PERSISTENT_NOTIF_ID = 1234;
 
     private DozeRuntime runtime;
+    /** Presentation subscribers own their lifecycle; the runtime survives service replacement. */
+    public static void addSink(Context context, DozeEventSink sink) {
+        MyApplication.getDozeRuntime(context).getJournal().addSink(sink);
+    }
+    public static void removeSink(Context context, DozeEventSink sink) {
+        MyApplication.getDozeRuntime(context).getJournal().removeSink(sink);
+    }
     private Handler worker;
     private volatile boolean destroyed;
     private volatile boolean waitForUnlock;
@@ -80,6 +88,7 @@ public class ForceDozeService extends Service {
     private static final long MUSIC_SELECTION_TIMEOUT_MS = 2000;
     private Runnable selectionTimeout;
     private DeferredFeatureSelection featureSelection;
+    private DozeConfig selectedGroups;
     private Runnable pendingNotification;
     private long enterDueElapsed;
     private AccessLevel previousAccess;
@@ -307,11 +316,20 @@ public class ForceDozeService extends Service {
             updateAccessFlags(access.getLevel());
             runtime.getJournal().emit(new DozeEvent(EventType.ACCESS_CHANGED,
                     access.getLevel().name() + (access.getLevel().compareTo(AccessLevel.SHELL) < 0 ? " NO_ACCESS" : "")));
-            if (old != null && access.getLevel().compareTo(old) > 0) {
-                runtime.reconcileAndCheck();
-                if (runtime.getSessionActive()) scheduleEnter();
+            if (old != null && old.compareTo(AccessLevel.SHELL) < 0
+                    && access.getLevel().compareTo(AccessLevel.SHELL) >= 0) {
+                if (Utils.isScreenOn(this)) {
+                    runtime.setSessionActive(false);
+                    handleScreenOn(this, 0, 0);
+                    runtime.importHistory();
+                } else if (runtime.getSessionActive()) {
+                    resumeEnforcement();
+                }
             } else if (access.getLevel().compareTo(AccessLevel.SHELL) < 0) {
                 cancelEnter();
+                if (old != null && old.compareTo(AccessLevel.SHELL) >= 0 && runtime.getSessionActive()) {
+                    runtime.recordAccessDebt();
+                }
                 runtime.checkSafety();
             }
         });
@@ -376,6 +394,7 @@ public class ForceDozeService extends Service {
             long epoch = exitEpoch.get();
             if (!runtime.getSessionActive() && runtime.getSession().activate(epoch, exitEpoch::get, () -> Utils.isScreenOn(this))) {
                 verifiedIdleSeen = false;
+                runtime.getWatchdog().resetSession();
                 runtime.getJournal().beginSession();
                 runtime.getJournal().screen(EventType.SCREEN_OFF, Utils.getBatteryLevel(this), Utils.isConnectedToCharger(this));
                 scheduleEnter();
@@ -670,7 +689,8 @@ public class ForceDozeService extends Service {
                     });
                     return;
                 }
-                selection.complete(null);
+                selection.noListener(runtime.getJournal());
+                if (selectionTimeout != null) worker.removeCallbacks(selectionTimeout);
             } catch (Exception error) {
                 runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "MUSIC_SELECTION_FAILED"));
                 selection.complete(null);
@@ -683,7 +703,8 @@ public class ForceDozeService extends Service {
     private void enterConfiguredDoze(Boolean playingMusic, long generation) {
         if (!admitted() || generation != runtime.getController().getCurrentGeneration()) return;
         try {
-            runtime.getController().enterGroups(config(false, playingMusic), generation, this::admitted);
+            selectedGroups = config(false, playingMusic);
+            runtime.getController().enterGroups(selectedGroups, generation, this::admitted);
         } catch (Exception error) {
             runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "FEATURE_SELECTION_FAILED"));
         }
@@ -696,7 +717,7 @@ public class ForceDozeService extends Service {
         if (verifiedIdleSeen) return;
         verifiedIdleSeen = true;
         timeEnterDoze = System.currentTimeMillis();
-        lastDozeEnterBatteryLife = Utils.isConnectedToCharger(this) ? 0 : Utils.getBatteryLevel(this);
+        lastDozeEnterBatteryLife = Utils.getBatteryLevel(this);
         lastScreenOff = Utils.getDateCurrentTimeZone(timeEnterDoze);
         if (runtime.getSession().recordEnter(!disableStats)) {
             dozeUsageData.add(timeEnterDoze + "," + Float.toString((float) lastDozeEnterBatteryLife) + ",ENTER");
@@ -712,7 +733,7 @@ public class ForceDozeService extends Service {
         runtime.recordExit(runtime.getController().exit(Build.VERSION.SDK_INT, runtime.grants()));
         runtime.checkSafety();
         timeExitDoze = System.currentTimeMillis();
-        lastDozeExitBatteryLife = Utils.isConnectedToCharger(this) ? 0 : Utils.getBatteryLevel(this);
+        lastDozeExitBatteryLife = Utils.getBatteryLevel(this);
         lastKnownState = deepState();
         if (runtime.getSession().recordExit()) {
             dozeUsageData.add(timeExitDoze + "," + Float.toString((float) lastDozeExitBatteryLife) + ",EXIT");
@@ -806,12 +827,9 @@ public class ForceDozeService extends Service {
     }
 
     public void saveDozeDataStats() {
-        SharedPreferences sharedPreferences = getDefaultSharedPreferences(getApplicationContext());
-        SharedPreferences.Editor editor = sharedPreferences.edit();
-        editor.remove("dozeUsageDataAdvanced");
-        editor.apply();
-        editor.putStringSet("dozeUsageDataAdvanced", dozeUsageData);
-        editor.apply();
+        dozeUsageData = new LinkedHashSet<>(LegacyDozeStats.newest(dozeUsageData));
+        getDefaultSharedPreferences(getApplicationContext()).edit()
+                .putStringSet("dozeUsageDataAdvanced", new LinkedHashSet<>(dozeUsageData)).apply();
     }
 
     public void showPersistentNotification() {
@@ -904,7 +922,7 @@ public class ForceDozeService extends Service {
         Boolean maintenanceReading = SessionLifecycle.maintenanceState(reading.getDeep(), reading.getLight());
         if (Boolean.TRUE.equals(maintenanceReading) && !maintenance) {
             runtime.getJournal().emit(new DozeEvent(EventType.MAINT_START, "MAINT_START", reading.getDeep(), reading.getLight()));
-            if (!disableStats) {
+            if (!disableStats && runtime.getSession().getHasEnter()) {
                 dozeUsageData.add(System.currentTimeMillis() + "," + Float.toString((float) Utils.getBatteryLevel(this)) + ",EXIT_MAINTENANCE");
                 saveDozeDataStats();
             }
@@ -912,14 +930,18 @@ public class ForceDozeService extends Service {
             maintenance = true;
         } else if (Boolean.FALSE.equals(maintenanceReading) && maintenance) {
             runtime.getJournal().emit(new DozeEvent(EventType.MAINT_END, "MAINT_END", reading.getDeep(), reading.getLight()));
-            if (!disableStats) {
+            if (!disableStats && runtime.getSession().getHasEnter()) {
                 dozeUsageData.add(System.currentTimeMillis() + "," + Float.toString((float) Utils.getBatteryLevel(this)) + ",ENTER_MAINTENANCE");
                 saveDozeDataStats();
             }
             runtime.getController().maintenance(false, runtime.getController().getCurrentGeneration(), this::admitted);
             maintenance = false;
         }
-        if (!maintenance && reading.getDeep() == DeepState.IDLE && !verifiedIdleSeen) enterDoze(false);
+        if (!maintenance && reading.getDeep() == DeepState.IDLE && !verifiedIdleSeen && admitted()) {
+            recordVerifiedEnter();
+            if (selectedGroups != null) runtime.getController().enterGroups(selectedGroups,
+                    runtime.getController().getCurrentGeneration(), this::admitted);
+        }
         if (maintenance) return;
         if (!getDefaultSharedPreferences(this).getBoolean(Prefs.KEEP_DOZE_ENFORCED, Prefs.DEFAULT_KEEP_DOZE_ENFORCED)) return;
         Decision decision = runtime.getWatchdog().onIdleChanged(reading, Utils.isScreenOn(this),
@@ -930,13 +952,39 @@ public class ForceDozeService extends Service {
                 if (!destroyed && generation == runtime.getController().getCurrentGeneration()) idleChanged();
             }, ((Decision.DEFER) decision).getUntilElapsed());
         } else if (decision == Decision.REFORCE.INSTANCE) {
-            runtime.getJournal().emit(new DozeEvent(EventType.REFORCE, "REFORCE"));
             try {
-                enterDoze(false);
+                forceOnly(generation);
             } catch (Exception error) {
                 runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "REFORCE_FAILED"));
             }
         }
+    }
+
+    /** Reuse the durable force step without sensors, battery saver or deferred feature selection. */
+    private void forceOnly(long generation) {
+        if (generation != runtime.getController().getCurrentGeneration() || !admitted()) return;
+        runtime.getJournal().emit(new DozeEvent(EventType.REFORCE, "REFORCE"));
+        DozeConfig force = new DozeConfig(Build.VERSION.SDK_INT, runtime.getAccess().getLevel(), runtime.grants(),
+                false, runtime.getAllowToken(), false);
+        runtime.getController().enterCore(force, generation, this::admitted);
+        if (generation != runtime.getController().getCurrentGeneration() || !admitted()) return;
+        boolean firstVerified = !verifiedIdleSeen;
+        recordVerifiedEnter();
+        if (firstVerified && verifiedIdleSeen && selectedGroups != null) {
+            runtime.getController().enterGroups(selectedGroups, generation, this::admitted);
+        }
+    }
+
+    private void resumeEnforcement() {
+        // SafetyNet may have restored sensors while paused. Re-enter core on access return,
+        // preserving the first enter's admission deadline instead of restarting its delay.
+        long generation = runtime.getController().getCurrentGeneration();
+        pendingEnter = () -> {
+            if (generation == runtime.getController().getCurrentGeneration() && admitted()) {
+                enterDoze(disableMotionSensors);
+            }
+        };
+        worker.postDelayed(pendingEnter, Math.max(0, enterDueElapsed - runtime.getClock().elapsedRealtime()));
     }
 
     class ReloadSettingsReceiver extends BroadcastReceiver {
@@ -967,6 +1015,7 @@ public class ForceDozeService extends Service {
         exitDoze("UNKNOWN");
         maintenance = false;
         verifiedIdleSeen = false;
+        selectedGroups = null;
     }
 
     class DozeReceiver extends BroadcastReceiver {
@@ -1001,11 +1050,14 @@ public class ForceDozeService extends Service {
         } else if (Intent.ACTION_USER_PRESENT.equals(action)) {
             if (exitTrigger) handleScreenOn(this, 0, 0);
         } else if (Intent.ACTION_SCREEN_OFF.equals(action)) {
+            runtime.getWatchdog().resetSession();
             runtime.getJournal().beginSession();
             runtime.getJournal().screen(EventType.SCREEN_OFF, Utils.getBatteryLevel(this), Utils.isConnectedToCharger(this));
             if (!runtime.getSession().activate(epoch, exitEpoch::get, () -> Utils.isScreenOn(this))) return;
             runtime.bumpGeneration();
+            maintenance = false;
             verifiedIdleSeen = false;
+            selectedGroups = null;
             scheduleEnter();
         } else if (Intent.ACTION_POWER_CONNECTED.equals(action)) {
             if (exitTrigger) handleScreenOn(this, 0, 0);
@@ -1013,6 +1065,7 @@ public class ForceDozeService extends Service {
                 || "android.os.action.LIGHT_DEVICE_IDLE_MODE_CHANGED".equals(action)) {
             idleChanged();
         }
+        if (exitTrigger) runtime.importHistory();
     }
 
 }

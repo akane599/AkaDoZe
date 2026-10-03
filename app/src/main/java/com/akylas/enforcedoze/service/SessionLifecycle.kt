@@ -7,6 +7,7 @@ import com.akylas.enforcedoze.doze.LightState
 class SessionLifecycle {
     @Volatile var active = false
     private var entered = false
+    val hasEnter: Boolean get() = entered
 
     fun activate(expectedEpoch: Long, currentEpoch: () -> Long, screenOn: () -> Boolean): Boolean {
         active = true

@@ -1,6 +1,7 @@
 package com.akylas.enforcedoze;
 
 import android.Manifest;
+import com.akylas.enforcedoze.doze.SchedulePolicy;
 import android.app.ActivityManager;
 import android.app.AlarmManager;
 import android.app.AppOpsManager;
@@ -133,6 +134,10 @@ public class Utils {
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         PendingIntent pendingIntent = getCustomDozePeriodPendingIntent(context);
         long triggerAtMillis = System.currentTimeMillis() + delay;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent);
+            return;
+        }
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent);
@@ -159,27 +164,7 @@ public class Utils {
     }
 
     public static boolean isInsideCustomDozePeriod(Context context) {
-        Set<String> customDozePeriods = getCustomDozePeriods(context);
-        if (customDozePeriods.isEmpty()) {
-            return true;
-        }
-
-        int now = getCurrentMinuteOfDay();
-        for (String period : customDozePeriods) {
-            int[] parsedPeriod = parseCustomDozePeriod(period);
-            if (parsedPeriod == null) {
-                continue;
-            }
-
-            int start = parsedPeriod[0];
-            int end = parsedPeriod[1];
-            if (start < end && now >= start && now < end) {
-                return true;
-            } else if (start > end && (now >= start || now < end)) {
-                return true;
-            }
-        }
-        return false;
+        return SchedulePolicy.isInside(getCustomDozePeriods(context), getCurrentMinuteOfDay());
     }
 
     private static PendingIntent getCustomDozePeriodPendingIntent(Context context) {
@@ -196,72 +181,21 @@ public class Utils {
 
     private static long getMillisUntilNextCustomDozePeriodBoundary(Context context) {
         Calendar now = Calendar.getInstance();
-        long nowMillis = now.getTimeInMillis();
-        long nextBoundaryMillis = Long.MAX_VALUE;
-
-        for (String period : getCustomDozePeriods(context)) {
-            int[] parsedPeriod = parseCustomDozePeriod(period);
-            if (parsedPeriod == null) {
-                continue;
-            }
-            nextBoundaryMillis = Math.min(nextBoundaryMillis, getNextBoundaryMillis(now, parsedPeriod[0]));
-            nextBoundaryMillis = Math.min(nextBoundaryMillis, getNextBoundaryMillis(now, parsedPeriod[1]));
-        }
-
-        if (nextBoundaryMillis == Long.MAX_VALUE) {
-            return -1;
-        }
-        return Math.max(1000, nextBoundaryMillis - nowMillis);
-    }
-
-    private static long getNextBoundaryMillis(Calendar now, int minuteOfDay) {
+        SchedulePolicy.Boundary next = SchedulePolicy.nextBoundary(getCustomDozePeriods(context),
+                now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE));
+        if (next == null) return -1;
         Calendar boundary = (Calendar) now.clone();
-        boundary.set(Calendar.HOUR_OF_DAY, minuteOfDay / 60);
-        boundary.set(Calendar.MINUTE, minuteOfDay % 60);
+        boundary.add(Calendar.DAY_OF_YEAR, next.getDaysAhead());
+        boundary.set(Calendar.HOUR_OF_DAY, next.getMinuteOfDay() / 60);
+        boundary.set(Calendar.MINUTE, next.getMinuteOfDay() % 60);
         boundary.set(Calendar.SECOND, 0);
         boundary.set(Calendar.MILLISECOND, 0);
-        if (!boundary.after(now)) {
-            boundary.add(Calendar.DAY_OF_YEAR, 1);
-        }
-        return boundary.getTimeInMillis();
+        return Math.max(1000, boundary.getTimeInMillis() - now.getTimeInMillis());
     }
 
     private static int getCurrentMinuteOfDay() {
         Calendar calendar = Calendar.getInstance();
         return calendar.get(Calendar.HOUR_OF_DAY) * 60 + calendar.get(Calendar.MINUTE);
-    }
-
-    private static int[] parseCustomDozePeriod(String period) {
-        if (period == null) {
-            return null;
-        }
-        String[] parts = period.split("-");
-        if (parts.length != 2) {
-            return null;
-        }
-        int start = parseCustomDozeTime(parts[0]);
-        int end = parseCustomDozeTime(parts[1]);
-        if (start < 0 || end < 0 || start == end) {
-            return null;
-        }
-        return new int[]{start, end};
-    }
-
-    private static int parseCustomDozeTime(String time) {
-        String[] parts = time.split(":");
-        if (parts.length != 2) {
-            return -1;
-        }
-        try {
-            int hour = Integer.parseInt(parts[0]);
-            int minute = Integer.parseInt(parts[1]);
-            if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-                return -1;
-            }
-            return hour * 60 + minute;
-        } catch (NumberFormatException e) {
-            return -1;
-        }
     }
 
     public static boolean isMyServiceRunning(Class<?> serviceClass, Context context) {
