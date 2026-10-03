@@ -1,0 +1,196 @@
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" android:key="preferenceScreen">
+    <PreferenceCategory android:title="@string/sponsor_card_title">
+        <Preference
+            android:key="sponsorProject"
+            android:title="@string/sponsor_settings_title"
+            android:summary="@string/sponsor_settings_summary"
+            android:icon="@drawable/ic_heart" />
+    </PreferenceCategory>
+    <PreferenceCategory android:title="Main" android:key="mainSettings">
+        <ListPreference
+            android:defaultValue="root"
+            android:entries="@array/execution_mode_entries"
+            android:entryValues="@array/execution_mode_values"
+            android:key="executionMode"
+            android:summary="@string/execution_mode_setting_summary"
+            android:title="@string/execution_mode_setting_title" />
+        <SwitchPreferenceCompat
+            android:defaultValue="true"
+            android:key="disableWhenCharging"
+            android:summary="@string/disable_when_charging_setting_summary"
+            android:title="@string/disable_when_charging_setting_title" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="autoRotateAndBrightnessFix"
+            android:summary="@string/rotate_brightness_fix_setting_summary"
+            android:title="@string/rotate_brightness_fix_setting_title" />
+        <SwitchPreferenceCompat
+            android:defaultValue="true"
+            android:key="showPersistentNotif"
+            android:summary="@string/persistent_notification_setting_summary"
+            android:title="@string/persistent_notification_setting_title" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="showDisabledNotification"
+            android:summary="@string/show_disabled_notification_setting_summary"
+            android:title="@string/show_disabled_notification_setting_title" />
+        <SwitchPreferenceCompat
+            android:defaultValue="true"
+            android:key="ignoreLockscreenTimeout"
+            android:summary="@string/lockscreen_timeout_setting_summary"
+            android:title="@string/lockscreen_timeout_setting_title" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="waitForUnlock"
+            android:summary="@string/wait_unlock_setting_summary"
+            android:title="@string/wait_unlock_setting_title" />
+        <Preference
+            android:key="whitelistAppsFromDozeMode"
+            android:summary="@string/whitelist_apps_setting_summary"
+            android:title="@string/whitelist_apps_setting_text">
+            <intent
+                android:action="android.intent.action.VIEW"
+                android:targetClass="com.akylas.enforcedoze.WhitelistAppsActivity"
+                android:targetPackage="com.akylas.enforcedoze" />
+        </Preference>
+    </PreferenceCategory>
+    <PreferenceCategory android:title="Doze enhancements" android:key="dozeSettings">
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="turnOffWiFiInDoze"
+            android:summary="@string/disable_wifi_during_doze_setting_summary"
+            android:title="@string/disable_wifi_during_doze_setting_title" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="turnOffDataInDoze"
+            android:summary="@string/disable_data_during_doze_setting_summary"
+            android:title="@string/disable_data_during_doze_setting_title" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="turnOnAirplaneInDoze"
+            android:summary="@string/enable_airplane_setting_summary"
+            android:title="@string/enable_airplane_setting_title" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="turnOffBluetoothInDoze"
+            android:summary="@string/disable_bluetooth_setting_summary"
+            android:title="@string/disable_bluetooth_setting_title" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="turnOffGPSInDoze"
+            android:summary="@string/disable_gps_setting_summary"
+            android:title="@string/disable_gps_setting_title" />
+        <SwitchPreferenceCompat
+            android:defaultValue="true"
+            android:key="ignoreIfHotspot"
+            android:summary="@string/ignore_hospot_during_doze_setting_summary"
+            android:title="@string/ignore_hospot_during_doze_setting_title" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="whitelistMusicAppNetwork"
+            android:summary="@string/whitelist_music_app_network_setting_summary"
+            android:title="@string/whitelist_music_app_network_setting_title" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="whitelistCurrentApp"
+            android:summary="@string/ignore_current_app_setting_summary"
+            android:title="@string/ignore_current_app_setting_title" />
+        <SwitchPreferenceCompat
+            android:defaultValue="true"
+            android:key="disableMotionSensors"
+            android:summary="@string/disable_motion_sensors_setting_summary"
+            android:title="@string/disable_motion_sensors_setting_title" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="turnOffAllSensorsInDoze"
+            android:summary="@string/disable_all_sensors_setting_summary"
+            android:title="@string/disable_all_sensors_setting_title" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="turnOffBiometricsInDoze"
+            android:summary="@string/disable_biometrics_setting_summary"
+            android:title="@string/disable_biometrics_setting_title" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="turnOnBatterySaverInDoze"
+            android:summary="@string/enable_battery_saver_setting_summary"
+            android:title="@string/enable_battery_saver_setting_title" />
+        <com.akylas.enforcedoze.NumberPickerPreference
+            bindSummary="false"
+            max="1800"
+            min="0"
+            step="30"
+            android:defaultValue="0"
+            android:key="dozeEnterDelay"
+            android:summary="@string/doze_delay_setting_summary"
+            android:title="@string/doze_delay_setting_title" />
+        <Preference
+            android:key="customDozePeriods"
+            android:summary="@string/custom_doze_periods_setting_summary_empty"
+            android:title="@string/custom_doze_periods_setting_title" />
+        <Preference
+            android:key="blacklistAppNotifications"
+            android:summary="@string/notif_blocklist_setting_summary"
+            android:title="@string/notif_blocklist_setting_title">
+            <intent
+                android:action="android.intent.action.VIEW"
+                android:targetClass="com.akylas.enforcedoze.BlockNotificationsActivity"
+                android:targetPackage="com.akylas.enforcedoze" />
+        </Preference>
+        <Preference
+            android:key="blacklistApps"
+            android:summary="@string/app_blocklist_setting_summary"
+            android:title="@string/app_blocklist_setting_title">
+            <intent
+                android:action="android.intent.action.VIEW"
+                android:targetClass="com.akylas.enforcedoze.BlockAppsActivity"
+                android:targetPackage="com.akylas.enforcedoze" />
+        </Preference>
+    </PreferenceCategory>
+    <PreferenceCategory android:title="Other">
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="disableStats"
+            android:summary="@string/disable_stats_setting_summary"
+            android:title="@string/disable_stats_setting_title" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="disableLogcat"
+            android:summary="@string/disable_logcat_setting_summary"
+            android:title="@string/disable_logcat_setting_title" />
+        <Preference
+            android:key="resetForceDoze"
+            android:summary="@string/reset_forcedoze_setting_summary"
+            android:title="@string/reset_forcedoze_setting_title" />
+        <Preference
+            android:key="resetDozeStats"
+            android:summary="@string/clear_doze_stats_setting_summary"
+            android:title="@string/clear_doze_stats_setting_title" />
+        <Preference
+            android:key="debugLogs"
+            android:summary="@string/show_app_logs_setting_summary"
+            android:title="@string/show_app_logs_setting_title">
+            <intent
+                android:action="android.intent.action.VIEW"
+                android:targetClass="com.akylas.enforcedoze.LogActivity"
+                android:targetPackage="com.akylas.enforcedoze" />
+        </Preference>
+        <Preference
+            android:key="taskerBroadcasts"
+            android:summary="@string/tasker_broadcast_setting_summary"
+            android:title="@string/tasker_broadcast_setting_title">
+            <intent
+                android:action="android.intent.action.VIEW"
+                android:targetClass="com.akylas.enforcedoze.TaskerBroadcastsActivity"
+                android:targetPackage="com.akylas.enforcedoze" />
+        </Preference>
+        <Preference
+            android:key="aboutForceDoze"
+            android:title="@string/about_forcedoze_setting_title">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="com.akylas.enforcedoze.AboutAppActivity"
+            android:targetPackage="com.akylas.enforcedoze" />
+        </Preference>
+    </PreferenceCategory>
+</PreferenceScreen>

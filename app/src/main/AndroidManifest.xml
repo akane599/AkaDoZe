@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+<!--    <uses-permission android:name="android.permission.MANAGE_SENSOR_PRIVACY"-->
+<!--        tools:ignore="ProtectedPermissions" />-->
+    <uses-permission android:name="android.permission.READ_LOGS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.WRITE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+    <uses-permission
+        android:name="android.permission.DUMP"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission
+        android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
+        android:minSdkVersion="34" />
+    
+    <!-- Shizuku permission -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+    <uses-sdk tools:overrideLibrary="rikka.shizuku.api" />
+
+    <application
+        android:name="com.akylas.enforcedoze.MyApplication"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+        <activity android:name="com.akylas.enforcedoze.MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
+            </intent-filter>
+            <meta-data android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+        </activity>
+        <receiver android:name="com.akylas.enforcedoze.BootCompleteReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+        <receiver android:name="com.akylas.enforcedoze.AutoRestartOnUpdate"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.PACKAGE_REPLACED" />
+
+                <data android:scheme="package" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name="com.akylas.enforcedoze.EnableForceDozeService"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.akylas.enforcedoze.ENABLE_FORCEDOZE" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name="com.akylas.enforcedoze.DisableForceDozeService"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.akylas.enforcedoze.DISABLE_FORCEDOZE" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name="com.akylas.enforcedoze.AddWhiteListReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.akylas.enforcedoze.ADD_WHITELIST" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name="com.akylas.enforcedoze.RemoveWhiteListReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.akylas.enforcedoze.REMOVE_WHITELIST" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name="com.akylas.enforcedoze.SettingsChangeReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.akylas.enforcedoze.CHANGE_SETTING" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name="com.akylas.enforcedoze.ReenterDoze"
+            android:enabled="true"
+            android:exported="true" />
+        <receiver
+            android:name="com.akylas.enforcedoze.CustomDozePeriodReceiver"
+            android:enabled="true"
+            android:exported="false" />
+        <service
+            android:name="com.akylas.enforcedoze.ForceDozeService"
+            android:enabled="true"
+            android:exported="false" android:foregroundServiceType="specialUse"/>
+        <service
+            android:name="com.akylas.enforcedoze.ForceDozeTileService"
+            android:icon="@drawable/ic_power_settings_new_white_24dp"
+            android:label="@string/tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true"
+            tools:targetApi="n">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="true" />
+        </service>
+        <service
+            android:name="com.akylas.enforcedoze.AirplaneTileService"
+            android:icon="@drawable/ic_airplane_white_24dp"
+            android:label="@string/airplane_tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true"
+            tools:targetApi="n">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="true" />
+        </service>
+        <service
+            android:name="com.akylas.enforcedoze.NotificationService"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+        <activity
+            android:name="com.akylas.enforcedoze.DozeStatsActivity"
+            android:label="Doze battery stats (old)" />
+        <activity
+            android:name="com.akylas.enforcedoze.DozeBatteryStatsActivity"
+            android:label="Doze battery stats" />
+        <activity
+            android:name="com.akylas.enforcedoze.WhitelistAppsActivity"
+            android:label="Whitelist" />
+        <activity
+            android:name="com.akylas.enforcedoze.BlockNotificationsActivity"
+            android:label="Doze Notifications blocklist" />
+        <activity
+            android:name="com.akylas.enforcedoze.BlockAppsActivity"
+            android:label="Doze App blocklist" />
+        <activity
+            android:name="com.akylas.enforcedoze.SettingsActivity"
+            android:label="Settings" />
+        <activity
+            android:name="com.akylas.enforcedoze.LogActivity"
+            android:label="Debug log" />
+        <activity
+            android:name="com.akylas.enforcedoze.PackageChooserActivity"
+            android:label="Package chooser" />
+        <activity
+            android:name="com.akylas.enforcedoze.AboutAppActivity"
+            android:label="About" />
+        <activity
+            android:name="com.akylas.enforcedoze.TaskerBroadcastsActivity"
+            android:label="Tasker broadcasts" />
+        <activity
+            android:name="com.akylas.enforcedoze.DozeTunablesActivity"
+            android:label="Doze Tunables" />
+        <activity android:name="com.akylas.enforcedoze.RequestIgnoreBatteryActivity"
+            android:exported="false"
+            android:theme="@style/Transparent.NoTitleBar" />
+        
+        <!-- Shizuku provider -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+    </application>
+
+</manifest>
