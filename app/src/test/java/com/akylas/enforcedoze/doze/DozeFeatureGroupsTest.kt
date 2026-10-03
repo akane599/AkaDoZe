@@ -206,7 +206,7 @@ class DozeFeatureGroupsTest {
     @Test fun pre30AirplaneNeverUsesProtectedBroadcastOrSettingsOnlyMutation() {
         runner.level = AccessLevel.ROOT
         force(29)
-        assertEquals(Reason.UNVERIFIED, enter(config.copy(apiLevel = 29, level = AccessLevel.ROOT, features = setOf(Feature.AIRPLANE))).steps.last().reason)
+        assertEquals(Reason.API_TOO_OLD, enter(config.copy(apiLevel = 29, level = AccessLevel.ROOT, features = setOf(Feature.AIRPLANE))).steps.last().reason)
         assertFalse(runner.commands.any { "AIRPLANE_MODE" in it || "airplane_mode_on" in it })
     }
 

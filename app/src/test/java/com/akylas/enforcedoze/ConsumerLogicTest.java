@@ -45,6 +45,21 @@ public class ConsumerLogicTest {
         assertTrue(WhitelistAppsActivity.parseWhitelist(result(0)).verified);
     }
 
+    @Test public void whitelistDiagnosticsSurviveActivityAdapterAndEditReadback() {
+        WhitelistAppsActivity.WhitelistResult parsed = WhitelistAppsActivity.parseWhitelist(result(0,
+                "user,com.example.app,10123", "OEM format"));
+        assertEquals(Collections.singletonList("com.example.app"), parsed.packages);
+        assertEquals(1, parsed.unparsedLineCount);
+        assertEquals(com.akylas.enforcedoze.access.WhitelistParseReason.PARTIALLY_PARSED, parsed.parseReason);
+        Runner control = new Runner(AccessLevel.SHELL, result(0));
+        Runner reads = new Runner(AccessLevel.SHELL, result(0, "user,com.example.other,10123", "OEM format"));
+        WhitelistAppsActivity.WhitelistResult edited = WhitelistAppsActivity.editWhitelist(control, reads, 36,
+                new Grants(false, false), "com.example.app", true);
+        assertFalse("partial output cannot prove removal by absence", edited.verified);
+        assertEquals(parsed.parseReason, edited.parseReason);
+        assertEquals(1, edited.unparsedLineCount);
+    }
+
     @Test public void whitelistEditsUseCatalogControlAndVerifyThroughReads() {
         Runner control = new Runner(AccessLevel.SHELL, result(0));
         Runner reads = new Runner(AccessLevel.SHELL, result(0, "user,com.example.app,10123"));

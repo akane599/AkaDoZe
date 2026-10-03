@@ -31,7 +31,6 @@ import com.nanotasks.Completion;
 import com.nanotasks.Tasks;
 
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 
 import android.os.Build;
@@ -45,6 +44,9 @@ import com.akylas.enforcedoze.access.Feature;
 import com.akylas.enforcedoze.access.Grants;
 import com.akylas.enforcedoze.access.PackageNames;
 import com.akylas.enforcedoze.access.Reason;
+import com.akylas.enforcedoze.access.WhitelistParser;
+import com.akylas.enforcedoze.access.WhitelistParseResult;
+import com.akylas.enforcedoze.access.WhitelistParseReason;
 import java.util.Collections;
 
 public class WhitelistAppsActivity extends AppCompatActivity {
@@ -209,10 +211,18 @@ public class WhitelistAppsActivity extends AppCompatActivity {
         public final List<String> packages;
         public final boolean verified;
         public final Reason reason;
+        public final WhitelistParseReason parseReason;
+        public final int unparsedLineCount;
         WhitelistResult(List<String> packages, boolean verified, Reason reason) {
+            this(packages, verified, reason, null, 0);
+        }
+        WhitelistResult(List<String> packages, boolean verified, Reason reason,
+                        WhitelistParseReason parseReason, int unparsedLineCount) {
             this.packages = Collections.unmodifiableList(new ArrayList<>(packages));
             this.verified = verified;
             this.reason = reason;
+            this.parseReason = parseReason;
+            this.unparsedLineCount = unparsedLineCount;
         }
     }
 
@@ -221,21 +231,9 @@ public class WhitelistAppsActivity extends AppCompatActivity {
     }
 
     static WhitelistResult parseWhitelist(CommandResult result) {
-        LinkedHashSet<String> packages = new LinkedHashSet<>();
-        boolean parsed = result.getOk();
-        for (String line : result.getStdout()) {
-            if (line.trim().isEmpty()) continue;
-            String[] fields = line.trim().split(",", -1);
-            if (fields.length == 3 && PackageNames.isValid(fields[1].trim())
-                    && fields[2].trim().matches("[0-9]+")
-                    && (fields[0].equals("system") || fields[0].equals("system-excidle") || fields[0].equals("user"))) {
-                // Except-idle exemptions do not establish deep-Doze whitelist membership.
-                if (!fields[0].equals("system-excidle")) packages.add(fields[1].trim());
-            } else {
-                parsed = false;
-            }
-        }
-        return new WhitelistResult(new ArrayList<>(packages), parsed, parsed ? null : Reason.UNVERIFIED);
+        WhitelistParseResult parsed = WhitelistParser.parse(result);
+        return new WhitelistResult(parsed.getPackages(), parsed.getVerified(),
+                parsed.getVerified() ? null : Reason.UNVERIFIED, parsed.getParseReason(), parsed.getUnparsedLineCount());
     }
 
     static WhitelistResult editWhitelist(CommandRunner control, CommandRunner reads, int apiLevel,
@@ -252,7 +250,8 @@ public class WhitelistAppsActivity extends AppCompatActivity {
         for (String command : commands) control.run(command);
         WhitelistResult readback = readWhitelist(reads);
         boolean verified = readback.verified && (readback.packages.contains(pkg) != remove);
-        return new WhitelistResult(readback.packages, verified, verified ? null : Reason.UNVERIFIED);
+        return new WhitelistResult(readback.packages, verified, verified ? null : Reason.UNVERIFIED,
+                readback.parseReason, readback.unparsedLineCount);
     }
 
     public void showManuallyAddPackageDialog() {

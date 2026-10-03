@@ -239,6 +239,36 @@ class DozeRuntime(context: Context) {
         checkSafety()
     }
 
+    /**
+     * Caller stops the service first. Cancels pending enter on the caller thread, then restores and
+     * resets on doze-worker. The callback also runs on doze-worker; presentation must hop to main.
+     * Preferences are never cleared here, including when restoration leaves debt.
+     */
+    @Synchronized
+    fun resetSystemState(callback: SystemResetCallback) {
+        bumpGeneration()
+        worker().post {
+            try {
+                sessionActive = false
+                session.recordExit()
+                val result = SystemReset.run(control, Build.VERSION.SDK_INT, app.packageName,
+                    permissionGranted = { permission ->
+                        app.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+                    },
+                ) {
+                    val exit = controller.reconcile(Build.VERSION.SDK_INT, grants())
+                    recordExit(exit)
+                    checkSafety()
+                    val remaining = store.load()
+                    if (exit.complete && remaining.entries.isEmpty() && !store.loadFailed && store.corruptLines.isEmpty()) {
+                        ResetRestoreOutcome.COMPLETE
+                    } else ResetRestoreOutcome.REMAINING_DEBT
+                }
+                callback.onComplete(result)
+            } finally { quitIfDetached() }
+        }
+    }
+
     @Synchronized
     fun requestSafetyCheck() {
         worker().post {
