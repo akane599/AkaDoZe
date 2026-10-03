@@ -136,11 +136,13 @@ class DozeRuntime(context: Context) {
     fun bumpGeneration(): Long {
         deferred?.let { handler?.removeCallbacks(it) }
         deferred = null
+        watchdog.cancelDeferred()
         return controller.bumpGeneration()
     }
 
     @Synchronized
     fun deferWatchdog(callback: Runnable, untilElapsed: Long) {
+        // Replacement retains a scheduled retry, so it must retain the policy's deferred flag.
         deferred?.let { handler?.removeCallbacks(it) }
         deferred = callback
         worker().postDelayed(callback, maxOf(0, untilElapsed - clock.elapsedRealtime()))

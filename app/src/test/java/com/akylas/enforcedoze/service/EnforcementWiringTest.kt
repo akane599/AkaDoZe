@@ -54,6 +54,8 @@ class EnforcementWiringTest {
         val runtime = File("src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt").readText()
         val invalidation = runtime.substringAfter("fun bumpGeneration()").substringBefore("fun deferWatchdog")
         assertTrue(invalidation.contains("removeCallbacks"))
+        assertTrue("generation cancellation must forget the policy's deferred retry",
+            invalidation.contains("watchdog.cancelDeferred()"))
         assertFalse(invalidation.contains("resetSession"))
         val wiring = service().substringAfter("private void idleChanged()").substringBefore("private void forceOnly")
         assertTrue(wiring.contains("Prefs.KEEP_DOZE_ENFORCED"))

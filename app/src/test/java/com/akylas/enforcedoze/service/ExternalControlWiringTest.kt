@@ -26,7 +26,7 @@ class ExternalControlWiringTest {
         assertFalse("explicit basic-control consent does not require automatic enforcement", start.contains("Prefs.KEEP_DOZE_ENFORCED"))
         assertTrue("policy sees both fresh deep/light state and latched maintenance", start.contains("DozeStateReading reading = runtime.readState();") && start.contains("onExternalReapply(reading, maintenance, Build.VERSION.SDK_INT)"))
         val stateRead = start.indexOf("DozeStateReading reading = runtime.readState();")
-        val consent = start.indexOf("Prefs.ALLOW_EXTERNAL_BASIC_CONTROL")
+        val consent = start.indexOf("Prefs.ALLOW_EXTERNAL_BASIC_CONTROL", stateRead)
         assertTrue("consent, deadline and generation are checked after the blocking state read", stateRead >= 0 && stateRead < consent && consent < gate)
         assertTrue(start.substring(stateRead, consent).contains("now = runtime.getClock().elapsedRealtime();"))
         val skipped = start.substringAfter("if (decision instanceof Decision.SKIP)").substringBefore("reapplyEnter(generation, epoch);")
@@ -35,6 +35,28 @@ class ExternalControlWiringTest {
         assertTrue("every ordinary enter starts watchdog spacing before mutation", enterCore.indexOf("runtime.getWatchdog().recordEnter();") in 0 until enterCore.indexOf("runtime.getController().enterCore("))
         val call = receiver().substringAfter("case REAPPLY_DOZE:").substringBefore("break;")
         assertTrue("broadcast remains REQUESTED, never claims a completed reforce", call.contains("Outcome.REQUESTED, ExecutionReason.REAPPLY_REQUESTED"))
+    }
+
+    @Test fun externalAdmissionRejectsBeforeStateReadsAndIsRecheckedAfterwards() {
+        val reapply = service().substringAfter("if (reapply) {").substringBefore("private void reapplyEnter(")
+        val read = reapply.indexOf("DozeStateReading reading = runtime.readState();")
+        assertTrue("reapply must read fresh state for admitted requests", read >= 0)
+        val before = reapply.substringBefore("DozeStateReading reading = runtime.readState();")
+        val after = reapply.substringAfter("DozeStateReading reading = runtime.readState();")
+            .substringBefore("Decision decision =")
+        for ((phase, block) in listOf("before reads" to before, "after reads" to after)) {
+            assertTrue("generation must be checked $phase", block.contains("generation != runtime.getController().getCurrentGeneration()"))
+            assertTrue("exit epoch must be checked $phase", block.contains("epoch != exitEpoch.get()"))
+            assertTrue("deadline must be checked $phase", block.contains("now >= deadline"))
+            assertTrue("session admission must be checked $phase", block.contains("!admitted()"))
+            assertTrue("basic-control consent must be checked $phase", block.contains("!getDefaultSharedPreferences(this).getBoolean(")
+                && block.contains("Prefs.ALLOW_EXTERNAL_BASIC_CONTROL, Prefs.DEFAULT_ALLOW_EXTERNAL_BASIC_CONTROL"))
+            val rejection = block.substringAfter("Prefs.DEFAULT_ALLOW_EXTERNAL_BASIC_CONTROL)) {")
+            assertEquals("admission rejection is journaled exactly once $phase", 1,
+                Regex("journalReapplySkipped\\(runtime, ReapplySkip.EXTERNAL_REAPPLY_NOT_ADMITTED\\)").findAll(rejection).count())
+            assertTrue("admission rejection returns $phase", rejection.substringBefore("}").contains("return;"))
+        }
+        assertTrue("blocking reads require a fresh deadline check", after.contains("now = runtime.getClock().elapsedRealtime();"))
     }
 
     @Test fun externalSpacingAndBudgetPrecheckReturnsBeforeAnyStateRead() {

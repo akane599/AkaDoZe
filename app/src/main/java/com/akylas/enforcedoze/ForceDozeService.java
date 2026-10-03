@@ -447,6 +447,12 @@ public class ForceDozeService extends Service {
                     ExternalControlReceiver.journalReapplySkipped(runtime, precheck);
                     return;
                 }
+                if (generation != runtime.getController().getCurrentGeneration() || epoch != exitEpoch.get()
+                        || now >= deadline || !admitted() || !getDefaultSharedPreferences(this).getBoolean(
+                                Prefs.ALLOW_EXTERNAL_BASIC_CONTROL, Prefs.DEFAULT_ALLOW_EXTERNAL_BASIC_CONTROL)) {
+                    ExternalControlReceiver.journalReapplySkipped(runtime, ReapplySkip.EXTERNAL_REAPPLY_NOT_ADMITTED);
+                    return;
+                }
                 DozeStateReading reading = runtime.readState();
                 // State reads may block; retain deadline, consent and generation admission afterwards.
                 now = runtime.getClock().elapsedRealtime();

@@ -49,13 +49,38 @@ class DozePolicyTest {
         assertEquals(Decision.REFORCE, trigger())
     }
 
+    @Test fun cancelledDeferredCallbackCanBeScheduledAgainWithoutResettingSpacingOrBudget() {
+        var scheduledCallback: Decision.DEFER? = null
+        fun kick(): Decision = trigger().also {
+            if (it is Decision.DEFER) scheduledCallback = it
+        }
+        assertEquals(Decision.REFORCE, kick())
+        clock.elapsed = 10_000
+        assertEquals(Decision.DEFER(60_000), kick())
+        // Simulate the callback removal performed by DozeRuntime.bumpGeneration().
+        scheduledCallback = null
+        policy.cancelDeferred()
+        clock.elapsed = 20_000
+        val next = kick()
+        assertTrue("a cancelled callback must be replaced, never ignored without a scheduled retry",
+            next == Decision.REFORCE || (next is Decision.DEFER && scheduledCallback == next))
+        assertEquals("cancellation must not reset the original spacing", Decision.DEFER(60_000), next)
+        assertEquals("only one replacement callback is scheduled", Decision.IGNORE, kick())
+        for (n in 1..4) {
+            clock.elapsed = n * 60_000L
+            assertEquals(Decision.REFORCE, kick())
+        }
+        clock.elapsed = 300_000
+        assertEquals("cancellation must not replenish the session budget", Decision.IGNORE, kick())
+    }
+
     @Test fun firstAutomaticReforceAfterAnOrdinaryEnterIsImmediate() {
         policy.recordEnter()
         clock.elapsed = 10_000
         assertEquals("an ordinary enter must not delay the first automatic kick", Decision.REFORCE, trigger())
     }
 
-    @Test fun accessChurnCannotLoseTheNextAutomaticReforce() {
+    @Test fun accessReturnWithoutAPendingCallbackKeepsAutomaticSpacing() {
         var scheduledCallback: Decision.DEFER? = null
         fun kick(): Decision = trigger().also {
             if (it is Decision.DEFER) scheduledCallback = it
@@ -64,7 +89,7 @@ class DozePolicyTest {
         clock.elapsed = 10_000
         kick()
         clock.elapsed = 20_000
-        // DozeRuntime.bumpGeneration cancels the worker callback, not policy state.
+        // Access churn occurs before any deferred callback has been requested.
         scheduledCallback = null
         clock.elapsed = 30_000
         policy.recordEnter()
