@@ -16,14 +16,23 @@ class JournalIdentity {
         private set
     private var lastTestId = 0L
     private var testFeature: Feature? = null
+    private var testThread: Thread? = null
 
+    @Synchronized
     fun beginSession(wallTime: Long) { sessionId = maxOf(sessionId + 1, wallTime) }
+    @Synchronized
     fun beginSelfTest(feature: Feature, wallTime: Long) {
         lastTestId = minOf(lastTestId - 1, -maxOf(1, wallTime))
         testFeature = feature
+        testThread = Thread.currentThread()
     }
-    fun endSelfTest() { testFeature = null }
-    fun forEvent(feature: Feature?): Long = if (testFeature != null &&
+    @Synchronized
+    fun endSelfTest() {
+        testFeature = null
+        testThread = null
+    }
+    @Synchronized
+    fun forEvent(feature: Feature?): Long = if (testThread === Thread.currentThread() && testFeature != null &&
         (feature == null || feature == testFeature)
     ) lastTestId else sessionId
 }

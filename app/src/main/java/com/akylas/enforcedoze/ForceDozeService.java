@@ -31,6 +31,7 @@ import com.akylas.enforcedoze.doze.parse.DozeStateReading;
 import com.akylas.enforcedoze.service.DozeRuntime;
 import com.akylas.enforcedoze.service.LegacyDozeStats;
 import com.akylas.enforcedoze.service.SessionLifecycle;
+import com.akylas.enforcedoze.service.SessionAccess;
 import com.akylas.enforcedoze.service.FeatureSelection;
 import com.akylas.enforcedoze.service.DeferredFeatureSelection;
 import java.util.concurrent.CountDownLatch;
@@ -357,16 +358,21 @@ public class ForceDozeService extends Service {
         cancelEnter();
         if (pendingNotification != null) worker.removeCallbacks(pendingNotification);
         CountDownLatch stopped = new CountDownLatch(1);
-        long deadline = runtime.getClock().elapsedRealtime() + SessionLifecycle.TEARDOWN_COMMAND_MS;
         runtime.detachService(() -> {
+            long deadline = runtime.getClock().elapsedRealtime() + SessionLifecycle.TEARDOWN_COMMAND_MS;
+            AtomicBoolean complete = new AtomicBoolean();
             try {
                 runtime.withDeadline(deadline, () -> {
-                    runtime.recordExit(runtime.getController().exit(Build.VERSION.SDK_INT, runtime.grants()));
+                    ExitResult result = runtime.getController().exit(Build.VERSION.SDK_INT, runtime.grants());
+                    complete.set(result.getComplete());
+                    runtime.recordExit(result);
                     runtime.checkSafety();
                 });
             } catch (Exception error) {
+                complete.set(false);
                 runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "TEARDOWN_FAILED"));
             } finally {
+                if (!complete.get()) queueTeardownRestore();
                 runtime.getSession().recordExit(); // A destroyed session cannot suppress a replacement ENTER.
                 releaseWakeLock();
                 runtime.quitIfDetached();
@@ -386,6 +392,21 @@ public class ForceDozeService extends Service {
         }
         Utils.updateTileState(this);
         super.onDestroy();
+    }
+
+    /** Queued before idle retirement, after withDeadline has cleared the teardown budget. */
+    private void queueTeardownRestore() {
+        // Separate from tempWakeLock: main-thread onDestroy cleanup must not release this lock.
+        PowerManager.WakeLock wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "forcedoze:restore");
+        wakeLock.acquire(30_000L);
+        worker.post(() -> {
+            try {
+                runtime.reconcileAndCheck();
+            } finally {
+                releaseWakeLock(wakeLock);
+                runtime.quitIfDetached();
+            }
+        });
     }
 
     @Override
@@ -647,7 +668,7 @@ public class ForceDozeService extends Service {
 
     private boolean admitted() {
         return !destroyed && runtime.getSessionActive()
-                && runtime.getAccess().getLevel().compareTo(AccessLevel.SHELL) >= 0
+                && SessionAccess.canRunSessions(runtime.getAccess().getLevel())
                 && !runtime.getStore().getLoadFailed() && runtime.getStore().getCorruptLines().isEmpty()
                 && runtime.getClock().elapsedRealtime() >= enterDueElapsed
                 && getDefaultSharedPreferences(this).getBoolean(Prefs.SERVICE_ENABLED, false)

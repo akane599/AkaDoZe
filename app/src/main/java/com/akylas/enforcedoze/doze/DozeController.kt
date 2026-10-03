@@ -229,8 +229,7 @@ class DozeController(
                         attempts = if (entry.attempts == Int.MAX_VALUE) entry.attempts else entry.attempts + 1,
                         debt = debtReason != null,
                     )
-                    emit(if (debtReason != null) EventType.RECOVERY_DEBT else EventType.RESTORE_FAILED,
-                        entry.feature, entry.target, debtReason ?: Reason.UNVERIFIED)
+                    emit(EventType.RESTORE_FAILED, entry.feature, entry.target, debtReason ?: Reason.UNVERIFIED)
                 }
                 val next = RestoreLedger(updated)
                 try {
@@ -241,6 +240,10 @@ class DozeController(
                     // Keep the durable intent and continue restoring the other entries.
                     errors.add(ExitError.LEDGER_SAVE_FAILED)
                     emit(EventType.ERROR, entry.feature, entry.target, Reason.UNVERIFIED)
+                }
+                // Notify once per retained entry, including unknown reads and failed durable cleanup.
+                if (ledger.entries.any { sameKey(it, entry.feature, entry.target) }) {
+                    emit(EventType.RECOVERY_DEBT, entry.feature, entry.target, debtReason ?: Reason.UNVERIFIED)
                 }
             }
             ExitResult(restored.toList(), ledger, errors.toList())
@@ -309,15 +312,16 @@ class DozeController(
             Feature.MOTION_SENSORS -> {
                 val reading = SensorModeParser.parse(read(feature, target, false))
                 lastSensor = reading.mode
-                emit(EventType.VERIFY, feature, target, sensor = reading.mode)
                 (reading.mode == SensorMode.RESTRICTED && reading.allowToken == target).also {
+                    emit(EventType.VERIFY, feature, target, if (it) null else Reason.UNVERIFIED, sensor = reading.mode)
                     if (it) emit(EventType.SENSORS_RESTRICTED, feature, target, sensor = reading.mode)
                 }
             }
             Feature.FORCE_DOZE -> {
                 lastDeep = DozeStateParser.parseDeep(read(feature, target, false))
-                emit(EventType.VERIFY, feature, target, deep = lastDeep)
-                lastDeep == DeepState.IDLE || lastDeep == DeepState.IDLE_MAINTENANCE
+                (lastDeep == DeepState.IDLE || lastDeep == DeepState.IDLE_MAINTENANCE).also {
+                    emit(EventType.VERIFY, feature, target, if (it) null else Reason.UNVERIFIED, deep = lastDeep)
+                }
             }
             else -> readValue(feature, target, false).let { value ->
                 if (feature == Feature.NOTIFICATION_BLOCK && apiLevel < 33) value?.startsWith("0,") == true
@@ -326,7 +330,8 @@ class DozeController(
                 emit(EventType.VERIFY, feature, target, if (it) null else Reason.UNVERIFIED)
             }
         }
-        return if (verified) StepResult(feature, target, StepStatus.VERIFIED) else unverified(feature, target)
+        return StepResult(feature, target, if (verified) StepStatus.VERIFIED else StepStatus.UNVERIFIED,
+            if (verified) null else Reason.UNVERIFIED)
     }
 
     private fun verifyRestore(entry: LedgerEntry, apiLevel: Int): Boolean {
