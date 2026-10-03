@@ -7,6 +7,27 @@ import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
+/** External requests cannot infer whether a timed-out mutation landed. Readback owns VERIFIED. */
+enum class ExternalCallOutcome {
+    REQUESTED, VERIFIED, FAILED, DENIED, UNVERIFIED;
+
+    companion object {
+        @JvmStatic
+        fun fromCommand(result: CommandResult): ExternalCallOutcome = when {
+            result.timedOut -> UNVERIFIED
+            !result.ok -> FAILED
+            else -> REQUESTED
+        }
+
+        @JvmStatic
+        fun fromReadback(matches: Boolean?): ExternalCallOutcome = when (matches) {
+            null -> UNVERIFIED
+            true -> VERIFIED
+            false -> FAILED
+        }
+    }
+}
+
 /** A lane owns its backend. reset must abort the active process/session and is called before reuse. */
 interface CommandBackend {
     val level: AccessLevel

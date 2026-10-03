@@ -35,6 +35,7 @@ import com.akylas.enforcedoze.service.FeatureSelection;
 import com.akylas.enforcedoze.service.DeferredFeatureSelection;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import android.os.PowerManager;
 import android.preference.PreferenceManager;
@@ -84,6 +85,7 @@ public class ForceDozeService extends Service {
     }
     private Handler worker;
     private volatile boolean destroyed;
+    private volatile boolean foreground;
     private volatile boolean waitForUnlock;
     private volatile boolean disableWhenCharging = true;
     private final AtomicLong exitEpoch = new AtomicLong();
@@ -388,24 +390,35 @@ public class ForceDozeService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         super.onStartCommand(intent, flags, startId);
-        // Promotion cannot wait behind reconciliation or command work, on any supported API.
-        if (showPersistentNotif) showPersistentNotification(); else showSilentNotification();
-        if (intent != null && ACTION_REAPPLY_DOZE.equals(intent.getAction())) {
+        boolean reapply = intent != null && ACTION_REAPPLY_DOZE.equals(intent.getAction());
+        // A background reapply of an already-foreground service must not re-promote on API 31+.
+        if (!reapply || !foreground) {
+            try {
+                if (showPersistentNotif) showPersistentNotification(); else showSilentNotification();
+            } catch (IllegalStateException denied) {
+                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "FOREGROUND_START_DENIED"));
+                return START_NOT_STICKY;
+            }
+        }
+        if (reapply) {
             final long generation = runtime.getController().getCurrentGeneration();
             final long epoch = exitEpoch.get();
             final long deadline = intent.getLongExtra(EXTRA_REAPPLY_DEADLINE, 0);
             postWork(() -> {
+                long now = runtime.getClock().elapsedRealtime();
+                // Also preserve a due callback already queued on the worker, rather than entering twice.
+                if (enterDueElapsed > now || pendingEnter != null) {
+                    runtime.getJournal().emit(new DozeEvent(EventType.SKIPPED, "EXTERNAL_REAPPLY_ENTER_PENDING"));
+                    return;
+                }
                 if (generation != runtime.getController().getCurrentGeneration() || epoch != exitEpoch.get()
-                        || runtime.getClock().elapsedRealtime() >= deadline || Utils.isScreenOn(this)
-                        || !runtime.getSessionActive() || !getDefaultSharedPreferences(this).getBoolean(
+                        || now >= deadline || !admitted() || !getDefaultSharedPreferences(this).getBoolean(
                                 Prefs.ALLOW_EXTERNAL_BASIC_CONTROL, Prefs.DEFAULT_ALLOW_EXTERNAL_BASIC_CONTROL)) {
                     runtime.getJournal().emit(new DozeEvent(EventType.SKIPPED, "EXTERNAL_REAPPLY_NOT_ADMITTED"));
                     return;
                 }
-                cancelEnter();
-                enterDueElapsed = runtime.getClock().elapsedRealtime();
-                // enterDoze and its controller retain all normal admission/generation checks.
-                runtime.withDeadline(deadline, () -> enterDoze(this));
+                // The broadcast has already completed REQUESTED. Its deadline is admission-only.
+                reapplyEnter(generation, epoch);
             });
             return START_STICKY;
         }
@@ -426,6 +439,28 @@ public class ForceDozeService extends Service {
             Utils.updateTileState(this);
         });
         return START_STICKY;
+    }
+
+    private void reapplyEnter(long generation, long epoch) {
+        PowerManager.WakeLock wakeLock = acquireEnterWakeLock();
+        AtomicBoolean completed = new AtomicBoolean();
+        EnterCompletion completion = retryNeeded -> {
+            if (!completed.compareAndSet(false, true)) return;
+            releaseWakeLock(wakeLock);
+            if (retryNeeded && generation == runtime.getController().getCurrentGeneration()
+                    && epoch == exitEpoch.get() && !destroyed && runtime.getSessionActive()
+                    && !Utils.isScreenOn(this) && getDefaultSharedPreferences(this).getBoolean(
+                            Prefs.ALLOW_EXTERNAL_BASIC_CONTROL, Prefs.DEFAULT_ALLOW_EXTERNAL_BASIC_CONTROL)) {
+                // The scheduled retry is an ordinary enter, not another reapply/retry loop.
+                scheduleEnter();
+            }
+        };
+        try {
+            enterDoze(disableMotionSensors, generation, completion);
+        } catch (Exception error) {
+            runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "EXTERNAL_REAPPLY_FAILED"));
+            completion.complete(true);
+        }
     }
 
     public void reloadSettings() {
@@ -635,8 +670,18 @@ public class ForceDozeService extends Service {
     }
 
     private synchronized void releaseWakeLock() {
-        PowerManager.WakeLock wakeLock = tempWakeLock;
+        releaseWakeLock(tempWakeLock);
+    }
+
+    private synchronized void releaseWakeLock(PowerManager.WakeLock wakeLock) {
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
+    }
+
+    private synchronized PowerManager.WakeLock acquireEnterWakeLock() {
+        releaseWakeLock();
+        tempWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "forcedoze:tempWakelock");
+        tempWakeLock.acquire(10 * 60 * 1000L);
+        return tempWakeLock;
     }
 
     private void scheduleEnter() {
@@ -648,13 +693,14 @@ public class ForceDozeService extends Service {
         enterDueElapsed = runtime.getClock().elapsedRealtime() + delay;
         long generation = runtime.getController().getCurrentGeneration();
         pendingEnter = () -> {
-            if (generation == runtime.getController().getCurrentGeneration()) enterDoze(this);
-            releaseWakeLock();
+            pendingEnter = null;
+            try {
+                if (generation == runtime.getController().getCurrentGeneration()) enterDoze(this);
+            } finally {
+                releaseWakeLock();
+            }
         };
-        if (delay > 0) {
-            tempWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "forcedoze:tempWakelock");
-            tempWakeLock.acquire(10 * 60 * 1000L);
-        }
+        if (delay > 0) acquireEnterWakeLock();
         worker.postDelayed(pendingEnter, delay);
     }
 
@@ -662,31 +708,55 @@ public class ForceDozeService extends Service {
         enterDoze(disableMotionSensors);
     }
 
+    private interface EnterCompletion { void complete(boolean retryNeeded); }
+
+    private static boolean needsEnterRetry(EnterResult result) {
+        if (result == null || result.getStatus() == EnterStatus.CANCELLED) return true;
+        for (StepResult step : result.getSteps()) {
+            if (step.getStatus() == StepStatus.UNVERIFIED || step.getReason() == com.akylas.enforcedoze.access.Reason.UNVERIFIED) return true;
+        }
+        return false;
+    }
+
     private void enterDoze(boolean sensors) {
-        if (!admitted()) {
+        enterDoze(sensors, runtime.getController().getCurrentGeneration(), retryNeeded -> { });
+    }
+
+    private void enterDoze(boolean sensors, long generation, EnterCompletion completion) {
+        if (!admitted() || generation != runtime.getController().getCurrentGeneration()) {
             runtime.getJournal().emit(new DozeEvent(EventType.SKIPPED, "ADMISSION"));
+            completion.complete(true);
             return;
         }
-        long generation = runtime.getController().getCurrentGeneration();
         cancelFeatureSelection();
+        final boolean coreRetryNeeded;
         try {
             DozeConfig core = new DozeConfig(Build.VERSION.SDK_INT, runtime.getAccess().getLevel(), runtime.grants(),
                     sensors, runtime.getAllowToken(), getDefaultSharedPreferences(this).getBoolean(Prefs.TURN_ON_BATTERY_SAVER, false));
             EnterResult result = runtime.getController().enterCore(core, generation, this::admitted);
+            coreRetryNeeded = needsEnterRetry(result);
             if (result.getStatus() == EnterStatus.CANCELLED || !admitted()
-                    || generation != runtime.getController().getCurrentGeneration()) return;
+                    || generation != runtime.getController().getCurrentGeneration()) {
+                completion.complete(true);
+                return;
+            }
             recordVerifiedEnter();
         } catch (Exception error) {
             runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "ENTER_FAILED"));
+            completion.complete(true);
             return;
         }
         DeferredFeatureSelection selection = new DeferredFeatureSelection(generation,
                 () -> runtime.getController().getCurrentGeneration(), this::admitted,
-                playing -> enterConfiguredDoze(playing, generation));
+                playing -> {
+                    EnterResult groups = enterConfiguredDoze(playing, generation);
+                    completion.complete(coreRetryNeeded || needsEnterRetry(groups));
+                });
         featureSelection = selection;
         if (whitelistMusicAppNetwork) {
             selectionTimeout = () -> {
                 if (selection.complete(null)) runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "MUSIC_SELECTION_TIMEOUT"));
+                else completion.complete(true);
             };
             worker.postDelayed(selectionTimeout, MUSIC_SELECTION_TIMEOUT_MS);
             try {
@@ -722,20 +792,20 @@ public class ForceDozeService extends Service {
         selection.complete(false);
     }
 
-    private void enterConfiguredDoze(Boolean playingMusic, long generation) {
-        if (!admitted() || generation != runtime.getController().getCurrentGeneration()) return;
+    private EnterResult enterConfiguredDoze(Boolean playingMusic, long generation) {
+        if (!admitted() || generation != runtime.getController().getCurrentGeneration()) return null;
         try {
             selectedGroups = config(false, playingMusic);
-            runtime.getController().enterGroups(selectedGroups, generation, this::admitted);
+            return runtime.getController().enterGroups(selectedGroups, generation, this::admitted);
         } catch (Exception error) {
             runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "FEATURE_SELECTION_FAILED"));
+            return null;
         }
     }
 
     private void recordVerifiedEnter() {
         lastKnownState = deepState();
         if (!lastKnownState.equals("IDLE")) return;
-        releaseWakeLock();
         if (verifiedIdleSeen) return;
         verifiedIdleSeen = true;
         timeEnterDoze = System.currentTimeMillis();
@@ -872,6 +942,7 @@ public class ForceDozeService extends Service {
         ServiceCompat.startForeground(this, PERSISTENT_NOTIF_ID, n,
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
                         ? ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE : 0);
+        foreground = true;
     }
 
     public void updatePersistentNotification(String lastScreenOff, int timeSpentDozing, int batteryUsage) {
@@ -893,11 +964,13 @@ public class ForceDozeService extends Service {
         ServiceCompat.startForeground(this, PERSISTENT_NOTIF_ID, n,
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
                         ? ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE : 0);
+        foreground = true;
     }
 
     public void hidePersistentNotification() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(Service.STOP_FOREGROUND_REMOVE);
+            foreground = false;
         }
     }
 
@@ -927,6 +1000,7 @@ public class ForceDozeService extends Service {
         ServiceCompat.startForeground(this, PERSISTENT_NOTIF_ID, n,
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
                         ? ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE : 0);
+        foreground = true;
     }
 
     private String deepState() {
@@ -1002,8 +1076,13 @@ public class ForceDozeService extends Service {
         // preserving the first enter's admission deadline instead of restarting its delay.
         long generation = runtime.getController().getCurrentGeneration();
         pendingEnter = () -> {
-            if (generation == runtime.getController().getCurrentGeneration() && admitted()) {
-                enterDoze(disableMotionSensors);
+            pendingEnter = null;
+            try {
+                if (generation == runtime.getController().getCurrentGeneration() && admitted()) {
+                    enterDoze(disableMotionSensors);
+                }
+            } finally {
+                releaseWakeLock();
             }
         };
         worker.postDelayed(pendingEnter, Math.max(0, enterDueElapsed - runtime.getClock().elapsedRealtime()));

@@ -16,6 +16,8 @@ import com.akylas.enforcedoze.access.AccessManager;
 import com.akylas.enforcedoze.access.CapabilityResolver;
 import com.akylas.enforcedoze.access.CommandCatalog;
 import com.akylas.enforcedoze.access.CommandResult;
+import com.akylas.enforcedoze.access.ExternalCallOutcome;
+import com.akylas.enforcedoze.access.ExternalCallRateLimiter;
 import com.akylas.enforcedoze.access.ExternalControlPolicy;
 import com.akylas.enforcedoze.access.ExternalControlPolicy.Action;
 import com.akylas.enforcedoze.access.ExternalControlPolicy.Decision;
@@ -46,8 +48,9 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
             task -> new Thread(task, "external-control-deadlines"));
     static { DEADLINES.setRemoveOnCancelPolicy(true); }
 
+    private static final ExternalCallRateLimiter JOURNAL_LIMIT = new ExternalCallRateLimiter(SystemClock::elapsedRealtime);
+
     private enum Permission { ALLOWED, DENIED }
-    private enum Outcome { REQUESTED, VERIFIED, FAILED, DENIED }
     private enum ExecutionReason {
         TIMED_OUT, BUSY, ADMISSION_CHANGED, PREFERENCE_WRITE_FAILED, PREFERENCE_WRITTEN,
         FOREGROUND_START_DENIED, SERVICE_START_REQUESTED, SERVICE_STOP_REQUESTED,
@@ -71,7 +74,7 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
         // Closed gates take precedence and do not require decoding untrusted extras.
         if (decision.getReason() == DenialReason.BASIC_CONTROL_DISABLED
                 || decision.getReason() == DenialReason.PRIVILEGED_CONTROL_DISABLED) {
-            journal(runtime, caller, Permission.DENIED, Outcome.DENIED, decision.getReason());
+            journal(runtime, caller, Permission.DENIED, ExternalCallOutcome.DENIED, decision.getReason());
             return;
         }
         try {
@@ -83,21 +86,21 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
             }
             decision = decide(prefs, key, value, pkg);
         } catch (RuntimeException invalidExtra) {
-            journal(runtime, caller, Permission.DENIED, Outcome.DENIED, DenialReason.INVALID_EXTRA);
+            journal(runtime, caller, Permission.DENIED, ExternalCallOutcome.DENIED, DenialReason.INVALID_EXTRA);
             return;
         }
         if (!decision.getAllowed()) {
-            journal(runtime, caller, Permission.DENIED, Outcome.DENIED, decision.getReason());
+            journal(runtime, caller, Permission.DENIED, ExternalCallOutcome.DENIED, decision.getReason());
             return;
         }
         PendingResult pending = goAsync();
         Call call = new Call(app, runtime, prefs, caller, key, value, pkg, pending);
-        call.timer = DEADLINES.schedule(() -> call.complete(Permission.ALLOWED, Outcome.FAILED, ExecutionReason.TIMED_OUT),
+        call.timer = DEADLINES.schedule(() -> call.complete(Permission.ALLOWED, ExternalCallOutcome.UNVERIFIED, ExecutionReason.TIMED_OUT),
                 BUDGET_MS, TimeUnit.MILLISECONDS);
         try {
             WORK.execute(call);
         } catch (RejectedExecutionException busy) {
-            call.complete(Permission.ALLOWED, Outcome.FAILED, ExecutionReason.BUSY);
+            call.complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.BUSY);
         }
     }
 
@@ -115,7 +118,13 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
                 key, value, pkg);
     }
 
-    private void journal(DozeRuntime runtime, String caller, Permission permission, Outcome outcome, Enum<?> reason) {
+    private void journal(DozeRuntime runtime, String caller, Permission permission, ExternalCallOutcome outcome, Enum<?> reason) {
+        ExternalCallRateLimiter.Admission admission = JOURNAL_LIMIT.record(action);
+        if (!admission.getAdmitted()) return;
+        if (admission.getSuppressed() > 0) {
+            runtime.getJournal().emit(new DozeEvent(EventType.EXTERNAL_CALL,
+                    "action=" + action.name() + " suppressed=" + admission.getSuppressed()));
+        }
         // Caller identity is platform supplied, never an Intent extra. Do not record target packages/values.
         runtime.getJournal().emit(new DozeEvent(EventType.EXTERNAL_CALL,
                 permission.name().toLowerCase(java.util.Locale.ROOT) + " action=" + action.name() + " caller=" + caller
@@ -148,7 +157,7 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
         boolean live() { return !finished.get() && System.nanoTime() < deadlineNanos; }
         boolean admitted() { return live() && decide(prefs, key, value, pkg).getAllowed(); }
 
-        void complete(Permission permission, Outcome outcome, Enum<?> reason) {
+        void complete(Permission permission, ExternalCallOutcome outcome, Enum<?> reason) {
             if (!finished.compareAndSet(false, true)) return;
             ScheduledFuture<?> timeout = timer;
             if (timeout != null) timeout.cancel(false);
@@ -159,9 +168,9 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
 
         @Override
         public void run() {
-            if (!live()) { complete(Permission.ALLOWED, Outcome.FAILED, ExecutionReason.TIMED_OUT); return; }
+            if (!live()) { complete(Permission.ALLOWED, ExternalCallOutcome.UNVERIFIED, ExecutionReason.TIMED_OUT); return; }
             Decision current = decide(prefs, key, value, pkg);
-            if (!current.getAllowed()) { complete(Permission.DENIED, Outcome.DENIED, current.getReason()); return; }
+            if (!current.getAllowed()) { complete(Permission.DENIED, ExternalCallOutcome.DENIED, current.getReason()); return; }
             try {
                 switch (action) {
                     case ADD_WHITELIST:
@@ -169,7 +178,7 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
                         editWhitelist();
                         break;
                     case CHANGE_SETTING:
-                        if (!admitted()) { complete(Permission.ALLOWED, Outcome.FAILED, ExecutionReason.ADMISSION_CHANGED); return; }
+                        if (!admitted()) { complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.ADMISSION_CHANGED); return; }
                         SharedPreferences.Editor editor = prefs.edit();
                         SettingValue setting = current.getValue();
                         if (setting instanceof SettingValue.BooleanValue) {
@@ -177,39 +186,39 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
                         } else if (setting instanceof SettingValue.IntegerValue) {
                             editor.putInt(key, ((SettingValue.IntegerValue) setting).getValue());
                         }
-                        if (!editor.commit()) { complete(Permission.ALLOWED, Outcome.FAILED, ExecutionReason.PREFERENCE_WRITE_FAILED); return; }
+                        if (!editor.commit()) { complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.PREFERENCE_WRITE_FAILED); return; }
                         LocalBroadcastManager.getInstance(app).sendBroadcast(new Intent("reload-settings"));
-                        complete(Permission.ALLOWED, Outcome.VERIFIED, ExecutionReason.PREFERENCE_WRITTEN);
+                        complete(Permission.ALLOWED, ExternalCallOutcome.VERIFIED, ExecutionReason.PREFERENCE_WRITTEN);
                         break;
                     case ENABLE_SERVICE:
-                        if (!admitted()) { complete(Permission.ALLOWED, Outcome.FAILED, ExecutionReason.ADMISSION_CHANGED); return; }
+                        if (!admitted()) { complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.ADMISSION_CHANGED); return; }
                         // Never persist a false enabled state when background FGS start was denied.
                         if (!Utils.startForceDozeService(app)) {
-                            complete(Permission.ALLOWED, Outcome.FAILED, ExecutionReason.FOREGROUND_START_DENIED);
+                            complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.FOREGROUND_START_DENIED);
                         } else if (!prefs.edit().putBoolean(Prefs.SERVICE_ENABLED, true).commit()) {
-                            complete(Permission.ALLOWED, Outcome.FAILED, ExecutionReason.PREFERENCE_WRITE_FAILED);
-                        } else complete(Permission.ALLOWED, Outcome.REQUESTED, ExecutionReason.SERVICE_START_REQUESTED);
+                            complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.PREFERENCE_WRITE_FAILED);
+                        } else complete(Permission.ALLOWED, ExternalCallOutcome.REQUESTED, ExecutionReason.SERVICE_START_REQUESTED);
                         break;
                     case DISABLE_SERVICE:
-                        if (!admitted()) { complete(Permission.ALLOWED, Outcome.FAILED, ExecutionReason.ADMISSION_CHANGED); return; }
+                        if (!admitted()) { complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.ADMISSION_CHANGED); return; }
                         if (!prefs.edit().putBoolean(Prefs.SERVICE_ENABLED, false).commit()) {
-                            complete(Permission.ALLOWED, Outcome.FAILED, ExecutionReason.PREFERENCE_WRITE_FAILED); return;
+                            complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.PREFERENCE_WRITE_FAILED); return;
                         }
                         Utils.stopForceDozeService(app);
-                        complete(Permission.ALLOWED, Outcome.REQUESTED, ExecutionReason.SERVICE_STOP_REQUESTED);
+                        complete(Permission.ALLOWED, ExternalCallOutcome.REQUESTED, ExecutionReason.SERVICE_STOP_REQUESTED);
                         break;
                     case REAPPLY_DOZE:
                         if (!admitted() || Utils.isScreenOn(app) || !Utils.isMyServiceRunning(ForceDozeService.class, app)) {
-                            complete(Permission.ALLOWED, Outcome.FAILED, ExecutionReason.NOT_ADMITTED); return;
+                            complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.NOT_ADMITTED); return;
                         }
                         app.startService(new Intent(app, ForceDozeService.class)
                                 .setAction(ForceDozeService.ACTION_REAPPLY_DOZE)
                                 .putExtra(ForceDozeService.EXTRA_REAPPLY_DEADLINE, deadlineElapsed));
-                        complete(Permission.ALLOWED, Outcome.REQUESTED, ExecutionReason.REAPPLY_REQUESTED);
+                        complete(Permission.ALLOWED, ExternalCallOutcome.REQUESTED, ExecutionReason.REAPPLY_REQUESTED);
                         break;
                 }
             } catch (Exception error) {
-                complete(Permission.ALLOWED, Outcome.FAILED, ExecutionReason.EXECUTION_FAILED);
+                complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.EXECUTION_FAILED);
             }
         }
 
@@ -217,32 +226,32 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
             try {
                 app.getPackageManager().getApplicationInfo(pkg, 0);
             } catch (PackageManager.NameNotFoundException missing) {
-                complete(Permission.DENIED, Outcome.DENIED, DenialReason.PACKAGE_NOT_INSTALLED);
+                complete(Permission.DENIED, ExternalCallOutcome.DENIED, DenialReason.PACKAGE_NOT_INSTALLED);
                 return;
             }
             AccessManager access = runtime.getAccess();
             FeatureStatus status = CapabilityResolver.status(Feature.WHITELIST_EDIT, access.getLevel(),
                     Build.VERSION.SDK_INT, runtime.grants());
             if (status instanceof FeatureStatus.Unavailable) {
-                complete(Permission.ALLOWED, Outcome.FAILED, ((FeatureStatus.Unavailable) status).getReason()); return;
+                complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ((FeatureStatus.Unavailable) status).getReason()); return;
             }
             boolean add = action == Action.ADD_WHITELIST;
             List<String> commands = CommandCatalog.setEnabled(Feature.WHITELIST_EDIT, Build.VERSION.SDK_INT, add, pkg);
-            if (commands == null) { complete(Permission.ALLOWED, Outcome.FAILED, ExecutionReason.UNVERIFIED); return; }
+            if (commands == null) { complete(Permission.ALLOWED, ExternalCallOutcome.UNVERIFIED, ExecutionReason.UNVERIFIED); return; }
             for (String command : commands) {
                 CommandResult result = access.controlWithDeadline(command, deadlineNanos,
                         () -> admitted() && CapabilityResolver.status(Feature.WHITELIST_EDIT, access.getLevel(),
                                 Build.VERSION.SDK_INT, runtime.grants()) == FeatureStatus.Available.INSTANCE);
                 if (!result.getOk()) {
-                    complete(Permission.ALLOWED, Outcome.FAILED, result.getTimedOut() ? ExecutionReason.TIMED_OUT : ExecutionReason.COMMAND_FAILED); return;
+                    complete(Permission.ALLOWED, ExternalCallOutcome.fromCommand(result), result.getTimedOut() ? ExecutionReason.TIMED_OUT : ExecutionReason.COMMAND_FAILED); return;
                 }
             }
             String read = CommandCatalog.readback(Feature.WHITELIST_EDIT, Build.VERSION.SDK_INT, pkg);
-            if (read == null) { complete(Permission.ALLOWED, Outcome.FAILED, ExecutionReason.UNVERIFIED); return; }
+            if (read == null) { complete(Permission.ALLOWED, ExternalCallOutcome.UNVERIFIED, ExecutionReason.UNVERIFIED); return; }
             CommandResult result = access.controlWithDeadline(read, deadlineNanos, this::admitted);
             Boolean membership = result.getOk() ? ExternalControlPolicy.whitelistMembership(result.getStdout(), pkg) : null;
-            if (membership == null || membership != add) complete(Permission.ALLOWED, Outcome.FAILED, ExecutionReason.UNVERIFIED);
-            else complete(Permission.ALLOWED, Outcome.VERIFIED, ExecutionReason.WHITELIST_READBACK);
+            complete(Permission.ALLOWED, ExternalCallOutcome.fromReadback(membership == null ? null : membership == add),
+                    membership == null ? ExecutionReason.UNVERIFIED : ExecutionReason.WHITELIST_READBACK);
         }
     }
 }
