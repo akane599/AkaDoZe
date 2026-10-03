@@ -1,0 +1,52 @@
+# EnforceDoze 1.11.0 — on-device test checklist
+
+Nothing below could be run here: there is no device, emulator or KVM. Every item is a real-device check.
+The Doze Monitor (menu → "Doze monitor", or long-press the quick tile) is the evidence source for most of them.
+Run them on Android 16 with Shizuku (shell) first, then repeat items 1–4 with root if you have it.
+
+**Before starting:** install over the old version, then open the app once. Settings should look the same as
+before, and nothing should be reset.
+
+1. **Self-tests under Shizuku.** Start the service, then open the Doze monitor and run "Test Doze now" and "Test sensor restriction".
+   - Expect PASSED for both.
+   - NOT_VERIFIED is honest if Doze was already forced by something else.
+   - Test buttons should be disabled while the service is stopped.
+2. **A real 30+ minute screen-off session with movement.** Lock the phone and carry it around.
+   - Afterwards the Monitor session should show the verified deep-IDLE percentage, any re-forces after
+     motion, sensors "restricted (verified)", maintenance windows and a coverage figure.
+   - `adb shell dumpsys sensorservice | grep "Mode :"` while dozing should print RESTRICTED. It should
+     print NORMAL after screen-on.
+3. **Kill Shizuku mid-doze.** With the screen off for at least 2 minutes, stop Shizuku from its app or by
+   rebooting it.
+   - Expect a recovery-debt notification.
+   - Restart Shizuku, then turn the screen on.
+   - Expect the debt to clear (restored + journaled in the Monitor), and sensors NORMAL / Doze unforced.
+4. **Honest settings.** In Shizuku mode, open Settings.
+   - Root-only items (disable all sensors, setprop Doze, notification blocking below Android 13) should
+     be disabled with a reason and tagged "Root".
+   - Their saved values must be unchanged after switching back to root.
+5. **Restore system state.** Doze monitor → "Restore system state". Afterwards:
+   - `adb shell dumpsys sensorservice | grep "Mode :"` should print NORMAL.
+   - `adb shell dumpsys deviceidle | grep mForceIdle` should print false.
+6. **Mode switch.**
+   - Switch root → Shizuku. Deny the Shizuku prompt: the app should revert to root with an explanation.
+   - Repeat with a screen rotation while the prompt is open.
+7. **Process death mid-session.** Screen off, wait 2 minutes, then crash the app:
+   `adb shell am crash com.akylas.enforcedoze`, or with root `adb shell su -c 'kill -9 $(pidof com.akylas.enforcedoze)'`.
+   - The service should come back by itself (START_STICKY) and reconcile.
+   - Screen on: nothing should stay RESTRICTED or forced, and any debt should be shown, then restored.
+   - Don't use `am force-stop`: it puts the app in the stopped state, so nothing restarts until you open it.
+8. **Radios/features you use** (Wi-Fi, data, Bluetooth, location, airplane, battery saver, app suspend,
+   notification block). Enable each one you rely on, do a session, then check it is back to its original
+   state after unlock. Biometrics should be restored on screen-on, before unlock.
+9. **Tasker/automation**, if you use it. External start/stop works only when its gate is on in Settings →
+   Other apps. Privileged external control is off by default. A rejected call shows one notice per gate.
+10. **Notifications (Android 13+).** Turn on "Summary notification after screen-on", grant the notification permission,
+    and check that a summary appears after a session. With the permission denied, nothing should be posted.
+11. **Update/boot.** Reboot with the service enabled, and install an update over it. The service should
+    come back, and no leftover RESTRICTED or forced state should remain.
+
+**If something fails:** Doze monitor → "Share report", plus
+`adb logcat -d --pid=$(adb shell pidof -s com.akylas.enforcedoze) | tail -200`.
+
+**Rollback:** run "Restore system state" before downgrading. Downgrading doesn't undo system state.
