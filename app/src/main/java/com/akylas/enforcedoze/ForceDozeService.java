@@ -28,6 +28,9 @@ import com.akylas.enforcedoze.access.Prefs;
 import com.akylas.enforcedoze.access.Feature;
 import com.akylas.enforcedoze.doze.*;
 import com.akylas.enforcedoze.doze.parse.DozeStateReading;
+import com.akylas.enforcedoze.doze.parse.FocusedAppParser;
+import com.akylas.enforcedoze.doze.parse.FocusedApps;
+import com.akylas.enforcedoze.service.PackageSelection;
 import com.akylas.enforcedoze.service.DozeRuntime;
 import com.akylas.enforcedoze.service.LegacyDozeStats;
 import com.akylas.enforcedoze.service.SessionLifecycle;
@@ -58,8 +61,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import eu.chainfire.libsuperuser.Shell;
 
@@ -639,23 +640,21 @@ public class ForceDozeService extends Service {
         }
         Set<Feature> features = FeatureSelection.features(enabled, Utils.isHotspotEnabled(this), ignoreIfHotspot,
                 !Boolean.FALSE.equals(playingMusic), playingMusic != null && Utils.isWiFiEnabled(this));
-        Set<String> apps = new HashSet<>(dozeAppBlocklist);
-        Set<String> focused = new HashSet<>();
+        FocusedApps focused = new FocusedApps.Known(java.util.Collections.emptySet());
         if (whitelistCurrentApp) {
-            if (runtime.getAccess().getLevel().compareTo(AccessLevel.SHELL) >= 0) getFocusedApps(focused::addAll);
+            if (runtime.getAccess().getLevel().compareTo(AccessLevel.SHELL) >= 0) focused = getFocusedApps();
             else {
                 String pkg = getNonRootFocusedPackageName();
-                if (pkg != null) focused.add(pkg);
+                focused = pkg != null && com.akylas.enforcedoze.access.PackageNames.isValid(pkg)
+                        ? new FocusedApps.Known(java.util.Collections.singleton(pkg))
+                        : new FocusedApps.Unknown(com.akylas.enforcedoze.access.Reason.UNVERIFIED);
             }
         }
-        apps.removeAll(focused);
-        apps.remove(getPackageName());
-        Set<String> notifications = new HashSet<>(dozeNotificationBlocklist);
-        notifications.removeAll(apps);
-        notifications.remove(getPackageName());
+        PackageSelection packages = FeatureSelection.packages(dozeAppBlocklist, dozeNotificationBlocklist,
+                getPackageName(), whitelistCurrentApp, focused, runtime.getJournal());
         return new DozeConfig(Build.VERSION.SDK_INT, runtime.getAccess().getLevel(), runtime.grants(),
                 sensors, runtime.getAllowToken(), prefs.getBoolean(Prefs.TURN_ON_BATTERY_SAVER, false),
-                features, apps, notifications,
+                features, packages.getAppsToSuspend(), packages.getPackagesToBlockNotifications(),
                 prefs.getBoolean(Prefs.KEEP_DOZE_ENFORCED, Prefs.DEFAULT_KEEP_DOZE_ENFORCED),
                 legacyNotificationTransaction());
     }
@@ -885,17 +884,6 @@ public class ForceDozeService extends Service {
         }
     }
 
-    public interface OnGetFocusedApp {
-        void onGetFocusedApps(HashSet<String> result);
-    }
-
-    public HashSet<String> parseFocusedApps(String services) {
-        if (!services.isEmpty()) {
-            return new HashSet<String>(Arrays.asList(services.split("\\r?\\n")));
-        }
-        return new HashSet<String>();
-    }
-
     public String getNonRootFocusedPackageName() {
         var usm = (UsageStatsManager) this.getSystemService(Context.USAGE_STATS_SERVICE);
         long time = System.currentTimeMillis();
@@ -912,21 +900,10 @@ public class ForceDozeService extends Service {
         return null;
     }
 
-    String FOCUSED_APP_REGEXP = "\\{[a-z0-9]+\\s[a-z0-9]+\\s(.*)\\/";
-
-    public void getFocusedApps(OnGetFocusedApp callback) {
-        executeCommandWithRoot("dumpsys activity activities | grep -E 'CurrentFocus|ResumedActivity|FocusedApp'", (commandCode, exitCode, STDOUT, STDERR) -> {
-            String result = "";
-            if (commandCode == 0) {
-                if (!STDOUT.isEmpty()) {
-                    Matcher m = Pattern.compile(FOCUSED_APP_REGEXP).matcher(STDOUT.get(0));
-                    if (m.find()) {
-                        result = m.group(1);
-                    }
-                }
-            }
-            callback.onGetFocusedApps(parseFocusedApps(result));
-        });
+    /** Blocking read on doze-worker; retain exit status and timeout instead of a shell callback code. */
+    private FocusedApps getFocusedApps() {
+        CommandResult result = runtime.getControl().run("dumpsys window", 8000);
+        return FocusedAppParser.parse(result);
     }
 
     public void executeCommandWithRoot(final String command) {
