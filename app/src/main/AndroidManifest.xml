@@ -182,7 +182,7 @@
             android:label="Debug log" />
         <activity
             android:name="com.akylas.enforcedoze.PackageChooserActivity"
-            android:label="Package chooser" />
+            android:label="@string/package_chooser_title" />
         <activity
             android:name="com.akylas.enforcedoze.AboutAppActivity"
             android:label="About" />
