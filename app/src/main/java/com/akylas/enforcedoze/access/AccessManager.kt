@@ -16,7 +16,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuRemoteProcess
 
-data class AccessState(val level: AccessLevel, val reason: Reason?, val grants: Grants, val uid: Int?)
+data class AccessState @JvmOverloads constructor(
+    val level: AccessLevel, val reason: Reason?, val grants: Grants, val uid: Int?,
+    val resolved: Boolean = true, val rootProbeTimedOut: Boolean = false,
+)
 data class ShizukuState(val level: AccessLevel, val reason: Reason?, val uid: Int?)
 
 /** App-lifetime Android adapter. Blocking work and su discovery never run on the main thread. */
@@ -30,10 +33,12 @@ class AccessManager private constructor(context: Context) {
     private val probePending = AtomicBoolean(false)
     private val probes = Executors.newSingleThreadExecutor { Thread(it, "access-probe").apply { isDaemon = true } }
     @Volatile private var rootAvailable = false
+    @Volatile private var rootResolved = false
+    @Volatile private var rootProbeTimedOut = false
     @Volatile private var mode = prefs.getString(Prefs.EXECUTION_MODE, Prefs.DEFAULT_EXECUTION_MODE)
     @Volatile var shizukuState = ShizukuState(AccessLevel.NONE, Reason.SHIZUKU_NOT_RUNNING, null)
         private set
-    @Volatile var state = AccessState(AccessLevel.APP, null, readGrants(), android.os.Process.myUid())
+    @Volatile var state = AccessState(AccessLevel.APP, null, readGrants(), android.os.Process.myUid(), resolved = false)
         private set
     val level: AccessLevel get() = state.level
 
@@ -46,8 +51,7 @@ class AccessManager private constructor(context: Context) {
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == Prefs.EXECUTION_MODE) {
             mode = prefs.getString(Prefs.EXECUTION_MODE, Prefs.DEFAULT_EXECUTION_MODE)
-            publish()
-            if (mode == Prefs.MODE_ROOT) probeRoot()
+            if (mode == Prefs.MODE_ROOT) probeRoot() else publish()
         }
     }
     private val controlRunner = guardedLane("access-control")
@@ -163,12 +167,15 @@ class AccessManager private constructor(context: Context) {
         val next = when (mode) {
             Prefs.MODE_SHIZUKU -> if (shizuku.level != AccessLevel.NONE) {
                 AccessState(shizuku.level, shizuku.reason, readGrants(), shizuku.uid)
-            } else AccessState(AccessLevel.APP, shizuku.reason, readGrants(), android.os.Process.myUid())
+            } else AccessState(AccessLevel.APP, shizuku.reason, readGrants(), android.os.Process.myUid(),
+                resolved = shizuku.reason != Reason.SHIZUKU_NOT_RUNNING)
             Prefs.MODE_ROOT -> AccessState(
                 if (rootAvailable) AccessLevel.ROOT else AccessLevel.APP,
                 if (rootAvailable) null else Reason.NO_ACCESS,
                 readGrants(),
                 if (rootAvailable) 0 else android.os.Process.myUid(),
+                resolved = rootResolved,
+                rootProbeTimedOut = rootProbeTimedOut,
             )
             else -> AccessState(AccessLevel.APP, Reason.NO_ACCESS, readGrants(), android.os.Process.myUid())
         }
@@ -178,17 +185,27 @@ class AccessManager private constructor(context: Context) {
         }
     }
 
+    /** Callers own bounded backoff and only retry discovery while recovery/session work needs it. */
+    fun retryRootProbe() {
+        if (mode == Prefs.MODE_ROOT && rootProbeTimedOut) probeRoot()
+    }
+
     private fun probeRoot() {
         if (!probePending.compareAndSet(false, true)) return
+        rootResolved = false
+        rootProbeTimedOut = false
+        publish()
         probes.execute {
             try {
                 CommandLane(RootCommandRunner(), "access-su-probe").use { probe ->
                     val result = probe.run("id -u")
                     rootAvailable = result.ok && result.stdout.singleOrNull()?.trim() == "0"
+                    rootProbeTimedOut = result.timedOut
+                    rootResolved = !result.timedOut
                 }
-                publish()
             } finally {
                 probePending.set(false)
+                publish()
             }
         }
     }

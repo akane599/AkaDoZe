@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.preference.PreferenceManager;
+import com.akylas.enforcedoze.service.BootRestore;
 
 public class AutoRestartOnUpdate extends BroadcastReceiver {
     public static String TAG = "EnforceDoze";
@@ -16,7 +17,7 @@ public class AutoRestartOnUpdate extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(intent.getAction())) {
+        if (intent != null && Intent.ACTION_MY_PACKAGE_REPLACED.equals(intent.getAction())) {
             log("Application updated, restarting service if enabled");
             boolean isServiceEnabled = PreferenceManager.getDefaultSharedPreferences(context).getBoolean("serviceEnabled", false);
             if (isServiceEnabled) {
@@ -24,6 +25,10 @@ public class AutoRestartOnUpdate extends BroadcastReceiver {
                 Utils.startForceDozeService(context);
             } else {
                 log("Service not enabled, skip restarting");
+                if (BootRestore.hasPending(context)) {
+                    PendingResult pending = goAsync();
+                    MyApplication.getDozeRuntime(context).requestRestoreOnly(pending::finish);
+                }
             }
         }
     }

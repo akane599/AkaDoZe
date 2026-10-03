@@ -99,6 +99,8 @@ public class ForceDozeService extends Service {
     private Runnable pendingNotification;
     private long enterDueElapsed;
     private AccessLevel previousAccess;
+    private final com.akylas.enforcedoze.service.RootProbeRetry rootProbeRetry = new com.akylas.enforcedoze.service.RootProbeRetry();
+    private Runnable pendingRootRetry;
     private AccessManager.Listener accessListener;
     boolean isSuAvailable = false;
     boolean isShizukuAvailable = false;
@@ -252,11 +254,8 @@ public class ForceDozeService extends Service {
     }
 
     private void initializeWorker() {
-        // Recovery is the first worker operation, before settings, grants or new enforcement.
-        runtime.bumpGeneration();
-        runtime.recordExit(runtime.getController().reconcile(Build.VERSION.SDK_INT, runtime.grants()));
+        // Load settings now; recovery waits for discovery and still precedes every admitted enter.
         runtime.configureAllowToken(getDefaultSharedPreferences(this).getString("sensorWhitelistPackage", ""));
-        runtime.checkSafety();
         if (destroyed) return;
         turnOffDataInDoze = getDefaultSharedPreferences(getApplicationContext()).getBoolean(Prefs.TURN_OFF_DATA, false);
         ignoreIfHotspot = getDefaultSharedPreferences(getApplicationContext()).getBoolean("ignoreIfHotspot", true);
@@ -316,15 +315,25 @@ public class ForceDozeService extends Service {
 
     private void onAccessChanged(AccessState access) {
         if (destroyed) return;
-        if (access.getLevel().compareTo(AccessLevel.SHELL) < 0) runtime.bumpGeneration();
+        if (!access.getResolved() || access.getLevel().compareTo(AccessLevel.SHELL) < 0) {
+            runtime.invalidateAccess();
+            runtime.bumpGeneration();
+        }
         postWork(() -> {
+            if (!access.equals(runtime.getAccess().getState())) return; // Ignore superseded discovery callbacks.
+            boolean recoveryNeeded = !runtime.accessReadyForEnter();
+            if (!access.getResolved()) {
+                cancelEnter();
+                scheduleRootProbeRetry();
+                return;
+            }
+            if (!runtime.recoverAccess()) return;
             AccessLevel old = previousAccess;
             previousAccess = access.getLevel();
             updateAccessFlags(access.getLevel());
             runtime.getJournal().emit(new DozeEvent(EventType.ACCESS_CHANGED,
                     access.getLevel().name() + (access.getLevel().compareTo(AccessLevel.SHELL) < 0 ? " NO_ACCESS" : "")));
-            if (old != null && old.compareTo(AccessLevel.SHELL) < 0
-                    && access.getLevel().compareTo(AccessLevel.SHELL) >= 0) {
+            if (recoveryNeeded && access.getLevel().compareTo(AccessLevel.SHELL) >= 0) {
                 if (Utils.isScreenOn(this)) {
                     runtime.setSessionActive(false);
                     handleScreenOn(this, 0, 0);
@@ -342,6 +351,21 @@ public class ForceDozeService extends Service {
         });
     }
 
+    /** Worker-only, finite backoff; a timeout never triggers an immediate main-thread probe loop. */
+    private void scheduleRootProbeRetry() {
+        if (pendingRootRetry != null) return;
+        Long delay = rootProbeRetry.nextDelay(runtime.getAccess().getState().getRootProbeTimedOut(),
+                runtime.getSessionActive() || runtime.hasPendingRestore());
+        if (delay == null) return;
+        pendingRootRetry = () -> {
+            pendingRootRetry = null;
+            if (!destroyed && (runtime.getSessionActive() || runtime.hasPendingRestore())) {
+                runtime.getAccess().retryRootProbe();
+            }
+        };
+        worker.postDelayed(pendingRootRetry, delay);
+    }
+
     @Override
     public void onDestroy() {
         destroyed = true;
@@ -349,6 +373,7 @@ public class ForceDozeService extends Service {
         runtime.setSessionActive(false);
         runtime.bumpGeneration();
         if (accessListener != null) runtime.getAccess().removeListener(accessListener);
+        if (pendingRootRetry != null) worker.removeCallbacks(pendingRootRetry);
         unregisterReceiver(localDozeReceiver);
         LocalBroadcastManager broadcasts = LocalBroadcastManager.getInstance(this);
         broadcasts.unregisterReceiver(reloadSettingsReceiver);
@@ -406,7 +431,8 @@ public class ForceDozeService extends Service {
         wakeLock.acquire(30_000L);
         worker.post(() -> {
             try {
-                runtime.reconcileAndCheck();
+                if (runtime.getAccess().getState().getResolved()) runtime.reconcileAndCheck();
+                else runtime.requestSafetyCheck();
             } finally {
                 try {
                     releaseWakeLock(wakeLock);
@@ -478,6 +504,7 @@ public class ForceDozeService extends Service {
                 runtime.getJournal().screen(EventType.SCREEN_OFF, Utils.getBatteryLevel(this), Utils.isConnectedToCharger(this));
                 scheduleEnter();
             }
+            scheduleRootProbeRetry();
             lastKnownState = deepState();
             Utils.hideDisabledNotification(this);
             Utils.updateTileState(this);
@@ -688,6 +715,7 @@ public class ForceDozeService extends Service {
 
     private boolean admitted() {
         return !destroyed && runtime.getSessionActive()
+                && runtime.accessReadyForEnter()
                 && SessionAccess.canRunSessions(runtime.getAccess().getLevel())
                 && !runtime.getStore().getLoadFailed() && runtime.getStore().getCorruptLines().isEmpty()
                 && runtime.getClock().elapsedRealtime() >= enterDueElapsed
@@ -728,6 +756,7 @@ public class ForceDozeService extends Service {
 
     private void scheduleEnter() {
         cancelEnter();
+        scheduleRootProbeRetry();
         if (pendingNotification != null) worker.removeCallbacks(pendingNotification);
         int lockTimeout = Settings.Secure.getInt(getContentResolver(), "lock_screen_lock_after_timeout", 5000);
         if (lockTimeout == 0) lockTimeout = 1000;
