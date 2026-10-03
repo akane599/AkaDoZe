@@ -35,7 +35,6 @@ import android.content.ComponentName;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.text.SimpleDateFormat;
-import java.util.Arrays;
 import java.util.Calendar;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -475,10 +474,7 @@ public class Utils {
     }
 
     public static boolean doesSettingExist(String settingName) {
-        String[] updatableSettings = {"ignoreIfHotspot", "turnOffDataInDoze", "turnOffWiFiInDoze", "ignoreLockscreenTimeout",
-                "dozeEnterDelay", "useAutoRotateAndBrightnessFix", "enableSensors", "disableWhenCharging",
-                "showPersistentNotif", "useNonRootSensorWorkaround"};
-        return Arrays.asList(updatableSettings).contains(settingName);
+        return com.akylas.enforcedoze.access.ExternalControlPolicy.settingType(settingName) != null;
     }
 
     public static void updateSettingBool(Context context, String settingName, boolean settingValue) {
@@ -490,11 +486,8 @@ public class Utils {
     }
 
     public static boolean isSettingBool(String settingName) {
-        // Since all the settings loaded dynamically by the service except dozeEnterDelay are bools,
-        // return true only if settingName != dozeEnterDelay
-        if (settingName.equals("dozeEnterDelay")) {
-            return false;
-        } else return true;
+        return com.akylas.enforcedoze.access.ExternalControlPolicy.settingType(settingName)
+                == com.akylas.enforcedoze.access.ExternalControlPolicy.SettingType.BOOLEAN;
     }
 
     public static boolean isScreenOn(Context context) {

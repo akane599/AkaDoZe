@@ -66,6 +66,10 @@ class AccessManager private constructor(context: Context) {
     fun control(): CommandRunner = controlRunner
     fun reads(): CommandRunner = readRunner
 
+    /** External receivers use an absolute System.nanoTime deadline, including control queue wait. */
+    fun controlWithDeadline(command: String, deadlineNanos: Long, admission: CommandLane.Admission): CommandResult =
+        controlRunner.runWithDeadline(command, deadlineNanos, admission)
+
     fun addListener(listener: Listener) {
         synchronized(lock) {
             if (listeners.add(listener)) {
@@ -189,7 +193,11 @@ class AccessManager private constructor(context: Context) {
         }
     }
 
-    private fun guardedLane(name: String): CommandRunner {
+    private interface DeadlineRunner : CommandRunner {
+        fun runWithDeadline(command: String, deadlineNanos: Long, admission: CommandLane.Admission): CommandResult
+    }
+
+    private fun guardedLane(name: String): DeadlineRunner {
         // Each lane has its OWN root session and process backend: no cross-lane queue or reset.
         val root = RootCommandRunner()
         val appShell = ShellCommandRunner()
@@ -215,11 +223,15 @@ class AccessManager private constructor(context: Context) {
             override fun reset() { active?.reset() }
         }
         val lane = CommandLane(backend, name)
-        return object : CommandRunner {
+        return object : DeadlineRunner {
             override val level: AccessLevel get() = lane.level
             override fun run(command: String, timeoutMs: Long): CommandResult {
                 requireBackgroundThread()
                 return lane.run(command, timeoutMs)
+            }
+            override fun runWithDeadline(command: String, deadlineNanos: Long, admission: CommandLane.Admission): CommandResult {
+                requireBackgroundThread()
+                return lane.runWithDeadline(command, deadlineNanos, admission)
             }
         }
     }

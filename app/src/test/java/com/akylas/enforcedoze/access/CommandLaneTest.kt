@@ -151,6 +151,68 @@ class CommandLaneTest {
     }
 
     @Test(timeout = 5_000)
+    fun deadlineIncludesQueueWaitAndExpiredExternalMutationNeverExecutes() {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val executed = Collections.synchronizedList(mutableListOf<String>())
+        val backend = object : CommandBackend {
+            override val level = AccessLevel.SHELL
+            override fun execute(command: String): CommandResult {
+                executed.add(command)
+                if (command == "blocker") { started.countDown(); release.await() }
+                return result(command)
+            }
+            override fun reset() { release.countDown() }
+        }
+        CommandLane(backend).use { lane ->
+            val blocker = lane.submit("blocker", 2_000)
+            assertTrue(started.await(1, TimeUnit.SECONDS))
+            val timeout = lane.runWithDeadline("external-mutation", System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(100)) { true }
+            assertTrue("Queue wait consumes the external deadline", timeout.timedOut)
+            assertFalse(blocker.isDone)
+            release.countDown()
+            assertTrue(blocker.get(1, TimeUnit.SECONDS).ok)
+            assertTrue(lane.run("marker", 1_000).ok)
+            assertEquals("Expired request cannot run after PendingResult would be finished", listOf("blocker", "marker"), executed)
+        }
+    }
+
+    @Test(timeout = 5_000)
+    fun deadlineRechecksAdmissionAtBackendAndRejectsExpiredDeadline() {
+        val backend = object : CommandBackend {
+            override val level = AccessLevel.SHELL
+            override fun execute(command: String): CommandResult = error("Denied command reached backend")
+            override fun reset() = Unit
+        }
+        CommandLane(backend).use { lane ->
+            val denied = lane.runWithDeadline("mutation", System.nanoTime() + TimeUnit.SECONDS.toNanos(1)) { false }
+            assertFalse(denied.ok)
+            assertFalse(denied.timedOut)
+            assertEquals(listOf("ADMISSION_DENIED"), denied.stderr)
+            assertTrue(lane.runWithDeadline("expired", System.nanoTime() - 1) { error("Expired admission checked") }.timedOut)
+        }
+    }
+
+    @Test(timeout = 5_000)
+    fun deadlineAbortsRunningBackendAndLeavesLaneUsable() {
+        val release = CountDownLatch(1)
+        val resets = AtomicInteger()
+        val backend = object : CommandBackend {
+            override val level = AccessLevel.SHELL
+            override fun execute(command: String): CommandResult {
+                if (command == "wedged") release.await()
+                return result(command)
+            }
+            override fun reset() { resets.incrementAndGet(); release.countDown() }
+        }
+        CommandLane(backend).use { lane ->
+            assertTrue(lane.runWithDeadline("wedged", System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(150)) { true }.timedOut)
+            assertEquals(listOf("next"), lane.run("next", 1_000).stdout)
+            assertEquals(1, resets.get())
+        }
+    }
+
+    @Test(timeout = 5_000)
     fun realProcessIsDestroyedOnTimeoutAndLaneRemainsUsable() {
         val process = AtomicReference<Process>()
         val backend = ShellCommandRunner({ AccessLevel.APP }) { command ->
