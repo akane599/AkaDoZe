@@ -52,7 +52,11 @@ class DozeDiagnosticsTest {
             diagnosticLogger = { _, error -> logged += error })
         val config = DozeConfig(36, AccessLevel.SHELL, Grants(true, true), features = setOf(Feature.WIFI))
 
-        assertNull(controller.enterGroupsSafely(config, controller.currentGeneration, { true }, "REFORCE_FAILED"))
+        val result = runCatching {
+            controller.enterGroupsSafely(config, controller.currentGeneration, { true }, "REFORCE_FAILED")
+        }
+        assertTrue("Save failure must not escape the worker boundary: $result", result.isSuccess)
+        assertNull(result.getOrNull())
         assertEquals(1, saves)
         assertTrue(runner.mutations().isEmpty())
         assertEquals(listOf("REFORCE_FAILED"), events.filter { it.type == EventType.ERROR }.map { it.detail })
