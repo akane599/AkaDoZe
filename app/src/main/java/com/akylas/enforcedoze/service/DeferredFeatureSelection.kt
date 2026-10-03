@@ -21,5 +21,12 @@ class DeferredFeatureSelection(
         return true
     }
 
+    fun noListener(sink: com.akylas.enforcedoze.doze.DozeEventSink) {
+        sink.emit(com.akylas.enforcedoze.doze.DozeEvent(
+            com.akylas.enforcedoze.doze.EventType.ERROR, "MUSIC_SELECTION_UNAVAILABLE",
+        ))
+        complete(false)
+    }
+
     fun cancel() { completed = true }
 }

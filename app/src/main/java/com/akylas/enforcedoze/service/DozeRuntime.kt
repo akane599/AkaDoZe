@@ -102,7 +102,6 @@ class DozeRuntime(context: Context) {
     fun bumpGeneration(): Long {
         deferred?.let { handler?.removeCallbacks(it) }
         deferred = null
-        watchdog.resetSession()
         return controller.bumpGeneration()
     }
 
@@ -111,6 +110,23 @@ class DozeRuntime(context: Context) {
         deferred?.let { handler?.removeCallbacks(it) }
         deferred = callback
         worker().postDelayed(callback, maxOf(0, untilElapsed - clock.elapsedRealtime()))
+    }
+
+    fun importHistory() {
+        if (!grants().dump && access.level < AccessLevel.SHELL) return
+        try {
+            val result = access.reads().run("dumpsys deviceidle", 8_000)
+            val now = clock.elapsedRealtime()
+            if (result.ok) journal.importHistory(result.stdout, now)
+            else journal.emit(DozeEvent(EventType.ERROR, "HISTORY_READ_FAILED"))
+        } catch (_: Exception) { journal.emit(DozeEvent(EventType.ERROR, "HISTORY_READ_FAILED")) }
+    }
+
+    fun recordAccessDebt() {
+        try {
+            val ledger = store.load()
+            if (AccessRecovery.hasShellDebt(ledger, Build.VERSION.SDK_INT)) journal.emit(DozeEvent(EventType.RECOVERY_DEBT, "ACCESS_LOST"))
+        } catch (_: Exception) { journal.emit(DozeEvent(EventType.RECOVERY_DEBT, "LEDGER_LOAD_FAILED")) }
     }
 
     fun readState(): DozeStateReading {
