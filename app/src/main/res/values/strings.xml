@@ -179,7 +179,7 @@
     <string name="notification_channel_silent_description">Minimal notification for foreground service</string>
 
     <string name="silent_notification_title">EnforceDoze is running</string>
-    <string name="silent_notification_text">Android 12+ requires this notification. Tap to customize or hide it.</string>
+    <string name="silent_notification_text">Android shows this while the service runs. Tap to customize or hide it.</string>
 
     <string name="notifications_permission">Notifications Permission</string>
     <string name="notifications_permission_explanation">To detect Apps which are playing music this app needs to read currently showing notifications, and thus needs the permission</string>
@@ -238,4 +238,101 @@
     <string name="tunables_result_applied">Applied (%1$d)</string>
     <string name="tunables_result_not_effective">Not effective on this Android version (%1$d)</string>
     <string name="tunables_result_failed">Failed (%1$d)</string>
+
+    <!-- SQ-17: access card, capability-driven settings, service notices -->
+    <string name="access_card_title">Access</string>
+    <string name="access_mode_root">Root</string>
+    <string name="access_mode_shizuku_shell">Shizuku (shell)</string>
+    <string name="access_mode_shizuku_root">Shizuku (root)</string>
+    <string name="access_mode_none">No privileged access</string>
+    <string name="access_mode_line">Mode: %1$s</string>
+    <string name="access_status_ready">Ready. AkaDoZe can force Doze and restrict motion sensors.</string>
+    <string name="access_status_root_unavailable">Root access isn\'t available. Grant root to AkaDoZe, or switch to Shizuku in Settings.</string>
+    <string name="access_status_checking">Checking access…</string>
+    <string name="access_problem_line">• %1$s: %2$s</string>
+    <string name="access_problem_plain">• %1$s</string>
+    <string name="access_feature_force_doze">Doze forcing</string>
+    <string name="access_feature_motion_sensors">Motion sensor restriction</string>
+    <string name="access_feature_doze_state">Doze state readback</string>
+    <string name="access_problem_helpers_missing">Helper permissions not granted: %1$s</string>
+    <string name="access_problem_notifications_off">Notifications are off, so AkaDoZe can\'t warn you about problems</string>
+    <string name="access_problem_music_listener">Music detection needs notification access</string>
+    <string name="access_action_grant_helpers">Grant helper permissions</string>
+    <string name="access_action_request_shizuku">Grant Shizuku permission</string>
+    <string name="access_action_open_shizuku">Open Shizuku</string>
+    <string name="access_action_adb">Show ADB commands</string>
+    <string name="access_settings_title">Access</string>
+    <string name="access_settings_summary">%1$s · %2$s</string>
+    <string name="access_shizuku_not_installed">Shizuku isn\'t installed. Install and start Shizuku, then come back.</string>
+    <string name="granting_helpers_text">Granting helper permissions…</string>
+    <string name="grant_helpers_result_title">Helper permissions</string>
+    <string name="grant_helpers_failed">Couldn\'t run the grant commands.</string>
+    <string name="grant_result_granted">%1$s: granted</string>
+    <string name="grant_result_not_granted">%1$s: not granted</string>
+    <string name="grant_result_accepted">%1$s: command accepted (not verified)</string>
+    <string name="grant_result_failed">%1$s: failed</string>
+    <string name="access_debt_access_lost">Restore pending: access was lost before AkaDoZe could undo its changes. Sensors or Doze may still be restricted.</string>
+    <string name="access_debt_generic">Sensors or Doze may still be restricted. AkaDoZe couldn\'t confirm everything was restored.</string>
+    <string name="access_debt_needs_access">Restoring needs root or Shizuku access.</string>
+    <string name="access_restore_now">Restore now</string>
+    <string name="access_restoring">Restoring… AkaDoZe is checking sensors and Doze.</string>
+    <string name="access_restore_description">Restore sensors and Doze to their original state</string>
+
+    <string name="reason_requires_root">Requires root</string>
+    <string name="reason_requires_root_shizuku">Requires root — not available with Shizuku</string>
+    <string name="reason_shizuku_not_running">Shizuku isn\'t running</string>
+    <string name="reason_shizuku_permission">Grant Shizuku permission (tap Access above)</string>
+    <string name="reason_needs_dump">Needs DUMP permission — tap Access above to grant</string>
+    <string name="reason_needs_wss">Needs WRITE_SECURE_SETTINGS permission — tap Access above to grant</string>
+    <string name="reason_api_too_old">Not available on Android %1$s</string>
+    <string name="reason_not_effective">Has no effect on Android %1$s</string>
+    <string name="reason_unverified">Unverified on this device</string>
+    <string name="reason_no_access_root">Root access not available</string>
+    <string name="reason_no_access_shizuku">Needs Shizuku access</string>
+    <string name="root_tag_summary">Root · %1$s</string>
+    <string name="rotate_brightness_fix_retired_summary">No longer used. AkaDoZe now restores sensors from its own records, so this workaround isn\'t needed. Your saved choice is kept.</string>
+    <string name="whitelist_music_needs_listener_summary">%1$s. Needs notification access: without it, music is treated as not playing.</string>
+
+    <string name="keep_doze_enforced_setting_title">Keep Doze enforced</string>
+    <string name="keep_doze_enforced_setting_summary">Force Doze again if the system leaves it while the screen is off</string>
+    <string name="screen_on_summary_setting_title">Summary notification after screen-on</string>
+    <string name="screen_on_summary_setting_summary">After the screen turns on, show what happened while it was off</string>
+    <string name="screen_on_summary_permission_denied">Notifications are blocked, so the summary can\'t be shown.</string>
+    <string name="external_control_category_title">Other apps</string>
+    <string name="allow_external_basic_setting_title">Allow other apps to start/stop AkaDoZe</string>
+    <string name="allow_external_basic_setting_summary">Lets automation apps like Tasker turn AkaDoZe on or off and re-apply Doze</string>
+    <string name="allow_external_privileged_setting_title">Allow other apps to change whitelist &amp; settings</string>
+    <string name="allow_external_privileged_setting_summary">Warning: any installed app could then edit the Doze whitelist and change AkaDoZe settings. Only turn this on if you need it.</string>
+
+    <string name="mode_switch_waiting_shizuku">Waiting for Shizuku permission…</string>
+    <string name="mode_switch_denied_title">Shizuku permission denied</string>
+    <string name="mode_switch_denied_text">AkaDoZe went back to %1$s mode. To use Shizuku, choose it again and allow the permission in the Shizuku prompt.</string>
+    <string name="mode_switch_not_running_text">Shizuku mode is selected, but Shizuku isn\'t running. Start Shizuku and AkaDoZe will connect automatically.</string>
+    <string name="cancel_button_text">Cancel</string>
+
+    <string name="notice_paused_title">Doze enforcement paused</string>
+    <string name="notice_paused_shizuku_text">Shizuku stopped while the device was dozing. AkaDoZe paused until Shizuku is running again.</string>
+    <string name="notice_paused_root_text">Root access was lost while the device was dozing. AkaDoZe paused until access returns.</string>
+    <string name="notice_resumed_title">Access is back</string>
+    <string name="notice_resumed_text">AkaDoZe can enforce Doze again.</string>
+    <string name="notice_debt_title">Sensors/Doze may still be restricted — open AkaDoZe</string>
+    <string name="notice_debt_access_lost_text">Access was lost before AkaDoZe could undo its changes. Restore when access is back.</string>
+    <string name="notice_debt_generic_text">AkaDoZe couldn\'t confirm that sensors and Doze were restored.</string>
+    <string name="notice_external_basic_title">Another app tried to start or stop AkaDoZe</string>
+    <string name="notice_external_basic_text">It was blocked because “Allow other apps to start/stop AkaDoZe” is off. Turn it on in Settings if you use automation apps like Tasker.</string>
+    <string name="notice_external_privileged_title">Another app tried to change AkaDoZe</string>
+    <string name="notice_external_privileged_text">It was blocked because “Allow other apps to change whitelist &amp; settings” is off. Only turn it on in Settings if you trust your automation apps.</string>
+    <string name="notice_start_denied_title">AkaDoZe couldn\'t start</string>
+    <string name="notice_start_denied_text">Android blocked starting the service in the background. Open AkaDoZe to start it.</string>
+
+    <string name="tasker_copied_toast">Copied broadcast!</string>
+    <string name="tasker_no_values">Broadcast values required: none</string>
+    <string name="tasker_gate_basic">Needs “Allow other apps to start/stop AkaDoZe” (currently %1$s).</string>
+    <string name="tasker_gate_privileged">Needs “Allow other apps to change whitelist &amp; settings” (currently %1$s).</string>
+    <string name="tasker_gate_on">on</string>
+    <string name="tasker_gate_off">off</string>
+    <string name="tasker_reapply_desc">Send to the component com.akylas.enforcedoze/.ReenterDoze. Asks AkaDoZe to re-apply Doze; it never cancels or shortens your Doze delay.</string>
+    <string name="tasker_add_whitelist_desc">Broadcast values required:\npackageName\n\npackageName has to be the full package name of the app you want to add to the whitelist</string>
+    <string name="tasker_remove_whitelist_desc">Broadcast values required:\npackageName\n\npackageName has to be the full package name of the app you want to remove from the whitelist</string>
+    <string name="tasker_change_setting_desc">Broadcast values required:\nsettingName\nsettingValue\n\nsettingName can be one of the following:\n%1$s\n\nsettingValue is true or false, or a number of seconds from 0 to 1800 for dozeEnterDelay. Other settings are rejected.</string>
 </resources>
