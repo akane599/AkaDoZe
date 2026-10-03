@@ -360,7 +360,7 @@ final class MonitorFormat {
     static boolean isProblem(JournalEvent event) {
         EventType type = event.getType();
         return type == EventType.RESTORE_FAILED || type == EventType.RECOVERY_DEBT || type == EventType.ERROR
-                || type == EventType.VERIFY && event.getDeep() == null && event.getSensor() == null && isUnverified(event);
+                || type == EventType.VERIFY && isUnverified(event);
     }
 
     static String eventLabel(Context context, JournalEvent event, boolean shizukuMode) {

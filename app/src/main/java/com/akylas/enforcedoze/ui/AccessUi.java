@@ -30,6 +30,7 @@ import com.akylas.enforcedoze.access.CommandResult;
 import com.akylas.enforcedoze.access.Feature;
 import com.akylas.enforcedoze.access.FeatureStatus;
 import com.akylas.enforcedoze.access.Reason;
+import com.akylas.enforcedoze.service.SessionAccess;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.lang.ref.WeakReference;
@@ -68,7 +69,7 @@ public final class AccessUi {
 
     /** Doze sessions are admitted only with Shizuku or root (ForceDozeService.admitted()). */
     public static boolean sessionsAvailable(AccessState state) {
-        return state.getLevel().compareTo(AccessLevel.SHELL) >= 0;
+        return SessionAccess.canRunSessions(state.getLevel());
     }
 
     /** Features that only act inside an admitted Doze session (force Doze and every in-Doze change). */
