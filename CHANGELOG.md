@@ -9,10 +9,11 @@
 - **Doze is verified, not assumed.** The Doze state is read back (`get deep`), and maintenance windows
   are told apart from deep idle. If motion knocks the phone out of forced idle, EnforceDoze re-forces it
   within limits.
-- **Everything EnforceDoze changes is put back.** Before any change, the original value is written to a
-  durable restore ledger. Screen-on restores from that ledger, never from your current settings,
+- **Tracked session changes are restored.** Before a ledger-backed change, the original value is written to a
+  durable restore ledger. Screen-on restores those entries from the ledger, never from your current settings,
   and does it in a fixed order: sensors, then unforce, then the rest in reverse. Anything that can't be
-  restored (for example, access was lost) is shown as recovery debt with a "Restore now" action.
+  restored (for example, access was lost) is shown as recovery debt with a "Restore now" action. Doze
+  tunables, whitelist edits and `setprop` changes are not ledger-backed.
 - **Honest root vs Shizuku.** A new access card shows the current mode and what is missing. Settings
   that need root (or a missing permission or Android version) are disabled with the reason; their saved
   values are never touched. Doze sessions need Shizuku or root: without either, the app says so instead of
@@ -41,11 +42,27 @@
   is reconciled automatically.
 
 ### Automation (Tasker / other apps)
-- Exported receivers validate input and never interpolate it into shell commands. Each action has its own
-  gate; privileged external control is off by default. Calls are rate-limited and journaled, and
-  timeouts report "unverified" instead of a false failure.
+- Exported receivers validate extras and allow only basic actions when basic control is enabled, or
+  whitelist/setting changes when privileged control is enabled (off by default). Setting names and
+  values are allow-listed and typed; package names are validated before being used in whitelist
+  commands. The journal limits recorded events to 10 per action per minute; this is not a limit on
+  external calls. `REAPPLY_DOZE` additionally requires basic-control consent and is subject to the
+  watchdog's 60-second spacing and five-reforce session budget. It does not cut maintenance windows,
+  and rejects unknown light state on API 24+. A bounded worker and deadline report busy or timed-out
+  work rather than claiming it succeeded.
 
 ### Fixes
+- Pending restore-ledger work is checked after boot, app update and cold start, even when enforcement
+  is disabled; restoration waits for access to resolve. A process-wide continuation handles access
+  that arrives after the restore-only window. Empty ledgers and non-recoverable-only damage do not
+  trigger access discovery.
+- An unreadable focused-app state is treated as unknown, so app suspension and notification blocking
+  are skipped rather than based on a guess.
+- Damaged ledger entries for force-Doze and motion-sensor restrictions can be cleared automatically;
+  other damaged entries remain recovery debt until explicitly dismissed or restored.
+- System reset reports per-command outcomes and reports success only when readback confirms the
+  requested effect. Whitelist reads preserve parseable entries and report partial or failed parsing.
+- DUMP-only access can read Doze state and monitor evidence but cannot enforce a Doze session.
 - If restoring at service shutdown runs out of time, a follow-up restore finishes the job in the
   background, and anything still not restored is reported as recovery debt instead of being dropped.
 - Recovery notices appear once per problem, not on every app open, and not while the main screen or the
@@ -67,3 +84,5 @@
   restores, legacy notification blocking on Android 6–12, and sensor-privacy transactions. EnforceDoze
   reports these as UNVERIFIED rather than claiming success.
 - Rolling back to an older version doesn't undo system state: use "Restore system state" first.
+- Physical-device verification is still pending for the cases listed in `docs/device-test-1.11.0.md`.
+  New strings are English-only; translations may still show the previous ADB-dialog wording.

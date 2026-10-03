@@ -132,7 +132,6 @@ public class ShizukuHandler {
                 Object[] invokeArgs = new Object[] { cmd, null, null };
 
                 ShizukuRemoteProcess process = (ShizukuRemoteProcess) shizukuNewProcessMethod.invoke(null, invokeArgs);
-//                ShizukuRemoteProcess process = Shizuku.newProcess(new String[]{"sh", "-c", command}, null, null);
 
                 try {
                     // Drain stderr alongside stdout so either pipe can fill safely.
