@@ -26,27 +26,53 @@ Or download the latest APK from the [Releases Section](https://github.com/farfro
  * LifeHacker: https://lifehacker.com/how-to-squeeze-more-battery-out-of-your-phone-with-andr-1791336715
  
 # Features
-* Force Doze mode immediately after screen off or after a user specified delay
+* Force Doze mode immediately after screen off or after a user specified delay, and verify it by reading the Doze state back
+* Disable motion sensors (verified) so Doze stays active even when the phone moves
+* Every system change is recorded first and put back on screen-on; anything that couldn't be restored is shown and can be restored with one tap
+* Doze Monitor: what happened while the screen was off (deep-idle time, re-forces, maintenance windows, problems), self-tests and a shareable report
+* Works with Shizuku (no root needed) or root; features that need more access are shown disabled with the reason
 * Add/remove apps or packages directly to system Doze whitelist
-* Disable motion sensors to prevent Doze from kicking in during movement
-* Disable Biometrics in doze mode to further improve battery life
-* Tasker support to turn on/off EnforceDoze and modify other features
-* Disable WiFi and mobile data completely during Doze
-* Enable Doze mode on devices where OEM has disabled it
-* No root mode so you can enjoy the core benefits without rooting your device
+* Disable Biometrics, WiFi, mobile data, Bluetooth and location during Doze, suspend selected apps or block their notifications
+* Keep the network on while a hotspot is active or a music app is playing
+* Tasker support to turn on/off EnforceDoze and modify other features (each kind of external control has its own switch)
+* Enable Doze mode on devices where OEM has disabled it (root)
 * Free, no ads and open source
 
-Here is a table of features 
+## Shizuku vs root
 
-| Feature              | Non Root | Root    |
-|-------------------------------|-------|--------|
-| **Disable Wifi**              | Android  < 29    | ✅      |
-| **Disable Mobile data**             | ❌     | ✅      |
-| **Disable Biometrics**                   | ❌     | Depending on device      |
-| **Disable Sensors**               | Depending on device     | ✅      | 
-| **Disable All sensors**(equivalent to the dev tile)             | ❌     | ✅  |
-| **Ignore disable with hotspot** | ✅ | ✅ |
-| **Whitelist music app**                      | ✅     | ✅      |
+EnforceDoze runs its system commands through one of three access levels. The access card on the main screen
+shows the current one and what is missing. Settings that the current level can't perform are shown
+disabled with the reason, and your saved choices are never changed by this.
+
+- **Root**: `su` (Magisk, KernelSU…), or Shizuku started as root.
+- **Shizuku (shell)**: Shizuku started over ADB or wireless debugging. It runs as the shell user, and no
+  root is needed.
+- **No privileged access**: only what you granted with ADB (`DUMP`, `WRITE_SECURE_SETTINGS`). Doze sessions don't
+  run at this level. EnforceDoze can still read the Doze state, apply Doze tunables, and undo its own sensor change
+  if Shizuku stops. The access card lists the exact commands.
+
+| Feature | Shizuku (shell) | Root | No privileged access |
+|---|---|---|---|
+| Force Doze after screen-off | ✅ | ✅ | ❌ |
+| Verify Doze state / Doze Monitor evidence | ✅ | ✅ | with `DUMP` |
+| Restrict motion sensors | ✅ | ✅ | ❌ |
+| Doze tunables | ✅ | ✅ | with `WRITE_SECURE_SETTINGS` |
+| Disable biometrics in Doze | ✅ | ✅ | ❌ |
+| Battery saver, Wi-Fi, mobile data, Bluetooth, location off in Doze | ✅ | ✅ | ❌ |
+| Airplane mode in Doze | Android 11+ | Android 11+ | ❌ |
+| Suspend selected apps in Doze | Android 7+ | ✅ (Android 6: disable) | ❌ |
+| Block notifications of selected apps | Android 13+ | ✅ (Android 6–12: unverified) | ❌ |
+| Doze whitelist editing, whitelist current app | ✅ | ✅ | ❌ |
+| Disable **all** sensors (sensor privacy) | ❌ | ✅ | ❌ |
+| Enable Doze on unsupported devices (`setprop`) | ❌ | ✅ | ❌ |
+
+Every change is read back from the system before EnforceDoze reports it as applied, and it is recorded first so
+it can be undone. A value that can't be confirmed is reported as **unverified**, never as success. If access is
+lost while dozing (for example, Shizuku stops), the change stays listed as **recovery debt**, and EnforceDoze
+restores it as soon as access returns. You can also use **Restore system state** in the Doze Monitor.
+
+> While motion sensors are restricted, other apps receive no motion data: step counters and pocket detection
+> pause until the screen comes back on.
 
 ## Permissions
 
@@ -66,7 +92,7 @@ Here is a table of features
 * Android 6.0 (Marshmallow) SDK platform
 * Android smartphone running 6.0 (Marshmallow)
 * Android Studio
-* Root (can work with limited functionality in non-root mode)
+* Shizuku or root on the device (without either, Doze sessions don't run; see "Shizuku vs root")
 
 # License
 

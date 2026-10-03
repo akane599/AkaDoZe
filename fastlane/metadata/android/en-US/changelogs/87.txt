@@ -1,0 +1,7 @@
+• Motion sensors are now really restricted (and verified)
+• Doze state is read back; forced idle is re-applied after motion
+• Every change is recorded first and restored on screen-on; failures show as "recovery debt"
+• Root vs Shizuku: access card, settings disabled with reasons
+• New Doze Monitor: sessions, deep-idle time, self-tests, restore
+• Android 16 fixes, edge-to-edge, safer Tasker control
+Note: step counters/pocket detection pause while sensors are restricted
