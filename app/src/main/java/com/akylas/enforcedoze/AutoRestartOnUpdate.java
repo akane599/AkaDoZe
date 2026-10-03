@@ -16,7 +16,7 @@ public class AutoRestartOnUpdate extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        if (intent.getAction().equals(Intent.ACTION_PACKAGE_REPLACED) && intent.getDataString().contains(context.getPackageName())) {
+        if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(intent.getAction())) {
             log("Application updated, restarting service if enabled");
             boolean isServiceEnabled = PreferenceManager.getDefaultSharedPreferences(context).getBoolean("serviceEnabled", false);
             if (isServiceEnabled) {

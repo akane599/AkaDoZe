@@ -27,6 +27,7 @@ import android.preference.PreferenceManager;
 import android.provider.Settings;
 
 import androidx.core.app.NotificationCompat;
+import androidx.core.app.ServiceCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import android.telephony.SubscriptionManager;
@@ -322,7 +323,7 @@ public class ForceDozeService extends Service {
         this.unregisterReceiver(localDozeReceiver);
         LocalBroadcastManager.getInstance(this).unregisterReceiver(reloadSettingsReceiver);
         LocalBroadcastManager.getInstance(this).unregisterReceiver(ignoreBatteryResultReceiver);        if (disableMotionSensors) {
-            executeCommand("dumpsys sensorservice enable");
+            executeSensorCommand("dumpsys sensorservice enable");
         }
         //ensure we exit doze if stopped from background
         exitDoze(getDeviceIdleState());
@@ -346,9 +347,9 @@ public class ForceDozeService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         super.onStartCommand(intent, flags, startId);
         log("Service has now started");
-        // On Android 12+, we must call startForeground() immediately when service is started
+        // On Android 8+, we must call startForeground() immediately when service is started
         // as a foreground service, regardless of showPersistentNotif setting
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             if (showPersistentNotif) {
                 // Show notification with stats if user enabled it
                 showPersistentNotification();
@@ -421,8 +422,8 @@ public class ForceDozeService extends Service {
         showPersistentNotif = getDefaultSharedPreferences(getApplicationContext()).getBoolean("showPersistentNotif", false);
         log("showPersistentNotif: " + showPersistentNotif);
         log("EnforceDoze settings reloaded ----------------------------------");
-        // On Android 12+, we must keep the foreground notification
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        // On Android 8+, we must keep the foreground notification
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             if (showPersistentNotif) {
                 showPersistentNotification();
             } else {
@@ -662,13 +663,11 @@ public class ForceDozeService extends Service {
                         @Override
                         public void run() {
                             log("Disabling motion sensors");
-                            if (sensorWhitelistPackage.equals("")) {
-                                executeCommand("dumpsys sensorservice restrict");
-                            } else {
-                                log("Package " + sensorWhitelistPackage + " is whitelisted from sensorservice");
-                                log("Note: Packages that get whitelisted are supposed to request sensor access again, if the app doesn't work, email the dev of that app!");
-                                executeCommand("dumpsys sensorservice restrict " + sensorWhitelistPackage);
-                            }
+                            String allowPackage = sensorWhitelistPackage == null || sensorWhitelistPackage.trim().isEmpty()
+                                    ? getPackageName() : sensorWhitelistPackage.trim();
+                            log("Package " + allowPackage + " is whitelisted from sensorservice");
+                            log("Note: Packages that get whitelisted are supposed to request sensor access again, if the app doesn't work, email the dev of that app!");
+                            executeSensorCommand("dumpsys sensorservice restrict " + allowPackage);
                         }
                     }, 2000);
                 } else {
@@ -727,7 +726,7 @@ public class ForceDozeService extends Service {
                 @Override
                 public void run() {
                     log("Re-enabling motion sensors");
-                    executeCommand("dumpsys sensorservice enable");
+                    executeSensorCommand("dumpsys sensorservice enable");
                     autoRotateBrightnessFix();
                 }
             }, 2000);
@@ -743,6 +742,18 @@ public class ForceDozeService extends Service {
             }, 2000);
         }
 
+    }
+
+    private void executeSensorCommand(String command) {
+        executeCommand(command, (commandCode, exitCode, stdout, stderr) ->
+                executeCommand("dumpsys sensorservice", (readCode, readExitCode, output, errors) -> {
+                    Pattern modePattern = Pattern.compile("Mode\\s*:");
+                    for (String line : output) {
+                        if (modePattern.matcher(line).find()) {
+                            log("SensorService readback: " + line.trim());
+                        }
+                    }
+                }, false), false);
     }
 
     public void executeCommand(final String command) {
@@ -959,12 +970,9 @@ public class ForceDozeService extends Service {
                 .setContentIntent(intent)
                 .setOngoing(true)
                 .build();
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            startForeground(PERSISTENT_NOTIF_ID, n);
-        } else {
-            startForeground(PERSISTENT_NOTIF_ID, n,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
-        }
+        ServiceCompat.startForeground(this, PERSISTENT_NOTIF_ID, n,
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+                        ? ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE : 0);
     }
 
     public void updatePersistentNotification(String lastScreenOff, int timeSpentDozing, int batteryUsage) {
@@ -983,7 +991,9 @@ public class ForceDozeService extends Service {
                 .setContentIntent(intent)
                 .setOngoing(true)
                 .build();
-        startForeground(PERSISTENT_NOTIF_ID, n);
+        ServiceCompat.startForeground(this, PERSISTENT_NOTIF_ID, n,
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+                        ? ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE : 0);
     }
 
     public void hidePersistentNotification() {
@@ -1015,12 +1025,9 @@ public class ForceDozeService extends Service {
                 .setShowWhen(false)
                 .build();
         
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            startForeground(PERSISTENT_NOTIF_ID, n);
-        } else {
-            startForeground(PERSISTENT_NOTIF_ID, n,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
-        }
+        ServiceCompat.startForeground(this, PERSISTENT_NOTIF_ID, n,
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+                        ? ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE : 0);
     }
 
     public void setMobileNetwork(Context context, int targetState) {
@@ -1106,6 +1113,28 @@ public class ForceDozeService extends Service {
         }
     }
 
+    private void updateDeviceIdleState(List<String> output) {
+        Matcher matcher = Pattern.compile("^\\s*mState=(\\w+)(?:\\s|$)", Pattern.MULTILINE)
+                .matcher(TextUtils.join("\n", output));
+        if (matcher.find()) {
+            String parsedState = matcher.group(1);
+            switch (parsedState) {
+                case "ACTIVE":
+                case "INACTIVE":
+                case "IDLE_PENDING":
+                case "SENSING":
+                case "LOCATING":
+                case "IDLE_MAINTENANCE":
+                case "IDLE":
+                case "PRE_IDLE":
+                case "WAITING_FOR_NETWORK":
+                case "OVERRIDE":
+                    state = parsedState;
+                    break;
+            }
+        }
+    }
+
     public String getDeviceIdleState() {
         log("Fetching Device Idle state...");
         if (Utils.isDeviceRunningOnN()) {
@@ -1113,28 +1142,7 @@ public class ForceDozeService extends Service {
                 if (rootSession != null) {
                     rootSession.addCommand("dumpsys deviceidle", 0, (Shell.OnCommandResultListener2) (commandCode, exitCode, output, stderr) -> {
                         if (!output.isEmpty()) {
-                            String outputString = TextUtils.join(", ", output);
-                            if (outputString.contains("mState=ACTIVE")) {
-                                state = "ACTIVE";
-                            } else if (outputString.contains("mState=INACTIVE")) {
-                                state = "INACTIVE";
-                            } else if (outputString.contains("mState=IDLE_PENDING")) {
-                                state = "IDLE_PENDING";
-                            } else if (outputString.contains("mState=SENSING")) {
-                                state = "SENSING";
-                            } else if (outputString.contains("mState=LOCATING")) {
-                                state = "LOCATING";
-                            } else if (outputString.contains("mState=IDLE")) {
-                                state = "IDLE";
-                            } else if (outputString.contains("mState=IDLE_MAINTENANCE")) {
-                                state = "IDLE_MAINTENANCE";
-                            } else if (outputString.contains("mState=PRE_IDLE")) {
-                                state = "PRE_IDLE";
-                            } else if (outputString.contains("mState=WAITING_FOR_NETWORK")) {
-                                state = "WAITING_FOR_NETWORK";
-                            } else if (outputString.contains("mState=OVERRIDE")) {
-                                state = "OVERRIDE";
-                            }
+                            updateDeviceIdleState(output);
                         } else {
                             if (pm.isDeviceIdleMode()) {
                                 state = "IDLE";
@@ -1159,22 +1167,7 @@ public class ForceDozeService extends Service {
             } catch (Shell.ShellDiedException e) {
                 e.printStackTrace();
             }
-            String outputString = TextUtils.join(", ", output);
-            if (outputString.contains("mState=ACTIVE")) {
-                state = "ACTIVE";
-            } else if (outputString.contains("mState=INACTIVE")) {
-                state = "INACTIVE";
-            } else if (outputString.contains("mState=IDLE_PENDING")) {
-                state = "IDLE_PENDING";
-            } else if (outputString.contains("mState=SENSING")) {
-                state = "SENSING";
-            } else if (outputString.contains("mState=LOCATING")) {
-                state = "LOCATING";
-            } else if (outputString.contains("mState=IDLE")) {
-                state = "IDLE";
-            } else if (outputString.contains("mState=IDLE_MAINTENANCE")) {
-                state = "IDLE_MAINTENANCE";
-            }
+            updateDeviceIdleState(output);
         }
 
         return state;

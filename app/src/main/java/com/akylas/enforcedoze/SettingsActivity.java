@@ -337,8 +337,8 @@ public class SettingsActivity extends AppCompatActivity {
                 if (!newValue) {
                     return true;
                 } else {
-                    if (isSuAvailable) {
-                        log("Phone is rooted and SU permission granted");
+                    if (isSuAvailable || isShizukuAvailable) {
+                        log("Root or Shizuku permission granted");
                         log("Granting android.permission.READ_PHONE_STATE to com.akylas.enforcedoze");
                         executeCommand("pm grant com.akylas.enforcedoze android.permission.READ_PHONE_STATE");
                         return true;
@@ -668,24 +668,11 @@ public class SettingsActivity extends AppCompatActivity {
                         turnOffGPSInDoze.setSummary(getString(R.string.root_required_text));
                         whitelistAppsFromDozeMode.setEnabled(false);
                         whitelistAppsFromDozeMode.setSummary(getString(R.string.root_required_text));
-                        PreferenceManager.getDefaultSharedPreferences(getContext())
-                                .edit()
-                                .putBoolean("turnOnBatterySaverInDoze", false)
-                                .putBoolean("turnOffAllSensorsInDoze", false)
-                                .putBoolean("turnOffBiometricsInDoze", false)
-                                .putBoolean("turnOnAirplaneInDoze", false)
-                                .putBoolean("turnOffBluetoothInDoze", false)
-                                .putBoolean("turnOffGPSInDoze", false)
-                                .apply();
 
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                             Preference turnOffWiFiInDoze = (Preference) findPreference("turnOffWiFiInDoze");
                             turnOffWiFiInDoze.setEnabled(false);
                             turnOffWiFiInDoze.setSummary(getString(R.string.root_required_text));
-                            PreferenceManager.getDefaultSharedPreferences(getContext())
-                                    .edit()
-                                    .putBoolean("turnOffWiFiInDoze", false)
-                                    .apply();
                         }
 
                     }
@@ -694,7 +681,7 @@ public class SettingsActivity extends AppCompatActivity {
         }
 
         public void executeCommand(final String command) {
-            if (isSuAvailable) {
+            if (isSuAvailable || isShizukuAvailable) {
                 executeCommandWithRoot(command);
             } else {
                 executeCommandWithoutRoot(command);
