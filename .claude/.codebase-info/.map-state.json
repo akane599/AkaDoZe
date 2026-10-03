@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "tool": "codebase-mapper",
+  "version": "2.15.8",
+  "mappedAt": "2026-10-03",
+  "gitCommit": "db75cfd5e4af19d169f5960954a07eef8722aa07",
+  "documents": [
+    "architecture.md",
+    "communication.md",
+    "entry-points.md",
+    "modules.md",
+    "onboarding.md",
+    "patterns.md",
+    "tech-landscape.md"
+  ],
+  "hashes": {
+    "INDEX.md": "4499ce245924dc691c4bc58b32f0d0f1e10f9fd2afa083c9fbeb9e93eb04d6f7",
+    "architecture.md": "d3b5fef2aa460862759cd6b0ed48e7215724c2a6ca09f348f662a8e2172b9fb8",
+    "communication.md": "20357876e3f26e88415de7e14d073a103383a151114763ee697ddfdcf7a40e32",
+    "entry-points.md": "898f6a37386b5b257b0462882efe07b798b76a78e210a716eec464e4747c6c07",
+    "modules.md": "165809ed2700cc8cbc16d4a35d048c90cf978ac24853aa2e87aa10770ed14591",
+    "onboarding.md": "bdc0651f41be44b3a535f2a0056dc5eccdf6f87ba808f7e06fbed0ac132d964c",
+    "patterns.md": "672a8cc69bcacb8f6e76ed3df735226f26de7d6acd44312d396dec0acf409bc9",
+    "tech-landscape.md": "369dd4e16f8a7f2be709f3474cfdd7599527f5f345459d2690a67c31198495ae"
+  }
+}
