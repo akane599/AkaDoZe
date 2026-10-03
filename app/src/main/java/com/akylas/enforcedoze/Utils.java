@@ -55,10 +55,10 @@ public class Utils {
     public static final String ACTION_CUSTOM_DOZE_PERIOD_BOUNDARY = "com.akylas.enforcedoze.ACTION_CUSTOM_DOZE_PERIOD_BOUNDARY";
     private static final int CUSTOM_DOZE_PERIOD_REQUEST_CODE = 9012;
 
-    public static void startForceDozeService(Context context) {
+    public static boolean startForceDozeService(Context context) {
         if (isMyServiceRunning(ForceDozeService.class, context)) {
             logToLogcat("EnforceDoze", "ForceDozeService already running");
-            return;
+            return true;
         }
 
         Intent intent = new Intent(context, ForceDozeService.class);
@@ -72,7 +72,9 @@ public class Utils {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                     && e instanceof ForegroundServiceStartNotAllowedException) {
                 logToLogcat("EnforceDoze", "Foreground service start not allowed: " + e.getMessage());
-                return;
+                MyApplication.getDozeRuntime(context).getJournal().emit(new com.akylas.enforcedoze.doze.DozeEvent(
+                        com.akylas.enforcedoze.doze.EventType.ERROR, "FOREGROUND_START_DENIED"));
+                return false;
             }
             throw e;
         }
@@ -81,6 +83,7 @@ public class Utils {
         Utils.hideDisabledNotification(context);
         // Update tile state
         Utils.updateTileState(context);
+        return true;
     }
 
     public static void stopForceDozeService(Context context) {
