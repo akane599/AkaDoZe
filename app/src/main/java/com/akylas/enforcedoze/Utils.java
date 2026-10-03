@@ -531,7 +531,7 @@ public class Utils {
                 .getString("executionMode", "root").equals("shizuku");
     }
 
-    /** Compatibility bridge for consumers not yet migrated; grants have one shared authority. */
+    /** Schedule helper-permission grants through AccessManager. */
     public static void grantPermissionsViaShizuku(Context context) {
         AccessManager manager = AccessManager.getInstance(context);
         AsyncTask.execute(manager::grantHelpers);

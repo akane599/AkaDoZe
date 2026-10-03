@@ -22,7 +22,7 @@ data class AccessState @JvmOverloads constructor(
 )
 data class ShizukuState(val level: AccessLevel, val reason: Reason?, val uid: Int?)
 
-/** App-lifetime Android adapter. Blocking work and su discovery never run on the main thread. */
+/** App-lifetime Android adapter. Root discovery and blocking commands run off the main thread. */
 class AccessManager private constructor(context: Context) : com.akylas.enforcedoze.service.RecoveryAccess {
     private val app = context.applicationContext
     private val prefs = PreferenceManager.getDefaultSharedPreferences(app)
@@ -94,7 +94,7 @@ class AccessManager private constructor(context: Context) : com.akylas.enforcedo
 
     override fun removeListener(listener: Listener) { listeners.remove(listener) }
 
-    /** Independent of executionMode, for ShizukuHandler's still-unmigrated callers. */
+    /** Shizuku availability is observed independently of the selected execution mode. */
     fun addShizukuListener(listener: ShizukuListener) {
         synchronized(lock) {
             if (shizukuListeners.add(listener)) {

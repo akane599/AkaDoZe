@@ -105,7 +105,6 @@ public class ForceDozeService extends Service {
     boolean isSuAvailable = false;
     boolean isShizukuAvailable = false;
     boolean disableMotionSensors = true;
-    boolean useAutoRotateAndBrightnessFix = false;
     boolean showPersistentNotif = false;
     boolean ignoreLockscreenTimeout = false;
     boolean turnOffAllSensorsInDoze = false;
@@ -143,7 +142,6 @@ public class ForceDozeService extends Service {
     String TAG = "ForceDozeService";
     String lastKnownState = "null";
 
-    // Add near the top of the class
     private static final String ACTION_IGNORE_RESULT = "com.akylas.enforcedoze.ACTION_IGNORE_BATTERY_OPTIMIZATION_RESULT";
     private static final String EXTRA_IGNORED = "com.akylas.enforcedoze.EXTRA_IGNORED";
 
@@ -271,7 +269,6 @@ public class ForceDozeService extends Service {
         ignoreLockscreenTimeout = getDefaultSharedPreferences(getApplicationContext()).getBoolean("ignoreLockscreenTimeout", true);
         waitForUnlock = getDefaultSharedPreferences(getApplicationContext()).getBoolean("waitForUnlock", false);
         dozeEnterDelay = getDefaultSharedPreferences(getApplicationContext()).getInt("dozeEnterDelay", 0);
-        useAutoRotateAndBrightnessFix = getDefaultSharedPreferences(getApplicationContext()).getBoolean("autoRotateAndBrightnessFix", false);
         sensorWhitelistPackage = getDefaultSharedPreferences(getApplicationContext()).getString("sensorWhitelistPackage", "");
         disableMotionSensors = getDefaultSharedPreferences(getApplicationContext()).getBoolean("disableMotionSensors", true);
         disableStats = getDefaultSharedPreferences(getApplicationContext()).getBoolean("disableStats", false);
@@ -572,8 +569,6 @@ public class ForceDozeService extends Service {
         log("waitForUnlock: " + waitForUnlock);
         dozeEnterDelay = getDefaultSharedPreferences(getApplicationContext()).getInt("dozeEnterDelay", 0);
         log("dozeEnterDelay: " + dozeEnterDelay);
-        useAutoRotateAndBrightnessFix = getDefaultSharedPreferences(getApplicationContext()).getBoolean("autoRotateAndBrightnessFix", false);
-        log("useAutoRotateAndBrightnessFix: " + useAutoRotateAndBrightnessFix);
         sensorWhitelistPackage = getDefaultSharedPreferences(getApplicationContext()).getString("sensorWhitelistPackage", "");
         log("sensorWhitelistPackage: " + sensorWhitelistPackage);
         disableMotionSensors = getDefaultSharedPreferences(getApplicationContext()).getBoolean("disableMotionSensors", true);

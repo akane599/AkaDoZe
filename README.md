@@ -28,7 +28,7 @@ Or download the latest APK from the [Releases Section](https://github.com/farfro
 # Features
 * Force Doze mode immediately after screen off or after a user specified delay, and verify it by reading the Doze state back
 * Disable motion sensors (verified) so Doze stays active even when the phone moves
-* Every system change is recorded first and put back on screen-on; anything that couldn't be restored is shown and can be restored with one tap
+* Changes made by a Doze session that are tracked in the restore ledger are put back on screen-on; anything that couldn't be restored stays listed as recovery debt and can be restored later
 * Doze Monitor: what happened while the screen was off (deep-idle time, re-forces, maintenance windows, problems), self-tests and a shareable report
 * Works with Shizuku (no root needed) or root; features that need more access are shown disabled with the reason
 * Add/remove apps or packages directly to system Doze whitelist
@@ -66,10 +66,12 @@ disabled with the reason, and your saved choices are never changed by this.
 | Disable **all** sensors (sensor privacy) | ❌ | ✅ | ❌ |
 | Enable Doze on unsupported devices (`setprop`) | ❌ | ✅ | ❌ |
 
-Every change is read back from the system before EnforceDoze reports it as applied, and it is recorded first so
-it can be undone. A value that can't be confirmed is reported as **unverified**, never as success. If access is
-lost while dozing (for example, Shizuku stops), the change stays listed as **recovery debt**, and EnforceDoze
-restores it as soon as access returns. You can also use **Restore system state** in the Doze Monitor.
+Doze-session changes recorded in the restore ledger (including the forced-idle state and motion
+sensor restriction) are recorded before mutation and restored on screen-on. Tunable changes,
+Doze-whitelist edits and `setprop` changes are not ledger-backed and are not automatically undone. A value that can't be confirmed is reported as **unverified**, never as
+success. If access is lost while dozing (for example, Shizuku stops), tracked changes remain listed
+as **recovery debt** and EnforceDoze attempts restoration when access returns. You can also use
+**Restore system state** in the Doze Monitor.
 
 > While motion sensors are restricted, other apps receive no motion data: step counters and pocket detection
 > pause until the screen comes back on.
