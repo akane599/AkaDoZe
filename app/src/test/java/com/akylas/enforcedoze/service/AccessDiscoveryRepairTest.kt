@@ -4,6 +4,7 @@ import com.akylas.enforcedoze.access.*
 import com.akylas.enforcedoze.doze.*
 import org.junit.Assert.*
 import org.junit.Test
+import java.io.File
 
 class AccessDiscoveryRepairTest {
     private val grants = Grants(false, false)
@@ -107,6 +108,76 @@ class AccessDiscoveryRepairTest {
         assertTrue(fixture.access.listeners.isEmpty())
     }
 
+    @Test fun settledNoAccessWindowsShareOneContinuationThatFiresOnce() {
+        val fixture = WindowFixture()
+        fixture.access.state = fixture.access.state.copy(resolved = true)
+        repeat(3) { fixture.start() }
+        assertEquals("every window finished its own restore", 3, fixture.finished)
+        assertEquals("windows below SHELL share one process continuation", 1, fixture.access.listeners.size)
+        fixture.access.publish(fixture.access.state.copy(level = AccessLevel.SHELL))
+        assertEquals("ready fires exactly one follow-up window", 1, fixture.retries)
+        assertEquals(4, fixture.restores)
+        assertTrue("fired continuation disarms", fixture.access.listeners.isEmpty())
+    }
+
+    @Test fun requestAfterContinuationFiredAtShellArmsNothing() {
+        val fixture = WindowFixture()
+        fixture.access.state = fixture.access.state.copy(resolved = true)
+        repeat(3) { fixture.start() }
+        fixture.access.publish(fixture.access.state.copy(level = AccessLevel.SHELL))
+        fixture.start()
+        assertTrue("a window that restored at SHELL leaves no listener", fixture.access.listeners.isEmpty())
+        fixture.access.publish(fixture.access.state)
+        assertEquals(1, fixture.retries)
+        assertEquals(5, fixture.restores)
+    }
+
+    @Test fun windowDuringResolvedNoAccessJoinsTheArmedContinuation() {
+        val fixture = WindowFixture()
+        fixture.start()
+        fixture.timeout()
+        fixture.access.publish(fixture.access.state.copy(resolved = true))
+        assertEquals(1, fixture.debts)
+        fixture.start()
+        assertEquals("joining window adds no second listener", 1, fixture.access.listeners.size)
+        fixture.access.publish(fixture.access.state.copy(level = AccessLevel.SHELL))
+        assertEquals(1, fixture.retries)
+        assertEquals("late no-access stays announced once", 1, fixture.debts)
+        assertTrue(fixture.access.listeners.isEmpty())
+    }
+
+    @Test fun readyWithTooLittleBudgetHandsOffToOneFreshWindow() {
+        val fixture = WindowFixture()
+        fixture.start()
+        fixture.now = 8_900
+        fixture.access.publish(fixture.access.state.copy(resolved = true, level = AccessLevel.SHELL))
+        assertEquals("late ready is not spent on a 0.1 s sliver", listOf(9_000L), fixture.restoreBudgets)
+        assertEquals(1, fixture.retries)
+        assertTrue(fixture.access.listeners.isEmpty())
+    }
+
+    @Test fun appRestoreOvertakenByShellHandsOffOnce() {
+        val fixture = WindowFixture()
+        fixture.access.state = fixture.access.state.copy(resolved = true)
+        fixture.duringRestore = {
+            fixture.duringRestore = {}
+            fixture.access.publish(fixture.access.state.copy(level = AccessLevel.SHELL))
+        }
+        fixture.start()
+        assertEquals("an APP-level restore cannot restore shell intent", 1, fixture.retries)
+        assertEquals(2, fixture.restores)
+        assertTrue(fixture.access.listeners.isEmpty())
+    }
+
+    @Test fun runtimeSharesOneProcessContinuation() {
+        val runtime = listOf(File("src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt"),
+            File("app/src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt")).first { it.isFile }.readText()
+        assertEquals("one construction site", 1, Regex("""RestoreContinuation\(""").findAll(runtime).count())
+        assertTrue("created once, then shared", runtime.contains("continuation ?: RestoreContinuation(source,") &&
+            runtime.contains(".also { continuation = it }"))
+        assertTrue("the follow-up window never arms", runtime.contains("{ requestRestoreOnly(Runnable {}, source, false) }"))
+    }
+
     private class FakeAccess : RecoveryAccess {
         override var state = AccessState(AccessLevel.APP, Reason.NO_ACCESS, Grants(false, false), 10001, resolved = false)
         val listeners = linkedSetOf<AccessManager.Listener>()
@@ -122,11 +193,16 @@ class AccessDiscoveryRepairTest {
         var retries = 0
         var debts = 0
         var restores = 0
+        val restoreBudgets = mutableListOf<Long>()
+        var duringRestore: () -> Unit = {}
         lateinit var timeout: () -> Unit
+        /** Mirrors DozeRuntime: one shared continuation for every window that may arm it. */
+        private val continuation = RestoreContinuation(access, { it() }, { retries++; start(false) }, { debts++ })
         fun start(allowContinuation: Boolean = true) {
             RestoreOnlyRequest(access, { now }, { it() }, { deadline, callback ->
                 timeout = { now = deadline; callback() }; ({})
-            }, { _, done -> restores++; done() }, { finished++ }, { retries++; start(false) }, { debts++ }, allowContinuation).start()
+            }, { deadline, done -> restores++; restoreBudgets += deadline - now; duringRestore(); done() },
+                { finished++ }, if (allowContinuation) continuation else null).start()
         }
     }
 }

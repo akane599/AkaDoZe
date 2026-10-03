@@ -305,10 +305,13 @@ class DozeRuntime(context: Context) {
 
     fun requestSafetyCheck() = requestRestoreOnly(Runnable {})
 
-    /** No FGS: a bounded wakeful window plus one passive, process-lifetime access continuation. */
+    /** No FGS: a bounded wakeful window; later SHELL/ROOT is awaited by the one shared [continuation]. */
     @JvmOverloads
     fun requestRestoreOnly(completed: Runnable, source: RecoveryAccess = access) =
         requestRestoreOnly(completed, source, true)
+
+    /** Main thread only: created once, then re-armed by every window that ends without SHELL/ROOT. */
+    private var continuation: RestoreContinuation? = null
 
     @Synchronized
     private fun requestRestoreOnly(completed: Runnable, source: RecoveryAccess, allowContinuation: Boolean) {
@@ -320,6 +323,23 @@ class DozeRuntime(context: Context) {
         wakeLock.acquire(30_000L)
         val deadline = clock.elapsedRealtime() + 9_000L
         main.post {
+            val shared = if (!allowContinuation) null else continuation ?: RestoreContinuation(source,
+                { action -> main.post { action() } },
+                { requestRestoreOnly(Runnable {}, source, false) },
+                {
+                    // Never post to a retired window's worker; late debt briefly owns a fresh worker.
+                    synchronized(this@DozeRuntime) {
+                        pendingRecoveries++
+                        worker().post {
+                            try { announceAccess(); recordCorruptionDebt() }
+                            finally {
+                                synchronized(this@DozeRuntime) { pendingRecoveries-- }
+                                quitIfDetached()
+                            }
+                        }
+                    }
+                },
+            ).also { continuation = it }
             RestoreOnlyRequest(source, clock::elapsedRealtime, { action -> main.post { action() } },
                 { deadline, action ->
                     val timer = object : android.os.CountDownTimer(
@@ -351,21 +371,7 @@ class DozeRuntime(context: Context) {
                         worker.post { quitIfDetached() }
                     }
                 },
-                { requestRestoreOnly(Runnable {}, source, false) },
-                {
-                    // Never post to a retired window's worker; late debt briefly owns a fresh worker.
-                    synchronized(this@DozeRuntime) {
-                        pendingRecoveries++
-                        worker().post {
-                            try { announceAccess(); recordCorruptionDebt() }
-                            finally {
-                                synchronized(this@DozeRuntime) { pendingRecoveries-- }
-                                quitIfDetached()
-                            }
-                        }
-                    }
-                },
-                allowContinuation,
+                shared,
             ).start(deadline)
         }
     }
