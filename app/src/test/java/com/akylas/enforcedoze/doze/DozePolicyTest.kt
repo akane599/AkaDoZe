@@ -23,6 +23,13 @@ class DozePolicyTest {
         assertEquals(Decision.REFORCE, trigger(charging = true))
     }
 
+    @Test fun lightMaintenanceNeverConsumesTheSharedReforceBudget() {
+        val maintenance = DozeStateParser.parse("mState=ACTIVE mLightState=IDLE_MAINTENANCE")
+        assertEquals("light maintenance must not be cut short", Decision.IGNORE,
+            policy.onIdleChanged(maintenance, false, false, true))
+        assertEquals("maintenance skip leaves the session budget untouched", Decision.REFORCE, trigger())
+    }
+
     @Test fun watchdogReturnsOnlyOneDeferredRetryThenRespectsSessionCapAndReset() {
         assertEquals(Decision.REFORCE, trigger())
         clock.elapsed = 1
