@@ -27,6 +27,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.akylas.enforcedoze.BuildConfig;
 import com.akylas.enforcedoze.ForceDozeService;
+import com.akylas.enforcedoze.Utils;
 import com.akylas.enforcedoze.ForceDozeTileService;
 import com.akylas.enforcedoze.MainActivity;
 import com.akylas.enforcedoze.MyApplication;
@@ -77,6 +78,9 @@ public final class DozeMonitorActivity extends AppCompatActivity implements Moni
     private static SelfTestKind runningTest;
     private static SelfTestResult lastResult;
     private static Runnable testListener;
+    /** Raw output of lastResult, built once per result off main and capped (MonitorFormat.raw). */
+    private static String lastRaw;
+    private final Runnable ownTestListener = this::onTestFinished;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private ExecutorService reads;
@@ -199,18 +203,28 @@ public final class DozeMonitorActivity extends AppCompatActivity implements Moni
             return false;
         }
         // SystemUI names the long-pressed tile from Android 8; older versions open the monitor.
-        ComponentName tile = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                ? IntentCompat.getParcelableExtra(intent, Intent.EXTRA_COMPONENT_NAME, ComponentName.class) : null;
+        ComponentName tile;
+        try {
+            tile = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                    ? IntentCompat.getParcelableExtra(intent, Intent.EXTRA_COMPONENT_NAME, ComponentName.class) : null;
+        } catch (RuntimeException unreadable) {
+            tile = null;
+        }
         if (tile == null || ForceDozeTileService.class.getName().equals(tile.getClassName())) return false;
         startActivity(new Intent(this, MainActivity.class));
         finish();
         return true;
     }
 
+    /** The activity is exported: a foreign app's unknown Parcelable (pre-33 unparcelling) means no selection. */
     private static MonitorData.SessionKey keyFrom(Intent intent) {
-        if (intent == null || !intent.hasExtra(EXTRA_SESSION_ID)) return null;
-        return new MonitorData.SessionKey(intent.getIntExtra(EXTRA_BOOT_ID, -1),
-                intent.getLongExtra(EXTRA_SESSION_ID, 0), intent.getLongExtra(EXTRA_START_ELAPSED, 0));
+        try {
+            if (intent == null || !intent.hasExtra(EXTRA_SESSION_ID)) return null;
+            return new MonitorData.SessionKey(intent.getIntExtra(EXTRA_BOOT_ID, -1),
+                    intent.getLongExtra(EXTRA_SESSION_ID, 0), intent.getLongExtra(EXTRA_START_ELAPSED, 0));
+        } catch (RuntimeException unreadable) { // BadParcelableException and friends
+            return null;
+        }
     }
 
     @Override
@@ -226,9 +240,10 @@ public final class DozeMonitorActivity extends AppCompatActivity implements Moni
     protected void onResume() {
         super.onResume();
         resumed = true;
+        NoticeSink.setDebtShownInApp(true); // The live card shows recovery debt in place of the notice.
         access.addListener(accessListener);
         ForceDozeService.addSink(this, events);
-        testListener = this::onTestFinished;
+        testListener = ownTestListener;
         refreshLive();
         reload();
     }
@@ -237,9 +252,11 @@ public final class DozeMonitorActivity extends AppCompatActivity implements Moni
     protected void onPause() {
         super.onPause();
         resumed = false;
+        NoticeSink.setDebtShownInApp(false);
         access.removeListener(accessListener);
         ForceDozeService.removeSink(this, events);
-        testListener = null;
+        // Another resumed instance (split screen) may own it by now.
+        if (testListener == ownTestListener) testListener = null;
         main.removeCallbacksAndMessages(null);
         liveLoading = false;
         sharing = false;
@@ -350,9 +367,11 @@ public final class DozeMonitorActivity extends AppCompatActivity implements Moni
         card.findViewById(R.id.liveWatchdog).setVisibility(snapshot == null ? View.INVISIBLE : View.VISIBLE);
 
         boolean privileged = AccessUi.isPrivileged(state);
-        boolean debt = restoring || debtDetail != null || snapshot != null && snapshot.debt;
+        // A running self-test's own ledger entry is in flight, not debt; its outcome refreshes this card.
+        boolean testing = runningTest != null;
+        boolean debt = restoring || debtDetail != null || !testing && snapshot != null && snapshot.debt;
         card.findViewById(R.id.liveDebtCard).setVisibility(debt ? View.VISIBLE : View.GONE);
-        card.findViewById(R.id.liveDebtNone).setVisibility(debt || snapshot == null ? View.GONE : View.VISIBLE);
+        card.findViewById(R.id.liveDebtNone).setVisibility(debt || testing || snapshot == null ? View.GONE : View.VISIBLE);
         if (debt) {
             String message;
             if (restoring && debtDetail == null) {
@@ -368,10 +387,10 @@ public final class DozeMonitorActivity extends AppCompatActivity implements Moni
                 : getString(R.string.monitor_live_updated, MonitorFormat.clock(snapshot.readAt)));
 
         Button refresh = card.findViewById(R.id.liveRefresh);
-        refresh.setEnabled(!liveLoading);
+        refresh.setEnabled(!liveLoading && !testing);
         refresh.setOnClickListener(v -> refreshLive());
         Button restore = card.findViewById(R.id.liveRestore);
-        restore.setEnabled(privileged && !(restoring && debtDetail == null));
+        restore.setEnabled(privileged && !testing && !(restoring && debtDetail == null));
         restore.setOnClickListener(v -> restoreSystem());
         Button share = card.findViewById(R.id.liveShare);
         share.setEnabled(!sharing);
@@ -382,16 +401,18 @@ public final class DozeMonitorActivity extends AppCompatActivity implements Moni
     public void bindTests(View card) {
         AccessState state = accessState();
         boolean shizuku = shizukuMode();
+        boolean service = serviceRunning();
         bindTestButton(card, R.id.testDoze, R.id.testDozeUnavailable, SelfTestKind.DOZE,
-                AccessUi.unavailableReason(Feature.FORCE_DOZE, state, shizuku), shizuku);
+                AccessUi.unavailableReason(Feature.FORCE_DOZE, state, shizuku), shizuku, service);
         bindTestButton(card, R.id.testSensors, R.id.testSensorsUnavailable, SelfTestKind.SENSORS,
-                AccessUi.unavailableReason(Feature.MOTION_SENSORS, state, shizuku), shizuku);
+                AccessUi.unavailableReason(Feature.MOTION_SENSORS, state, shizuku), shizuku, service);
 
         boolean running = runningTest != null;
         card.findViewById(R.id.testProgress).setVisibility(running ? View.VISIBLE : View.GONE);
         TextView status = card.findViewById(R.id.testStatus);
-        status.setVisibility(running ? View.VISIBLE : View.GONE);
+        status.setVisibility(running || !service ? View.VISIBLE : View.GONE);
         if (running) status.setText(getString(R.string.monitor_test_running, MonitorFormat.testName(this, runningTest)));
+        else if (!service) status.setText(R.string.monitor_test_needs_service);
 
         SelfTestResult result = lastResult;
         card.findViewById(R.id.testResult).setVisibility(result == null || running ? View.GONE : View.VISIBLE);
@@ -399,7 +420,8 @@ public final class DozeMonitorActivity extends AppCompatActivity implements Moni
         text(card, R.id.testResultTitle, getString(R.string.monitor_test_result_title,
                 MonitorFormat.testName(this, result.getKind()), MonitorFormat.outcome(this, result.getOutcome())));
         text(card, R.id.testResultText, MonitorFormat.resultText(this, result, shizuku));
-        text(card, R.id.testRaw, MonitorFormat.raw(this, result.getCommands()));
+        // The capped text is only laid out while expanded.
+        text(card, R.id.testRaw, rawExpanded && lastRaw != null ? lastRaw : "");
         card.findViewById(R.id.testRawScroll).setVisibility(rawExpanded ? View.VISIBLE : View.GONE);
         Button toggle = card.findViewById(R.id.testRawToggle);
         toggle.setText(rawExpanded ? R.string.monitor_test_raw_hide : R.string.monitor_test_raw_show);
@@ -409,9 +431,10 @@ public final class DozeMonitorActivity extends AppCompatActivity implements Moni
         });
     }
 
-    private void bindTestButton(View card, int buttonId, int reasonId, SelfTestKind kind, Reason reason, boolean shizuku) {
+    private void bindTestButton(View card, int buttonId, int reasonId, SelfTestKind kind, Reason reason, boolean shizuku,
+                                boolean service) {
         Button button = card.findViewById(buttonId);
-        button.setEnabled(reason == null && runningTest == null);
+        button.setEnabled(reason == null && runningTest == null && service);
         button.setOnClickListener(v -> confirmTest(kind));
         TextView why = card.findViewById(reasonId);
         why.setVisibility(reason == null ? View.GONE : View.VISIBLE);
@@ -541,15 +564,31 @@ public final class DozeMonitorActivity extends AppCompatActivity implements Moni
     /** The runtime runs it on doze-worker (ledger first, restore in finally, then SafetyNet). */
     private void startTest(SelfTestKind kind) {
         if (runningTest != null) return;
+        // The running service (START_STICKY + startup reconcile) is what restores a test cut short.
+        if (!serviceRunning()) {
+            adapter.refreshType(MonitorAdapter.TESTS);
+            return;
+        }
         runningTest = kind;
         rawExpanded = false;
         adapter.refreshType(MonitorAdapter.TESTS);
-        MyApplication.getDozeRuntime(this).requestSelfTest(kind, result -> MAIN.post(() -> {
-            runningTest = null;
-            lastResult = result;
-            Runnable listener = testListener;
-            if (listener != null) listener.run();
-        }));
+        adapter.refreshType(MonitorAdapter.LIVE); // Restore/Refresh pause while the test runs.
+        Context app = getApplicationContext();
+        MyApplication.getDozeRuntime(this).requestSelfTest(kind, result -> {
+            // On doze-worker: format the raw output once per result, never on main.
+            String raw = MonitorFormat.raw(app, result.getCommands());
+            MAIN.post(() -> {
+                runningTest = null;
+                lastResult = result;
+                lastRaw = raw;
+                Runnable listener = testListener;
+                if (listener != null) listener.run();
+            });
+        });
+    }
+
+    private boolean serviceRunning() {
+        return Utils.isMyServiceRunning(ForceDozeService.class, this);
     }
 
     private void onTestFinished() {

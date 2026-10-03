@@ -21,8 +21,6 @@ import com.akylas.enforcedoze.access.AccessState;
 import com.akylas.enforcedoze.doze.DozeEvent;
 import com.akylas.enforcedoze.doze.DozeEventSink;
 import com.akylas.enforcedoze.doze.EventType;
-import com.akylas.enforcedoze.doze.RestoreLedger;
-import com.akylas.enforcedoze.service.DozeRuntime;
 
 import java.util.List;
 
@@ -74,6 +72,7 @@ public final class AccessCard {
     public void start() {
         if (started) return;
         started = true;
+        NoticeSink.setDebtShownInApp(true);
         access.addListener(accessListener);
         ForceDozeService.addSink(activity, events);
         checkLedger();
@@ -82,6 +81,7 @@ public final class AccessCard {
     public void stop() {
         if (!started) return;
         started = false;
+        NoticeSink.setDebtShownInApp(false);
         access.removeListener(accessListener);
         ForceDozeService.removeSink(activity, events);
         main.removeCallbacksAndMessages(null);
@@ -125,20 +125,13 @@ public final class AccessCard {
         renderDebt();
     }
 
-    /** Remaining ledger entries outside an active session are restoration debt (fail closed on load errors). */
+    /** Failed or damaged ledger entries outside a session are restoration debt (DebtRules, fail closed). */
     private void checkLedger() {
         if (!started) return;
         Context app = activity.getApplicationContext();
-        AsyncTask.execute(() -> {
-            DozeRuntime runtime = MyApplication.getDozeRuntime(app);
-            boolean debt;
-            try {
-                RestoreLedger ledger = runtime.getStore().load();
-                debt = !ledger.getEntries().isEmpty() || !runtime.getStore().getCorruptLines().isEmpty();
-            } catch (Exception unreadable) {
-                debt = true;
-            }
-            boolean result = debt && !runtime.getSessionActive();
+        // Not the serial executor: hasDebt can wait for a running exit walk to finish.
+        AsyncTask.THREAD_POOL_EXECUTOR.execute(() -> {
+            boolean result = MonitorData.hasDebt(MyApplication.getDozeRuntime(app));
             main.post(() -> {
                 if (!started) return;
                 ledgerDebt = result;
