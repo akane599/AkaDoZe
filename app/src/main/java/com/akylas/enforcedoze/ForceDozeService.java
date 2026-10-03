@@ -363,7 +363,8 @@ public class ForceDozeService extends Service {
             AtomicBoolean complete = new AtomicBoolean();
             try {
                 runtime.withDeadline(deadline, () -> {
-                    ExitResult result = runtime.getController().exit(Build.VERSION.SDK_INT, runtime.grants());
+                    ExitResult result = runtime.getController().exit(Build.VERSION.SDK_INT, runtime.grants(),
+                            () -> runtime.getClock().elapsedRealtime() < deadline);
                     complete.set(result.getComplete());
                     runtime.recordExit(result);
                     runtime.checkSafety();
@@ -372,11 +373,14 @@ public class ForceDozeService extends Service {
                 complete.set(false);
                 runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "TEARDOWN_FAILED"));
             } finally {
-                if (!complete.get()) queueTeardownRestore();
-                runtime.getSession().recordExit(); // A destroyed session cannot suppress a replacement ENTER.
-                releaseWakeLock();
-                runtime.quitIfDetached();
-                stopped.countDown();
+                try {
+                    if (!complete.get()) queueTeardownRestore();
+                } finally {
+                    runtime.getSession().recordExit(); // A destroyed session cannot suppress a replacement ENTER.
+                    releaseWakeLock();
+                    runtime.quitIfDetached();
+                    stopped.countDown();
+                }
             }
         });
         try {
@@ -403,7 +407,11 @@ public class ForceDozeService extends Service {
             try {
                 runtime.reconcileAndCheck();
             } finally {
-                releaseWakeLock(wakeLock);
+                try {
+                    releaseWakeLock(wakeLock);
+                } catch (RuntimeException ignored) {
+                    // API 23-27 timeout release can race isHeld()/release() and under-lock.
+                }
                 runtime.quitIfDetached();
             }
         });
