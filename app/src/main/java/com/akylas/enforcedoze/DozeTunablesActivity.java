@@ -17,6 +17,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.preference.Preference;
@@ -70,15 +71,25 @@ public class DozeTunablesActivity extends AppCompatActivity {
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
         getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+
+        View appBar = findViewById(R.id.appbarlayout);
+        View content = findViewById(R.id.content);
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.coordinator), (v, windowInsets) -> {
+            Insets bars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            appBar.setPadding(bars.left, bars.top, bars.right, 0);
+            content.setPadding(bars.left, 0, bars.right, 0);
+            // Not consumed: DozeTunablesFragment pads its list with the bottom inset.
+            return windowInsets;
+        });
     }
 
     @Override
     public boolean onPrepareOptionsMenu(Menu menu) {
         super.onPrepareOptionsMenu(menu);
 
-        if (!suAvailable) {
-            menu.getItem(0).setVisible(false);
-        }
+        // Applying needs root or a running Shizuku; without either only the adb command can be copied.
+        boolean canApply = suAvailable || (Utils.isShizukuMode(this) && isShizukuAvailable);
+        menu.findItem(R.id.action_apply_tunables).setVisible(canApply);
 
         return true;
     }
@@ -95,9 +106,9 @@ public class DozeTunablesActivity extends AppCompatActivity {
             applyTunables();
         } else if (id == R.id.action_copy_tunables) {
             showCopyTunableDialog();
-        } else
-            if (id == android.R.id.home) {
-            onBackPressed();
+        } else if (id == android.R.id.home) {
+            getOnBackPressedDispatcher().onBackPressed();
+            return true;
         }
         return super.onOptionsItemSelected(item);
     }
@@ -113,7 +124,36 @@ public class DozeTunablesActivity extends AppCompatActivity {
             executeCommand(tunableCommand + " " + tunable_string);
 
         }
-        Toast.makeText(this, getString(R.string.applied_success_text), Toast.LENGTH_SHORT).show();
+        // The commands run asynchronously and are not read back here, so do not claim success.
+        Toast.makeText(this, getString(R.string.tunables_apply_sent), Toast.LENGTH_SHORT).show();
+    }
+
+    /**
+     * Shows the verified per-key outcome of an apply: keys whose new value was read back, keys the
+     * running Android version ignores, and keys whose command or readback failed.
+     */
+    public void showApplyResult(List<String> applied, List<String> notEffective, List<String> failed) {
+        StringBuilder message = new StringBuilder();
+        appendResultSection(message, R.string.tunables_result_applied, applied);
+        appendResultSection(message, R.string.tunables_result_not_effective, notEffective);
+        appendResultSection(message, R.string.tunables_result_failed, failed);
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(failed.isEmpty() && notEffective.isEmpty()
+                        ? R.string.tunables_result_title_applied
+                        : R.string.tunables_result_title_partial)
+                .setMessage(message.toString())
+                .setPositiveButton(R.string.okay_button_text, null)
+                .show();
+    }
+
+    private void appendResultSection(StringBuilder message, int labelRes, List<String> keys) {
+        if (keys.isEmpty()) {
+            return;
+        }
+        if (message.length() > 0) {
+            message.append("\n\n");
+        }
+        message.append(getString(labelRes, keys.size())).append('\n').append(TextUtils.join(", ", keys));
     }
 
     public void showCopyTunableDialog() {
@@ -202,7 +242,7 @@ public class DozeTunablesActivity extends AppCompatActivity {
 
                 if (recyclerView != null) {
                     int bottomInset = insets
-                            .getInsets(WindowInsetsCompat.Type.systemBars())
+                            .getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout())
                             .bottom;
 
                     recyclerView.setPadding(
@@ -236,6 +276,7 @@ public class DozeTunablesActivity extends AppCompatActivity {
                 shizukuHandler.checkShizukuAvailability();
                 shizukuHandler.setOnAvailibilityChangeListener(value -> {
                     isShizukuAvailable = value;
+                    refreshApplyMenuItem();
                 });
                 isShizukuAvailable = shizukuHandler.isShizukuAvailable();
                 log("Shizuku mode enabled, available: " + isShizukuAvailable);
@@ -267,6 +308,7 @@ public class DozeTunablesActivity extends AppCompatActivity {
                         }
                         isSuAvailable = result;
                         suAvailable = isSuAvailable;
+                        refreshApplyMenuItem();
                         log("SU available: " + Boolean.toString(result));
                         if (isSuAvailable) {
                             log("Phone is rooted and SU permission granted");
@@ -327,6 +369,13 @@ public class DozeTunablesActivity extends AppCompatActivity {
                 for (String s : output) {
                     log(s);
                 }
+            }
+        }
+
+        // Access is detected asynchronously, after the menu was first prepared.
+        private void refreshApplyMenuItem() {
+            if (getActivity() != null) {
+                getActivity().invalidateOptionsMenu();
             }
         }
     }

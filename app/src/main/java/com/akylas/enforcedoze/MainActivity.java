@@ -26,6 +26,9 @@ import android.service.quicksettings.TileService;
 import androidx.annotation.NonNull;
 import androidx.appcompat.widget.Toolbar;
 import androidx.coordinatorlayout.widget.CoordinatorLayout;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.Snackbar;
@@ -36,7 +39,6 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
 
 import android.text.SpannableString;
-import android.text.method.ScrollingMovementMethod;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -119,6 +121,15 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         setContentView(R.layout.activity_main);
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
+        View appBar = findViewById(R.id.appbarlayout);
+        View mainScrollView = findViewById(R.id.mainScrollView);
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.coordinatorLayout), (v, windowInsets) -> {
+            Insets bars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            appBar.setPadding(bars.left, bars.top, bars.right, 0);
+            mainScrollView.setPadding(bars.left, 0, bars.right, bars.bottom);
+            // Not consumed: a Snackbar attached to the coordinator still needs the bottom inset.
+            return windowInsets;
+        });
 
         CustomTabs.with(getApplicationContext()).warm();
         settings = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
@@ -133,7 +144,6 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         textViewStatus = (TextView) findViewById(R.id.textView2);
         updateStateFromTile = new UpdateForceDozeEnabledState();
         LocalBroadcastManager.getInstance(this).registerReceiver(updateStateFromTile, new IntentFilter("update-state-from-tile"));
-        ((TextView) findViewById(R.id.textView)).setMovementMethod(new ScrollingMovementMethod());
         toggleForceDozeSwitch.setOnCheckedChangeListener(null);
 
         if (!Utils.isPostNotificationPermissionGranted(this)) {
@@ -477,7 +487,7 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         isDumpPermGranted = Utils.isDumpPermissionGranted(getApplicationContext());
 
         if (isDozeEnabledByOEM || (Utils.isDeviceRunningOnN() && !isSuAvailable)) {
-            menu.getItem(2).setVisible(false);
+            menu.findItem(R.id.action_toggle_doze).setVisible(false);
         }
 
         return super.onPrepareOptionsMenu(menu);
