@@ -16,7 +16,7 @@ class ReportFormatterTest {
         )
         val report = ReportFormatter.format(SessionAggregator.summarize(events), events,
             "1.10.2", mapOf("Model" to "Test device", "API" to "36"))
-        assertTrue(report.startsWith("AkaDoZe monitor report\nApp version: 1.10.2\nDevice:\n"))
+        assertTrue(report.startsWith("EnforceDoze monitor report\nApp version: 1.10.2\nDevice:\n"))
         assertTrue(report.contains("Sessions (1)"))
         assertTrue(report.contains("Duration ms: 100000"))
         assertTrue(report.contains("DEEP_IDLE: 95.00% (95000 ms)"))

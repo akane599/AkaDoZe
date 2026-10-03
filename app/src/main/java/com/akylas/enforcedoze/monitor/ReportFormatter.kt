@@ -12,7 +12,7 @@ object ReportFormatter {
         appVersion: String,
         deviceInfo: Map<String, String>,
     ): String = buildString {
-        appendLine("AkaDoZe monitor report")
+        appendLine("EnforceDoze monitor report")
         appendLine("App version: ${safe(appVersion)}")
         appendLine("Device:")
         for ((key, value) in deviceInfo.toSortedMap()) appendLine("  ${safe(key)}: ${safe(value)}")
