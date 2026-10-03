@@ -35,15 +35,31 @@ class DozeController(
     fun bumpGeneration(): Long = generation.incrementAndGet()
 
     @Synchronized
-    fun enter(config: DozeConfig, generation: Long, admission: () -> Boolean): EnterResult {
+    fun enter(config: DozeConfig, generation: Long, admission: () -> Boolean): EnterResult =
+        enterConfigured(config, generation, admission, core = true)
+
+    @Synchronized
+    fun enterCore(config: DozeConfig, generation: Long, admission: () -> Boolean): EnterResult =
+        enterConfigured(config.copy(features = emptySet(), appsToSuspend = emptySet(),
+            packagesToBlockNotifications = emptySet()), generation, admission, core = true)
+
+    /** Deferred selection cannot reforce; groups still require a fresh verified deep IDLE. */
+    @Synchronized
+    fun enterGroups(config: DozeConfig, generation: Long, admission: () -> Boolean): EnterResult =
+        enterConfigured(config, generation, admission, core = false)
+
+    private fun enterConfigured(config: DozeConfig, generation: Long, admission: () -> Boolean, core: Boolean): EnterResult {
         apiLevel = config.apiLevel
         grants = config.grants
         val steps = mutableListOf<StepResult>()
-        var groupsAdmitted = false
+        if (generation != currentGeneration || !admission()) return EnterResult(EnterStatus.CANCELLED, steps)
+        var groupsAdmitted = !core && DozeStateParser.parseDeep(read(Feature.FORCE_DOZE, null, false)) == DeepState.IDLE
         val requests = buildList {
-            if (config.restrictSensors) add(Feature.MOTION_SENSORS to config.allowToken)
-            if (config.batterySaver) add(Feature.BATTERY_SAVER to null)
-            add(Feature.FORCE_DOZE to null)
+            if (core) {
+                if (config.batterySaver) add(Feature.BATTERY_SAVER to null)
+                if (config.restrictSensors) add(Feature.MOTION_SENSORS to config.allowToken)
+                add(Feature.FORCE_DOZE to null)
+            }
             config.features.sortedBy { it.ordinal }.forEach { add(it to null) }
             config.appsToSuspend.sorted().forEach { add((if (apiLevel >= 24) Feature.APP_SUSPEND else Feature.PM_DISABLE) to it) }
             config.packagesToBlockNotifications.sorted().forEach { add(Feature.NOTIFICATION_BLOCK to it) }
@@ -137,6 +153,18 @@ class DozeController(
     @JvmOverloads
     fun exit(apiLevel: Int = this.apiLevel, grants: Grants = this.grants): ExitResult {
         bumpGeneration()
+        return restoreLedger(apiLevel, grants, { true }) { true }
+    }
+
+    /** Wake the keyguard before USER_PRESENT without undoing the wait-for-unlock session. */
+    @Synchronized
+    fun restoreBiometrics(generation: Long, admission: () -> Boolean): ExitResult =
+        restoreLedger(apiLevel, grants, { it.feature == Feature.BIOMETRICS }) {
+            generation == currentGeneration && admission()
+        }
+
+    private fun restoreLedger(apiLevel: Int, grants: Grants, selected: (LedgerEntry) -> Boolean,
+                              admitted: () -> Boolean): ExitResult {
         return synchronized(this) {
             this.apiLevel = apiLevel
             this.grants = grants
@@ -148,7 +176,8 @@ class DozeController(
             }
             val errors = mutableListOf<ExitError>()
             val restored = mutableListOf<LedgerEntry>()
-            val ordered = ledger.entries.sortedBy {
+            // Stable core priority, then reverse durable apply order (airplane before radios).
+            val ordered = ledger.entries.asReversed().filter(selected).sortedBy {
                 when (it.feature) {
                     Feature.MOTION_SENSORS -> 0
                     Feature.FORCE_DOZE -> 1
@@ -157,6 +186,7 @@ class DozeController(
                 }
             }
             for (entry in ordered) {
+                if (!admitted()) break
                 val entryApi = entry.apiLevel ?: apiLevel
                 val unavailable = resolver.status(entry.feature, control.level, entryApi, grants) as? FeatureStatus.Unavailable
                 val commands = restoreCommands(entry, entryApi)
@@ -166,6 +196,7 @@ class DozeController(
                 var debtReason = unavailable?.reason
                 if (unavailable == null && commands != null) {
                     for (command in commands) {
+                        if (!admitted()) return@synchronized ExitResult(restored.toList(), ledger, errors.toList())
                         val current = resolver.status(entry.feature, control.level, entryApi, grants) as? FeatureStatus.Unavailable
                         if (current != null) {
                             debtReason = current.reason
@@ -173,6 +204,7 @@ class DozeController(
                         }
                         run(command)
                     }
+                    if (!admitted()) return@synchronized ExitResult(restored.toList(), ledger, errors.toList())
                     if (debtReason == null) {
                         success = verifyRestore(entry, entryApi)
                         if (!success && entry.feature == Feature.MOTION_SENSORS && lastSensor != SensorMode.UNVERIFIED &&
@@ -187,6 +219,7 @@ class DozeController(
                 if (!success && debtReason == null) {
                     debtReason = (resolver.status(entry.feature, control.level, entryApi, grants) as? FeatureStatus.Unavailable)?.reason
                 }
+                if (!admitted()) break
                 val updated = ledger.entries.toMutableList()
                 val index = updated.indexOf(entry)
                 if (success) {
@@ -221,9 +254,14 @@ class DozeController(
     @Synchronized
     fun maintenance(restore: Boolean, generation: Long, admission: () -> Boolean): EnterResult {
         val steps = mutableListOf<StepResult>()
-        val ledger = store.load()
-        for (entry in ledger.entries.filter { it.feature in radios }) {
-            fun admitted() = generation == currentGeneration && admission()
+        fun admitted() = generation == currentGeneration && admission()
+        if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps)
+        val ledger = try { store.load() } catch (_: Exception) {
+            emit(EventType.ERROR, reason = Reason.UNVERIFIED)
+            return EnterResult(EnterStatus.CANCELLED, steps)
+        }
+        val entries = ledger.entries.filter { it.feature in radios }
+        for (entry in if (restore) entries.asReversed() else entries) {
             if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps)
             val entryApi = entry.apiLevel ?: apiLevel
             val unavailable = resolver.status(entry.feature, control.level, entryApi, grants) as? FeatureStatus.Unavailable

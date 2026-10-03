@@ -31,6 +31,7 @@ import com.akylas.enforcedoze.doze.parse.DozeStateReading;
 import com.akylas.enforcedoze.service.DozeRuntime;
 import com.akylas.enforcedoze.service.SessionLifecycle;
 import com.akylas.enforcedoze.service.FeatureSelection;
+import com.akylas.enforcedoze.service.DeferredFeatureSelection;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -76,6 +77,9 @@ public class ForceDozeService extends Service {
     private volatile boolean disableWhenCharging = true;
     private final AtomicLong exitEpoch = new AtomicLong();
     private Runnable pendingEnter;
+    private static final long MUSIC_SELECTION_TIMEOUT_MS = 2000;
+    private Runnable selectionTimeout;
+    private DeferredFeatureSelection featureSelection;
     private Runnable pendingNotification;
     private long enterDueElapsed;
     private AccessLevel previousAccess;
@@ -520,7 +524,7 @@ public class ForceDozeService extends Service {
         }
     }
 
-    private DozeConfig config(boolean sensors, boolean playingMusic) {
+    private DozeConfig config(boolean sensors, Boolean playingMusic) {
         SharedPreferences prefs = getDefaultSharedPreferences(this);
         Set<String> enabled = new HashSet<>();
         for (String key : Arrays.asList(Prefs.TURN_OFF_WIFI, Prefs.TURN_OFF_DATA, Prefs.TURN_OFF_BLUETOOTH,
@@ -528,7 +532,7 @@ public class ForceDozeService extends Service {
             if (prefs.getBoolean(key, false)) enabled.add(key);
         }
         Set<Feature> features = FeatureSelection.features(enabled, Utils.isHotspotEnabled(this), ignoreIfHotspot,
-                playingMusic, Utils.isWiFiEnabled(this));
+                !Boolean.FALSE.equals(playingMusic), playingMusic != null && Utils.isWiFiEnabled(this));
         Set<String> apps = new HashSet<>(dozeAppBlocklist);
         Set<String> focused = new HashSet<>();
         if (whitelistCurrentApp) {
@@ -578,7 +582,15 @@ public class ForceDozeService extends Service {
     private void cancelEnter() {
         if (pendingEnter != null) worker.removeCallbacks(pendingEnter);
         pendingEnter = null;
+        cancelFeatureSelection();
         releaseWakeLock();
+    }
+
+    private void cancelFeatureSelection() {
+        if (selectionTimeout != null) worker.removeCallbacks(selectionTimeout);
+        selectionTimeout = null;
+        if (featureSelection != null) featureSelection.cancel();
+        featureSelection = null;
     }
 
     private synchronized void releaseWakeLock() {
@@ -615,31 +627,71 @@ public class ForceDozeService extends Service {
             return;
         }
         long generation = runtime.getController().getCurrentGeneration();
-        if (whitelistMusicAppNetwork) {
-            NotificationService listener = NotificationService.Companion.getInstance();
-            if (listener != null) {
-                listener.getPlayingPackageName(pkg -> {
-                    postWork(() -> enterConfiguredDoze(sensors, pkg != null, generation));
-                    return null;
-                });
-                return;
-            }
-        }
-        enterConfiguredDoze(sensors, false, generation);
-    }
-
-    private void enterConfiguredDoze(boolean sensors, boolean playingMusic, long generation) {
-        if (!admitted() || generation != runtime.getController().getCurrentGeneration()) return;
+        cancelFeatureSelection();
         try {
-            EnterResult result = runtime.getController().enter(config(sensors, playingMusic), generation, this::admitted);
+            DozeConfig core = new DozeConfig(Build.VERSION.SDK_INT, runtime.getAccess().getLevel(), runtime.grants(),
+                    sensors, runtime.getAllowToken(), getDefaultSharedPreferences(this).getBoolean(Prefs.TURN_ON_BATTERY_SAVER, false));
+            EnterResult result = runtime.getController().enterCore(core, generation, this::admitted);
             if (result.getStatus() == EnterStatus.CANCELLED || !admitted()
                     || generation != runtime.getController().getCurrentGeneration()) return;
-            lastKnownState = deepState();
-            if (!lastKnownState.equals("IDLE")) return;
+            recordVerifiedEnter();
         } catch (Exception error) {
             runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "ENTER_FAILED"));
             return;
         }
+        DeferredFeatureSelection selection = new DeferredFeatureSelection(generation,
+                () -> runtime.getController().getCurrentGeneration(), this::admitted,
+                playing -> enterConfiguredDoze(playing, generation));
+        featureSelection = selection;
+        if (whitelistMusicAppNetwork) {
+            selectionTimeout = () -> {
+                if (selection.complete(null)) runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "MUSIC_SELECTION_TIMEOUT"));
+            };
+            worker.postDelayed(selectionTimeout, MUSIC_SELECTION_TIMEOUT_MS);
+            try {
+                NotificationService listener = NotificationService.Companion.getInstance();
+                if (listener != null) {
+                    listener.getPlayingPackageName(pkg -> {
+                        postWork(() -> {
+                            try {
+                                if (selection.complete(pkg != null) && selectionTimeout != null) worker.removeCallbacks(selectionTimeout);
+                            } catch (Exception error) {
+                                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "MUSIC_SELECTION_FAILED"));
+                            }
+                        });
+                        return null;
+                    }, error -> {
+                        postWork(() -> {
+                            if (selection.complete(null)) {
+                                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "MUSIC_SELECTION_FAILED"));
+                            }
+                        });
+                        return null;
+                    });
+                    return;
+                }
+                selection.complete(null);
+            } catch (Exception error) {
+                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "MUSIC_SELECTION_FAILED"));
+                selection.complete(null);
+            }
+            return;
+        }
+        selection.complete(false);
+    }
+
+    private void enterConfiguredDoze(Boolean playingMusic, long generation) {
+        if (!admitted() || generation != runtime.getController().getCurrentGeneration()) return;
+        try {
+            runtime.getController().enterGroups(config(false, playingMusic), generation, this::admitted);
+        } catch (Exception error) {
+            runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "FEATURE_SELECTION_FAILED"));
+        }
+    }
+
+    private void recordVerifiedEnter() {
+        lastKnownState = deepState();
+        if (!lastKnownState.equals("IDLE")) return;
         releaseWakeLock();
         if (verifiedIdleSeen) return;
         verifiedIdleSeen = true;
@@ -932,12 +984,17 @@ public class ForceDozeService extends Service {
                 runtime.bumpGeneration();
             }
             long epoch = exitEpoch.get();
-            postWork(() -> receiveOnWorker(action, exitTrigger, epoch));
+            long generation = runtime.getController().getCurrentGeneration();
+            postWork(() -> receiveOnWorker(action, exitTrigger, epoch, generation));
         }
     }
 
-    private void receiveOnWorker(String action, boolean exitTrigger, long epoch) {
+    private void receiveOnWorker(String action, boolean exitTrigger, long epoch, long generation) {
         if (Intent.ACTION_SCREEN_ON.equals(action)) {
+            cancelEnter();
+            // Keyguard biometrics must wake before USER_PRESENT; all other intent stays owned.
+            if (!exitTrigger) runtime.recordExit(runtime.getController().restoreBiometrics(generation,
+                    () -> !destroyed && epoch == exitEpoch.get() && Utils.isScreenOn(this)));
             // Observe after restore at the exit trigger, so the journal sees sensors restored first.
             if (exitTrigger) handleScreenOn(this, 0, 0);
             runtime.getJournal().screen(EventType.SCREEN_ON, Utils.getBatteryLevel(this), Utils.isConnectedToCharger(this));

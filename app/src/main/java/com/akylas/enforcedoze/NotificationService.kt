@@ -25,14 +25,9 @@ class NotificationService : NotificationListenerService() {
         instance = WeakReference(this)
     }
 
-    private fun getNotifications(): List<StatusBarNotification> {
-        return try {
-            activeNotifications.sortedBy { it.postTime }
-        } catch (e: SecurityException) {
-            emptyList()
-        }
-    }
-    fun getPlayingPackageName(callback: (String?) -> (Unit?)) {
+    private fun getNotifications(): List<StatusBarNotification> = activeNotifications.sortedBy { it.postTime }
+    @JvmOverloads
+    fun getPlayingPackageName(callback: (String?) -> Unit?, onError: (Exception) -> Unit? = { null }) {
         try {
             val notifications = getNotifications().filter {
                 it.notification.category == Notification.CATEGORY_TRANSPORT || it.notification.category == Notification.CATEGORY_SERVICE
@@ -50,14 +45,12 @@ class NotificationService : NotificationListenerService() {
                     ) {
                         super.onConnected(controller, allowedCommands)
                         if (controller != mediaController) return
-                        if (controller.playerState == SessionPlayer.PLAYER_STATE_PLAYING) {
-                            callback(notification.packageName)
-                        } else {
-                            callback(null)
-                        }
                         try {
-                            mediaController?.close()
-                        } catch (_: Exception) {
+                            callback(if (controller.playerState == SessionPlayer.PLAYER_STATE_PLAYING) notification.packageName else null)
+                        } catch (error: Exception) {
+                            onError(error)
+                        } finally {
+                            try { controller.close() } catch (_: Exception) { }
                         }
                     }
 
@@ -72,8 +65,8 @@ class NotificationService : NotificationListenerService() {
             } else {
                 callback(null)
             }
-        } catch (e: SecurityException) {
-            callback(null)
+        } catch (error: Exception) {
+            onError(error)
         }
     }
 

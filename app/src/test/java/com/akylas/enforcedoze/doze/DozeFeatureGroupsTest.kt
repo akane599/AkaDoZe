@@ -81,9 +81,9 @@ class DozeFeatureGroupsTest {
         runner.replies("settings get global wifi_on", "1", "0")
         runner.replies("settings get global bluetooth_on", "1", "0")
         enter(config.copy(features = setOf(Feature.WIFI, Feature.BLUETOOTH)))
-        runner.afterCommand = { if (it == "cmd wifi set-wifi-enabled enabled") controller.bumpGeneration() }
+        runner.afterCommand = { if (it == "cmd bluetooth_manager enable") controller.bumpGeneration() }
         assertEquals(EnterStatus.CANCELLED, controller.maintenance(true, controller.currentGeneration) { true }.status)
-        assertFalse(runner.commands.contains("cmd bluetooth_manager enable"))
+        assertFalse(runner.commands.contains("cmd wifi set-wifi-enabled enabled"))
         assertEquals(3, store.load().entries.size) // force plus both unchanged radio originals
     }
 
@@ -208,6 +208,64 @@ class DozeFeatureGroupsTest {
         force(29)
         assertEquals(Reason.UNVERIFIED, enter(config.copy(apiLevel = 29, level = AccessLevel.ROOT, features = setOf(Feature.AIRPLANE))).steps.last().reason)
         assertFalse(runner.commands.any { "AIRPLANE_MODE" in it || "airplane_mode_on" in it })
+    }
+
+    @Test fun screenOnWithWaitForUnlockRestoresOnlyLedgerBiometricsAndExitDoesNotRepeatIt() {
+        val biometric = LedgerEntry(Feature.BIOMETRICS, null, "1", 0, apiLevel = 36)
+        val wifi = LedgerEntry(Feature.WIFI, null, "1", 0, apiLevel = 36)
+        val app = LedgerEntry(Feature.APP_SUSPEND, OWNED, "0", 0, apiLevel = 36)
+        store.save(RestoreLedger(listOf(wifi, app, biometric)))
+        runner.replies("settings get secure biometric_keyguard_enabled", "1")
+        controller.restoreBiometrics(controller.currentGeneration) { true }
+        assertEquals("keyguard must receive the ledger original before unlock", listOf(
+            "settings put secure biometric_keyguard_enabled 1",
+        ), runner.mutations())
+        assertEquals(listOf(wifi, app), store.load().entries)
+        runner.replies("settings get global wifi_on", "1")
+        runner.replies("dumpsys package $OWNED", pkg(OWNED, false))
+        assertTrue(controller.exit().complete)
+        assertEquals(1, runner.commands.count { it == "settings put secure biometric_keyguard_enabled 1" })
+    }
+
+    @Test fun maintenanceRestoreLoadFailureCancelsWithoutCommands() = maintenanceLoadFailure(true)
+    @Test fun maintenanceReapplyLoadFailureCancelsWithoutCommands() = maintenanceLoadFailure(false)
+
+    private fun maintenanceLoadFailure(restore: Boolean) {
+        val broken = object : LedgerStore {
+            override fun load(): RestoreLedger = throw IllegalStateException("type-corrupt preference")
+            override fun save(ledger: RestoreLedger) = fail("must not save after failed load")
+        }
+        val subject = DozeController(runner, CommandCatalog, CapabilityResolver, broken, FakeClock(),
+            DozeEventSink { events.add(it) }, 36, grants)
+        val result = try { subject.maintenance(restore, subject.currentGeneration) { true } }
+            catch (error: Exception) { fail("ledger load must cancel maintenance, not crash: $error"); return }
+        assertEquals(EnterStatus.CANCELLED, result.status)
+        assertTrue(runner.commands.isEmpty())
+        assertTrue(events.any { it.type == EventType.ERROR })
+    }
+
+    @Test fun exitRestoresAirplaneBeforeWifiAndRemovesBothEntries() = airplaneWifiRestore(false)
+    @Test fun maintenanceRestoresAirplaneBeforeWifiAndRetainsOriginals() = airplaneWifiRestore(true)
+
+    private fun airplaneWifiRestore(maintenance: Boolean) {
+        val originals = RestoreLedger(listOf(
+            LedgerEntry(Feature.WIFI, null, "1", 0, apiLevel = 36),
+            LedgerEntry(Feature.AIRPLANE, null, "0", 0, apiLevel = 36),
+        ))
+        store.save(originals)
+        var airplane = true
+        runner.afterCommand = { if (it == "cmd connectivity airplane-mode disable") airplane = false }
+        runner.answer("settings get global wifi_on") { FakeRunner.result(if (airplane) "2" else "1") }
+        runner.replies("cmd connectivity airplane-mode", "disabled")
+        if (maintenance) {
+            assertTrue(controller.maintenance(true, controller.currentGeneration) { true }.steps.all { it.status == StepStatus.VERIFIED })
+            assertEquals(originals, store.load())
+        } else {
+            val result = controller.exit()
+            assertTrue("both restored entries must be removed", result.complete)
+            assertEquals(2, result.restored.size)
+        }
+        assertEquals(listOf("cmd connectivity airplane-mode disable", "cmd wifi set-wifi-enabled enabled"), runner.mutations())
     }
 
     companion object {

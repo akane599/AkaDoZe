@@ -98,7 +98,7 @@ class DozeControllerTest {
         }
         val result = enter(config.copy(batterySaver = true, features = setOf(Feature.WIFI)))
         assertTrue(result.steps.all { it.status == StepStatus.VERIFIED })
-        assertEquals(listOf(RESTRICT, "cmd power set-mode 1", FORCE, "cmd wifi set-wifi-enabled disabled"), runner.mutations())
+        assertEquals(listOf("cmd power set-mode 1", RESTRICT, FORCE, "cmd wifi set-wifi-enabled disabled"), runner.mutations())
         assertTrue(controller.exit().complete)
         assertEquals(listOf(ENABLE, UNFORCE, "cmd power set-mode 0", "cmd wifi set-wifi-enabled enabled"), runner.mutations().takeLast(4))
         assertTrue(store.load().entries.isEmpty())
@@ -108,13 +108,14 @@ class DozeControllerTest {
 
     @Test fun screenOnBetweenStepsCancelsFurtherMutationsAndExitRestoresAppliedOnly() {
         runner.replies(SENSORS, "Mode : NORMAL", "Mode : RESTRICTED : $TOKEN", "Mode : NORMAL")
+        runner.replies("settings get global low_power", "0", "1", "0")
         runner.afterCommand = { if (it == RESTRICT) controller.bumpGeneration() }
         assertEquals(EnterStatus.CANCELLED, enter(config.copy(batterySaver = true)).status)
-        assertEquals(listOf(RESTRICT), runner.mutations())
+        assertEquals(listOf("cmd power set-mode 1", RESTRICT), runner.mutations())
         runner.afterCommand = {}
         // Cancellation before verification leaves the first remaining reading restricted: one restore retry.
         assertTrue(controller.exit().complete)
-        assertEquals(listOf(RESTRICT, ENABLE, ENABLE), runner.mutations())
+        assertEquals(listOf("cmd power set-mode 1", RESTRICT, ENABLE, ENABLE, "cmd power set-mode 0"), runner.mutations())
         assertFalse(runner.commands.contains(FORCE))
     }
 
@@ -276,13 +277,13 @@ class DozeControllerTest {
         runner.replies("dumpsys package $PKG",
             packageState(false, true, false, true), packageState(true, true, false, true),
             packageState(true, true, false, true), packageState(true, false, true, true),
-            packageState(false, false, true, true), packageState(false, true, false, true))
+            packageState(true, true, false, true), packageState(false, true, false, true))
         val result = enter(config.copy(restrictSensors = false, appsToSuspend = setOf(PKG), packagesToBlockNotifications = setOf(PKG)))
         assertTrue(result.steps.all { it.status == StepStatus.VERIFIED })
         assertTrue(controller.exit().complete)
         assertEquals(listOf("pm grant $PKG android.permission.POST_NOTIFICATIONS",
             "pm clear-permission-flags $PKG android.permission.POST_NOTIFICATIONS user-set",
-            "pm set-permission-flags $PKG android.permission.POST_NOTIFICATIONS user-fixed"), runner.mutations().takeLast(3))
+            "pm set-permission-flags $PKG android.permission.POST_NOTIFICATIONS user-fixed"), runner.mutations().takeLast(4).take(3))
         assertTrue(runner.commands.contains("pm unsuspend $PKG"))
     }
 
