@@ -6,11 +6,11 @@ Android, developed on Ubuntu from the CLI. **If the STACK block still has `<plac
 
 <!-- STACK:BEGIN (filled by /bootstrap) -->
 - Origin: fork of farfromrefug/EnforceDoze, imported as akane599/AkaDoZe @ db47ccd (squashed, no upstream history) · Integration branch: Base
-- Language: mixed — 43 Java / 2 Kotlin · UI: Views (XML, PreferenceFragment, material-dialogs 0.9) · screenshot tests: none
+- Language: mixed — 51 Java / 44 Kotlin (main) · UI: Views (XML, PreferenceFragment, material-dialogs 0.9) · screenshot tests: none
 - JDK target 17 (machine JDK 21) · Gradle 8.13 · AGP 8.13.2 · Kotlin 2.0.0 · compileSdk 36 · targetSdk 36 · minSdk 23
-- Modules: :app · Architecture: single-module, Activities + Services + BroadcastReceivers, SharedPreferences; root via libsuperuser, Shizuku API 13.1.5 · DI/DB/Net: none / none / none
+- Modules: :app · Architecture: single-module; pure Kotlin engine/policies (access/, doze/, monitor/, service/) behind Activities + ForceDozeService; SharedPreferences + restore ledger; root via libsuperuser, Shizuku API 13.1.5 · DI/DB/Net: none / platform SQLite journal / none
 - App id: com.akylas.enforcedoze · Launcher: .MainActivity · Groovy build scripts, no version catalog, repos include jcenter + jitpack
-- Baseline: build ok · 1 unit test (template stub), 0 failing after SQ-1 added junit 4.13.2; no real tests yet (PROGRESS.md)
+- Baseline (akadoze-2.0): full gate green · 265 JVM unit tests, 0 failing; lint against app/lint-baseline.xml; device QA pending (docs/device-test-1.11.0.md)
 <!-- STACK:END -->
 
 ## How work flows here
@@ -29,5 +29,5 @@ Android, developed on Ubuntu from the CLI. **If the STACK block still has `<plac
 - Build: `./gradlew :app:assembleDebug --console=plain -q` · Unit: `:app:testDebugUnitTest` · Lint: `:app:lintDebug`
 - Screenshots: none (Views app, no screenshot framework); UI checks go through the device / android-emulator-qa.
 - Device: `./gradlew :app:installDebug -q && adb shell am start -n com.akylas.enforcedoze/.MainActivity` · logs: `adb logcat -d --pid=$(adb shell pidof -s com.akylas.enforcedoze) | tail -80`
-- Machine: ~3 GB RAM, 2 cores, no KVM. Gradle daemon is `-Xmx2048m`; run one Gradle job at a time; a first cold build takes ~5 min. No emulator: device work needs a physical device over adb (the app needs root or Shizuku anyway).
+- Machine: 12 cores, ~22 GB RAM, no KVM. Gradle daemon is `-Xmx2048m`. Up to 4 Gradle jobs at once (user direction 2026-10-03, above the live rule's default of 2) and at most 3 concurrent Opus agents (usage limits). No emulator: device work needs a physical device over adb (the app needs root or Shizuku anyway).
 - Emulator (not usable here, no KVM): `emulator -avd <AVD> -no-window -no-audio &` then `adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done'`
