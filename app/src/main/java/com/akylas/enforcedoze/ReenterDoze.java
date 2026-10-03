@@ -1,25 +1,7 @@
 package com.akylas.enforcedoze;
 
-import static com.akylas.enforcedoze.Utils.logToLogcat;
+import com.akylas.enforcedoze.access.ExternalControlPolicy.Action;
 
-import android.content.BroadcastReceiver;
-import android.content.Context;
-import android.content.Intent;
-import androidx.localbroadcastmanager.content.LocalBroadcastManager;
-
-public class ReenterDoze extends BroadcastReceiver {
-
-    public static String TAG = "EnforceDoze";
-    private static void log(String message) {
-        logToLogcat(TAG, message);
-    }
-
-    public ReenterDoze() {
-    }
-
-    @Override
-    public void onReceive(Context context, Intent intent) {
-        log("Re-enter broadcast received");
-        LocalBroadcastManager.getInstance(context).sendBroadcast(new Intent("reenter-doze"));
-    }
+public class ReenterDoze extends ExternalControlReceiver {
+    public ReenterDoze() { super(Action.REAPPLY_DOZE); }
 }

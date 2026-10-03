@@ -65,6 +65,9 @@ import static com.akylas.enforcedoze.Utils.logToLogcat;
 
 public class ForceDozeService extends Service {
 
+    public static final String ACTION_REAPPLY_DOZE = "com.akylas.enforcedoze.ACTION_REAPPLY_DOZE";
+    public static final String EXTRA_REAPPLY_DEADLINE = "reapplyDeadlineElapsed";
+
     private static final String CHANNEL_STATS = "CHANNEL_STATS";
     private static final String CHANNEL_TIPS = "CHANNEL_TIPS";
     private static final String CHANNEL_SILENT = "CHANNEL_SILENT";
@@ -369,6 +372,25 @@ public class ForceDozeService extends Service {
         super.onStartCommand(intent, flags, startId);
         // Promotion cannot wait behind reconciliation or command work, on any supported API.
         if (showPersistentNotif) showPersistentNotification(); else showSilentNotification();
+        if (intent != null && ACTION_REAPPLY_DOZE.equals(intent.getAction())) {
+            final long generation = runtime.getController().getCurrentGeneration();
+            final long epoch = exitEpoch.get();
+            final long deadline = intent.getLongExtra(EXTRA_REAPPLY_DEADLINE, 0);
+            postWork(() -> {
+                if (generation != runtime.getController().getCurrentGeneration() || epoch != exitEpoch.get()
+                        || runtime.getClock().elapsedRealtime() >= deadline || Utils.isScreenOn(this)
+                        || !runtime.getSessionActive() || !getDefaultSharedPreferences(this).getBoolean(
+                                Prefs.ALLOW_EXTERNAL_BASIC_CONTROL, Prefs.DEFAULT_ALLOW_EXTERNAL_BASIC_CONTROL)) {
+                    runtime.getJournal().emit(new DozeEvent(EventType.SKIPPED, "EXTERNAL_REAPPLY_NOT_ADMITTED"));
+                    return;
+                }
+                cancelEnter();
+                enterDueElapsed = runtime.getClock().elapsedRealtime();
+                // enterDoze and its controller retain all normal admission/generation checks.
+                runtime.withDeadline(deadline, () -> enterDoze(this));
+            });
+            return START_STICKY;
+        }
         postWork(() -> {
             if (!runtime.getSessionActive()) runtime.reconcileAndCheck();
             else runtime.checkSafety();
