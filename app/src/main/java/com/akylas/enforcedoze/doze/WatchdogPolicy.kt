@@ -22,6 +22,7 @@ enum class ReapplySkip {
 /** Caller owns a single deferred callback and cancels it at every generation/session change. */
 class WatchdogPolicy(private val clock: Clock) {
     private var lastReforce: Long? = null
+    private var lastEnter: Long? = null
     private var reforces = 0
     private var deferred = false
 
@@ -49,19 +50,35 @@ class WatchdogPolicy(private val clock: Clock) {
      * schedules a deferred request or consumes budget when rejected.
      */
     @Synchronized
-    fun onExternalReapply(snapshot: DozeStateReading, maintenanceInProgress: Boolean): Decision {
+    fun onExternalReapply(snapshot: DozeStateReading, maintenanceInProgress: Boolean, apiLevel: Int): Decision {
         if (maintenanceInProgress || maintenance(snapshot)) {
             return Decision.SKIP(ReapplySkip.EXTERNAL_REAPPLY_MAINTENANCE)
         }
-        if (unknownDeep(snapshot)) return Decision.SKIP(ReapplySkip.EXTERNAL_REAPPLY_STATE_UNKNOWN)
-        val reason = reserveReforce()
+        if (unknownDeep(snapshot) || (apiLevel >= 24 && snapshot.deep != DeepState.IDLE &&
+                (snapshot.light == null || snapshot.light == LightState.UNKNOWN))) {
+            return Decision.SKIP(ReapplySkip.EXTERNAL_REAPPLY_STATE_UNKNOWN)
+        }
+        val reason = precheckExternalReapply() ?: reserveReforce()
         return if (reason == null) Decision.REFORCE else Decision.SKIP(reason)
     }
 
-    /** An ordinary enter starts spacing too, without spending the reforce budget. */
+    /** Non-reserving external check avoids state reads for spacing/budget rejections. */
+    @Synchronized
+    fun precheckExternalReapply(): ReapplySkip? {
+        if (reforces >= MAX_REFORCES) return ReapplySkip.EXTERNAL_REAPPLY_BUDGET
+        val reforce = lastReforce
+        val enter = lastEnter
+        val latest = if (reforce == null) enter else if (enter == null) reforce else maxOf(reforce, enter)
+        if (latest != null && clock.elapsedRealtime() < latest + MIN_INTERVAL_MS) {
+            return ReapplySkip.EXTERNAL_REAPPLY_SPACING
+        }
+        return null
+    }
+
+    /** Only external reapplies are spaced from ordinary enters; no reforce budget is spent. */
     @Synchronized
     fun recordEnter() {
-        lastReforce = clock.elapsedRealtime()
+        lastEnter = clock.elapsedRealtime()
     }
 
     private fun unknownDeep(snapshot: DozeStateReading): Boolean =
@@ -85,6 +102,7 @@ class WatchdogPolicy(private val clock: Clock) {
     @Synchronized
     fun resetSession() {
         lastReforce = null
+        lastEnter = null
         reforces = 0
         deferred = false
     }

@@ -24,7 +24,7 @@ class ExternalControlWiringTest {
         val enter = start.indexOf("reapplyEnter(generation, epoch);")
         assertTrue("external requests must reserve the shared spacing and session budget before entering", gate >= 0 && gate < enter)
         assertFalse("explicit basic-control consent does not require automatic enforcement", start.contains("Prefs.KEEP_DOZE_ENFORCED"))
-        assertTrue("policy sees both fresh deep/light state and latched maintenance", start.contains("DozeStateReading reading = runtime.readState();") && start.contains("onExternalReapply(reading, maintenance)"))
+        assertTrue("policy sees both fresh deep/light state and latched maintenance", start.contains("DozeStateReading reading = runtime.readState();") && start.contains("onExternalReapply(reading, maintenance, Build.VERSION.SDK_INT)"))
         val stateRead = start.indexOf("DozeStateReading reading = runtime.readState();")
         val consent = start.indexOf("Prefs.ALLOW_EXTERNAL_BASIC_CONTROL")
         assertTrue("consent, deadline and generation are checked after the blocking state read", stateRead >= 0 && stateRead < consent && consent < gate)
@@ -35,6 +35,18 @@ class ExternalControlWiringTest {
         assertTrue("every ordinary enter starts watchdog spacing before mutation", enterCore.indexOf("runtime.getWatchdog().recordEnter();") in 0 until enterCore.indexOf("runtime.getController().enterCore("))
         val call = receiver().substringAfter("case REAPPLY_DOZE:").substringBefore("break;")
         assertTrue("broadcast remains REQUESTED, never claims a completed reforce", call.contains("Outcome.REQUESTED, ExecutionReason.REAPPLY_REQUESTED"))
+    }
+
+    @Test fun externalSpacingAndBudgetPrecheckReturnsBeforeAnyStateRead() {
+        val start = service().substringAfter("if (reapply) {").substringBefore("private void reapplyEnter(")
+        val precheck = start.indexOf("runtime.getWatchdog().precheckExternalReapply()")
+        val read = start.indexOf("runtime.readState()")
+        assertTrue("spacing and budget must be checked before shell reads", precheck >= 0 && precheck < read)
+        val rejection = start.substring(precheck, read)
+        assertTrue("pre-check rejection must journal its typed reason through the existing limiter",
+            rejection.contains("if (precheck != null)") && rejection.contains("journalReapplySkipped(runtime, precheck)"))
+        assertTrue("a rejected pre-check must return without reading", rejection.contains("return;"))
+        assertTrue("post-read reservation remains authoritative", start.indexOf("onExternalReapply(") > read)
     }
 
     @Test fun foregroundReapplySkipsPromotionAndOtherPromotionDenialsAreCaught() {

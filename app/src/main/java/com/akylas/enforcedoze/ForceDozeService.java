@@ -442,6 +442,11 @@ public class ForceDozeService extends Service {
                     ExternalControlReceiver.journalReapplySkipped(runtime, ReapplySkip.EXTERNAL_REAPPLY_ENTER_PENDING);
                     return;
                 }
+                ReapplySkip precheck = runtime.getWatchdog().precheckExternalReapply();
+                if (precheck != null) {
+                    ExternalControlReceiver.journalReapplySkipped(runtime, precheck);
+                    return;
+                }
                 DozeStateReading reading = runtime.readState();
                 // State reads may block; retain deadline, consent and generation admission afterwards.
                 now = runtime.getClock().elapsedRealtime();
@@ -451,7 +456,7 @@ public class ForceDozeService extends Service {
                     ExternalControlReceiver.journalReapplySkipped(runtime, ReapplySkip.EXTERNAL_REAPPLY_NOT_ADMITTED);
                     return;
                 }
-                Decision decision = runtime.getWatchdog().onExternalReapply(reading, maintenance);
+                Decision decision = runtime.getWatchdog().onExternalReapply(reading, maintenance, Build.VERSION.SDK_INT);
                 if (decision instanceof Decision.SKIP) {
                     ExternalControlReceiver.journalReapplySkipped(runtime, ((Decision.SKIP) decision).getReason());
                     return;
