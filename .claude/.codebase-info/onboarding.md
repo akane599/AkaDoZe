@@ -6,7 +6,7 @@
 
 ```bash
 bash .claude/kit/gradle-check.sh :app:assembleDebug          # debug APK → app/build/outputs/apk/debug/
-bash .claude/kit/gradle-check.sh :app:testDebugUnitTest      # needs a junit testImplementation (see patterns.md)
+bash .claude/kit/gradle-check.sh :app:testDebugUnitTest      # JUnit 4, only a stub test so far
 ./gradlew :app:installDebug -q && adb shell am start -n com.akylas.enforcedoze/.MainActivity
 adb logcat -d --pid=$(adb shell pidof -s com.akylas.enforcedoze) | tail -80
 ```

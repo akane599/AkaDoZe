@@ -10,7 +10,7 @@ Android, developed on Ubuntu from the CLI. **If the STACK block still has `<plac
 - JDK target 17 (machine JDK 21) · Gradle 8.13 · AGP 8.13.2 · Kotlin 2.0.0 · compileSdk 36 · targetSdk 36 · minSdk 23
 - Modules: :app · Architecture: single-module, Activities + Services + BroadcastReceivers, SharedPreferences; root via libsuperuser, Shizuku API 13.1.5 · DI/DB/Net: none / none / none
 - App id: com.akylas.enforcedoze · Launcher: .MainActivity · Groovy build scripts, no version catalog, repos include jcenter + jitpack
-- Baseline: build ok · 1 unit test (template stub), unit-test compile fails: no junit dependency (PROGRESS.md)
+- Baseline: build ok · 1 unit test (template stub), 0 failing after SQ-1 added junit 4.13.2; no real tests yet (PROGRESS.md)
 <!-- STACK:END -->
 
 ## How work flows here

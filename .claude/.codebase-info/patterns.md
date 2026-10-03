@@ -26,7 +26,7 @@
 ## Testing
 
 None real: `app/src/test/…/ExampleUnitTest.java` and `app/src/androidTest/…/ApplicationTest.java` are template
-stubs, and `app/build.gradle` has no test dependencies (baseline 2026-10-03: unit-test compile fails).
+stubs, and the only test dependency is `testImplementation 'junit:junit:4.13.2'` (added 2026-10-03, SQ-1).
 Most logic needs a rooted/Shizuku device; pure logic worth unit-testing: `Utils` custom-period parsing
 (`isInsideCustomDozePeriod`, `getMillisUntilNextCustomDozePeriodBoundary`), `DozeTunableHandler` string/command
 building, `ForceDozeService.getDeviceIdleState` parsing.

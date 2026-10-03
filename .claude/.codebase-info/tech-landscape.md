@@ -23,7 +23,7 @@ default; release signing from env vars when `-PuseExternalSigning` is passed.
 | UI | `androidx.appcompat:appcompat:1.7.0`, `com.google.android.material:material:1.12.0`, `com.afollestad.material-dialogs:core:0.9.3.0`, `androidx.preference:preference-ktx:1.2.1`, `androidx.browser:browser:1.8.0` |
 | Privilege | `eu.chainfire:libsuperuser:1.1.0.+` (dynamic version), `dev.rikka.shizuku:api` + `provider` 13.1.5 |
 | Misc | `androidx.media2:media2-session:1.3.0` (media controller for playing-app detection), `androidx.localbroadcastmanager:1.1.0`, `com.fabiendevos:nanotasks:1.1.0` (async tasks), `com.jakewharton:process-phoenix:2.1.2` (app restart) |
-| Test | none declared (stub test cannot compile) |
+| Test | `junit:junit:4.13.2` (testImplementation) |
 
 No DI, database, networking, coroutines, Compose, lint or formatter config.
 
