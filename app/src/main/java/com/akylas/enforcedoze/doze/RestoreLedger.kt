@@ -3,7 +3,7 @@ package com.akylas.enforcedoze.doze
 import com.akylas.enforcedoze.access.Feature
 import java.util.Collections
 
-/** Null originalValue is unverified, NEVER permission to guess a restore value. */
+/** Legacy null originals were never mutated and are discarded on reconciliation. */
 data class LedgerEntry @JvmOverloads constructor(
     val feature: Feature,
     val target: String?,
@@ -11,6 +11,7 @@ data class LedgerEntry @JvmOverloads constructor(
     val appliedAtElapsed: Long,
     val attempts: Int = 0,
     val debt: Boolean = false,
+    val apiLevel: Int? = null,
 )
 
 /** Defensive snapshot, including for Java callers. */
@@ -39,6 +40,7 @@ object RestoreLedgerCodec {
         listOf(
             "1", entry.feature.name, escape(entry.target), escape(entry.originalValue),
             entry.appliedAtElapsed.toString(), entry.attempts.toString(), entry.debt.toString(),
+            entry.apiLevel?.toString() ?: "~",
         ).joinToString("|")
     }
 
@@ -50,12 +52,13 @@ object RestoreLedgerCodec {
             if (line.isEmpty()) return@forEachIndexed
             val entry = try {
                 val parts = line.split('|')
-                require(parts.size == 7 && parts[0] == "1")
+                require(parts.size in 7..8 && parts[0] == "1")
                 LedgerEntry(
                     Feature.valueOf(parts[1]), unescape(parts[2]), unescape(parts[3]),
                     parts[4].toLong().also { require(it >= 0) },
                     parts[5].toInt().also { require(it >= 0) },
                     when (parts[6]) { "true" -> true; "false" -> false; else -> error("Invalid debt") },
+                    parts.getOrNull(7)?.takeUnless { it == "~" }?.toInt()?.also { require(it >= 23) },
                 )
             } catch (_: IllegalArgumentException) {
                 null

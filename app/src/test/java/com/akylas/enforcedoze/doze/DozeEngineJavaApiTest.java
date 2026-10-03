@@ -43,10 +43,19 @@ public class DozeEngineJavaApiTest {
         assertEquals(EnterStatus.COMPLETED, result.getStatus());
         assertEquals(StepStatus.SKIPPED, result.getSteps().get(0).getStatus());
         assertTrue(events.stream().anyMatch(event -> event.getType() == EventType.SKIPPED));
-        assertTrue(controller.reconcile().getComplete());
+        ExitResult exit = controller.reconcile();
+        assertTrue(exit.getComplete());
+        assertTrue(exit.getErrors().isEmpty());
+        for (java.lang.reflect.Constructor<?> constructor : DozeController.class.getConstructors()) {
+            assertEquals("API and grants are mandatory", 8, constructor.getParameterCount());
+        }
+        LedgerEntry entry = new LedgerEntry(com.akylas.enforcedoze.access.Feature.LOCATION,
+                null, "1", 0, 0, false, 34);
+        assertEquals(Integer.valueOf(34), entry.getApiLevel());
         assertEquals(Decision.REFORCE.INSTANCE, new WatchdogPolicy(clock).onIdleChanged(
                 DozeStateParser.parse("mState=ACTIVE"), false, false, true));
         assertEquals(Collections.singletonList(Action.RESTORE_SENSORS), SafetyNet.check(
-                new SensorModeReading(SensorMode.RESTRICTED, "com.example.app"), false, AccessLevel.APP));
+                new SensorModeReading(SensorMode.RESTRICTED, "com.example.app"), false, AccessLevel.APP,
+                "com.example.app", false));
     }
 }

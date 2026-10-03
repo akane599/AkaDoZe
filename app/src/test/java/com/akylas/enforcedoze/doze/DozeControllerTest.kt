@@ -199,13 +199,13 @@ class DozeControllerTest {
         assertTrue(runner.commands.contains("cmd bluetooth_manager enable"))
     }
 
-    @Test fun unknownOriginalIsRecordedButNeverMutatedOrGuessedOnExit() {
+    @Test fun unknownOriginalIsNotRecordedMutatedOrGuessedOnExit() {
         runner.level = AccessLevel.APP
         runner.replies(SENSORS, "OEM output")
         enter(config.copy(level = AccessLevel.APP))
-        assertNull(store.load().entries.single().originalValue)
+        assertTrue(store.load().entries.isEmpty())
         assertTrue(runner.mutations().isEmpty())
-        assertFalse(controller.exit().complete)
+        assertTrue(controller.exit().complete)
         assertTrue(runner.mutations().isEmpty())
     }
 
@@ -292,8 +292,7 @@ class DozeControllerTest {
         runner.replies("settings get global low_power", "1", "1")
         enter(config.copy(batterySaver = true))
         assertTrue(runner.mutations().isEmpty())
-        assertEquals(listOf(Feature.MOTION_SENSORS), store.load().entries.map { it.feature })
-        assertNull(store.load().entries.single().originalValue)
+        assertTrue(store.load().entries.isEmpty())
     }
 
     @Test fun generationBumpDuringDurableSaveCancelsBeforeMutationButPreservesRecoveryIntent() {
@@ -320,7 +319,9 @@ class DozeControllerTest {
         store.failSave = true
         runner.replies("settings get global wifi_on", "1")
         runner.replies("settings get global bluetooth_on", "1")
-        assertEquals(2, controller.exit().remaining.entries.size)
+        val result = controller.exit()
+        assertEquals(2, result.remaining.entries.size)
+        assertEquals(listOf(ExitError.LEDGER_SAVE_FAILED, ExitError.LEDGER_SAVE_FAILED), result.errors)
         assertEquals(2, runner.mutations().size)
         assertEquals(2, events.count { it.type == EventType.ERROR })
         assertEquals(2, store.restart().load().entries.size)

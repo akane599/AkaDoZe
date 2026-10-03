@@ -60,6 +60,13 @@ data class StepResult(
 )
 
 data class EnterResult(val status: EnterStatus, val steps: List<StepResult>)
-data class ExitResult(val restored: List<LedgerEntry>, val remaining: RestoreLedger) {
-    val complete: Boolean get() = remaining.entries.isEmpty()
+enum class ExitError { LEDGER_LOAD_FAILED, LEDGER_SAVE_FAILED }
+
+/** Store failures remain observable even when the diagnostic sink is unavailable. */
+data class ExitResult @JvmOverloads constructor(
+    val restored: List<LedgerEntry>,
+    val remaining: RestoreLedger,
+    val errors: List<ExitError> = emptyList(),
+) {
+    val complete: Boolean get() = errors.isEmpty() && remaining.entries.isEmpty()
 }

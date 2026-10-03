@@ -44,11 +44,11 @@ class DozePolicyTest {
 
     @Test fun safetyNetRestoresSensorsWithAppDumpButRaisesUnforceDebt() {
         val restricted = SensorModeReading(SensorMode.RESTRICTED, "com.example.app")
-        assertEquals(listOf(Action.RESTORE_SENSORS, Action.RAISE_DEBT), SafetyNet.check(restricted, true, AccessLevel.APP))
-        assertEquals(listOf(Action.RESTORE_SENSORS, Action.UNFORCE), SafetyNet.check(restricted, true, AccessLevel.SHELL))
-        assertEquals(listOf(Action.RAISE_DEBT), SafetyNet.check(restricted, true, AccessLevel.NONE))
-        assertTrue(SafetyNet.check(SensorModeReading(SensorMode.UNVERIFIED, null), null, AccessLevel.ROOT).isEmpty())
-        assertTrue(SafetyNet.check(SensorModeReading(SensorMode.NORMAL, null), false, AccessLevel.APP).isEmpty())
+        assertEquals(listOf(Action.RESTORE_SENSORS, Action.RAISE_DEBT), SafetyNet.check(restricted, true, AccessLevel.APP, "com.example.app", true))
+        assertEquals(listOf(Action.RESTORE_SENSORS, Action.UNFORCE), SafetyNet.check(restricted, true, AccessLevel.SHELL, "com.example.app", true))
+        assertEquals(listOf(Action.RAISE_DEBT), SafetyNet.check(restricted, true, AccessLevel.NONE, "com.example.app", true))
+        assertTrue(SafetyNet.check(SensorModeReading(SensorMode.UNVERIFIED, null), null, AccessLevel.ROOT, "com.example.app", true).isEmpty())
+        assertTrue(SafetyNet.check(SensorModeReading(SensorMode.NORMAL, null), false, AccessLevel.APP, "com.example.app", true).isEmpty())
     }
 }
 
@@ -56,7 +56,7 @@ class RestoreLedgerTest {
     @Test fun codecRoundTripsSeparatorsNullEmptyUnicodeAndDurableRestart() {
         val entries = listOf(
             LedgerEntry(Feature.WIFI, "percent%pipe|newline\ncarriage\rnull~漢字", "", 0),
-            LedgerEntry(Feature.FORCE_DOZE, null, null, 123, 7, true),
+            LedgerEntry(Feature.FORCE_DOZE, null, null, 123, 7, true, 34),
         )
         val ledger = RestoreLedger(entries)
         val decoded = RestoreLedgerCodec.decode(RestoreLedgerCodec.encode(ledger))
@@ -76,6 +76,16 @@ class RestoreLedgerTest {
         assertEquals(2, result.ledger.entries.size)
         assertEquals(bad, result.corruptLines.map { it.line })
         assertEquals((2..9).toList(), result.corruptLines.map { it.lineNumber })
+    }
+
+    @Test fun codecAcceptsLegacyMissingApiAndRejectsMalformedApiWithoutLosingNeighbors() {
+        val legacy = "1|LOCATION|~|2|0|0|false"
+        val modern = "1|LOCATION|~|1|0|0|false|34"
+        val bad = listOf("$legacy|invalid", "$legacy|22", "$legacy|", "$legacy|34|extra")
+        val result = RestoreLedgerCodec.decode((listOf(legacy, modern) + bad).joinToString("\n"))
+        assertEquals(listOf(null, 34), result.ledger.entries.map { it.apiLevel })
+        assertEquals(bad, result.corruptLines.map { it.line })
+        assertEquals(result.ledger, RestoreLedgerCodec.decode(RestoreLedgerCodec.encode(result.ledger)).ledger)
     }
 
     @Test fun ledgerDefensivelyCopiesAndRejectsJavaStyleMutation() {

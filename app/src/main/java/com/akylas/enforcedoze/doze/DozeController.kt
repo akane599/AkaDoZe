@@ -17,18 +17,18 @@ import java.util.concurrent.atomic.AtomicLong
 /**
  * Blocking control-lane core. enter/exit are serialized; bumpGeneration is safe from the exit-trigger
  * thread while a command is in flight. An in-flight effect stays ledger-backed until exit can run.
- * On a fresh process, supply current API/grants to the constructor (or exit/reconcile); no preferences
- * are needed to recover. Event sinks must not throw.
+ * Supply current API/grants at construction; exit/reconcile can refresh them without preferences.
+ * Event sinks are diagnostic only; their failures cannot stop control work.
  */
-class DozeController @JvmOverloads constructor(
+class DozeController(
     private val control: CommandRunner,
     private val catalog: CommandCatalog,
     private val resolver: CapabilityResolver,
     private val store: LedgerStore,
     private val clock: Clock,
     private val sink: DozeEventSink,
-    private var apiLevel: Int = 23,
-    private var grants: Grants = Grants(false, false),
+    private var apiLevel: Int,
+    private var grants: Grants,
 ) {
     private val generation = AtomicLong()
     val currentGeneration: Long get() = generation.get()
@@ -82,13 +82,15 @@ class DozeController @JvmOverloads constructor(
                 if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps.toList())
                 continue
             }
-            if (prior == null) {
-                ledger = RestoreLedger(ledger.entries + LedgerEntry(feature, target, original, clock.elapsedRealtime()))
-                store.save(ledger) // A failure propagates: no command may run without durable intent.
-            }
             if (original == null) {
                 steps.add(unverified(feature, target))
                 continue
+            }
+            if (prior == null) {
+                ledger = RestoreLedger(ledger.entries + LedgerEntry(
+                    feature, target, original, clock.elapsedRealtime(), apiLevel = apiLevel,
+                ))
+                store.save(ledger) // A failure propagates: no command may run without durable intent.
             }
             for (command in commands) {
                 if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps.toList())
@@ -126,7 +128,13 @@ class DozeController @JvmOverloads constructor(
         return synchronized(this) {
             this.apiLevel = apiLevel
             this.grants = grants
-            var ledger = store.load()
+            var ledger = try {
+                store.load()
+            } catch (_: Exception) {
+                emit(EventType.ERROR, reason = Reason.UNVERIFIED)
+                return@synchronized ExitResult(emptyList(), RestoreLedger(), listOf(ExitError.LEDGER_LOAD_FAILED))
+            }
+            val errors = mutableListOf<ExitError>()
             val restored = mutableListOf<LedgerEntry>()
             val ordered = ledger.entries.sortedBy {
                 when (it.feature) {
@@ -137,13 +145,16 @@ class DozeController @JvmOverloads constructor(
                 }
             }
             for (entry in ordered) {
-                val unavailable = resolver.status(entry.feature, control.level, apiLevel, grants) as? FeatureStatus.Unavailable
-                val commands = restoreCommands(entry)
-                var success = false
+                val entryApi = entry.apiLevel ?: apiLevel
+                val unavailable = resolver.status(entry.feature, control.level, entryApi, grants) as? FeatureStatus.Unavailable
+                val commands = restoreCommands(entry, entryApi)
+                // Older versions persisted unread originals but never mutated their features.
+                var success = entry.originalValue == null
+                if (success) emit(EventType.SKIPPED, entry.feature, entry.target, Reason.UNVERIFIED)
                 var debtReason = unavailable?.reason
                 if (unavailable == null && commands != null) {
                     for (command in commands) {
-                        val current = resolver.status(entry.feature, control.level, apiLevel, grants) as? FeatureStatus.Unavailable
+                        val current = resolver.status(entry.feature, control.level, entryApi, grants) as? FeatureStatus.Unavailable
                         if (current != null) {
                             debtReason = current.reason
                             break
@@ -151,18 +162,18 @@ class DozeController @JvmOverloads constructor(
                         run(command)
                     }
                     if (debtReason == null) {
-                        success = verifyRestore(entry)
+                        success = verifyRestore(entry, entryApi)
                         if (!success && entry.feature == Feature.MOTION_SENSORS && lastSensor != SensorMode.UNVERIFIED &&
-                            resolver.status(entry.feature, control.level, apiLevel, grants) == FeatureStatus.Available
+                            resolver.status(entry.feature, control.level, entryApi, grants) == FeatureStatus.Available
                         ) {
                             commands.forEach { run(it) }
-                            success = verifyRestore(entry)
+                            success = verifyRestore(entry, entryApi)
                         }
                     }
                 }
                 // A backend can die during the last command/readback, too.
                 if (!success && debtReason == null) {
-                    debtReason = (resolver.status(entry.feature, control.level, apiLevel, grants) as? FeatureStatus.Unavailable)?.reason
+                    debtReason = (resolver.status(entry.feature, control.level, entryApi, grants) as? FeatureStatus.Unavailable)?.reason
                 }
                 val updated = ledger.entries.toMutableList()
                 val index = updated.indexOf(entry)
@@ -180,13 +191,14 @@ class DozeController @JvmOverloads constructor(
                 try {
                     store.save(next)
                     ledger = next
-                    if (success) restored.add(entry)
-                } catch (_: RuntimeException) {
+                    if (success && entry.originalValue != null) restored.add(entry)
+                } catch (_: Exception) {
                     // Keep the durable intent and continue restoring the other entries.
+                    errors.add(ExitError.LEDGER_SAVE_FAILED)
                     emit(EventType.ERROR, entry.feature, entry.target, Reason.UNVERIFIED)
                 }
             }
-            ExitResult(restored.toList(), ledger)
+            ExitResult(restored.toList(), ledger, errors.toList())
         }
     }
 
@@ -218,8 +230,8 @@ class DozeController @JvmOverloads constructor(
         return if (verified) StepResult(feature, target, StepStatus.VERIFIED) else unverified(feature, target)
     }
 
-    private fun verifyRestore(entry: LedgerEntry): Boolean {
-        val value = readValue(entry.feature, entry.target, original = true)
+    private fun verifyRestore(entry: LedgerEntry, apiLevel: Int): Boolean {
+        val value = readValue(entry.feature, entry.target, original = true, apiLevel = apiLevel)
         val verified = value != null && value == entry.originalValue
         emit(EventType.VERIFY, entry.feature, entry.target, if (verified) null else Reason.UNVERIFIED,
             sensor = if (entry.feature == Feature.MOTION_SENSORS) lastSensor else null)
@@ -229,7 +241,7 @@ class DozeController @JvmOverloads constructor(
         return verified
     }
 
-    private fun restoreCommands(entry: LedgerEntry): List<String>? {
+    private fun restoreCommands(entry: LedgerEntry, apiLevel: Int): List<String>? {
         val original = entry.originalValue ?: return null
         if (entry.feature !in supported || entry.target != null && !PackageNames.isValid(entry.target)) return null
         return try {
@@ -248,13 +260,13 @@ class DozeController @JvmOverloads constructor(
         }
     }
 
-    private fun readValue(feature: Feature, target: String?, original: Boolean): String? {
-        val output = read(feature, target, original)
+    private fun readValue(feature: Feature, target: String?, original: Boolean, apiLevel: Int = this.apiLevel): String? {
+        val output = read(feature, target, original, apiLevel)
         if (feature == Feature.MOTION_SENSORS) lastSensor = SensorModeParser.parse(output).mode
         return FeatureReadback.value(feature, apiLevel, output, target)
     }
 
-    private fun read(feature: Feature, target: String?, original: Boolean): List<String> {
+    private fun read(feature: Feature, target: String?, original: Boolean, apiLevel: Int = this.apiLevel): List<String> {
         val command = if (original) catalog.originalValueRead(feature, apiLevel, target)
             else catalog.readback(feature, apiLevel, target)
         val result = command?.let(::run)
@@ -285,8 +297,14 @@ class DozeController @JvmOverloads constructor(
         reason: Reason? = null,
         deep: DeepState? = null,
         sensor: SensorMode? = null,
-    ) = sink.emit(DozeEvent(type, feature?.name ?: type.name, deep = deep, sensor = sensor,
-        feature = feature, target = target, reason = reason))
+    ) {
+        try {
+            sink.emit(DozeEvent(type, feature?.name ?: type.name, deep = deep, sensor = sensor,
+                feature = feature, target = target, reason = reason))
+        } catch (_: Exception) {
+            // Diagnostics must not interrupt mutations or restoration; do not recursively emit.
+        }
+    }
 
     private fun sameKey(entry: LedgerEntry, feature: Feature, target: String?): Boolean =
         entry.feature == feature && (feature !in setOf(Feature.APP_SUSPEND, Feature.NOTIFICATION_BLOCK) || entry.target == target)
