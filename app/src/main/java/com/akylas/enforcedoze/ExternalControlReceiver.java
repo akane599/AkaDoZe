@@ -28,6 +28,7 @@ import com.akylas.enforcedoze.access.FeatureStatus;
 import com.akylas.enforcedoze.access.Prefs;
 import com.akylas.enforcedoze.doze.DozeEvent;
 import com.akylas.enforcedoze.doze.EventType;
+import com.akylas.enforcedoze.doze.ReapplySkip;
 import com.akylas.enforcedoze.service.DozeRuntime;
 
 import java.util.List;
@@ -118,13 +119,23 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
                 key, value, pkg);
     }
 
-    private void journal(DozeRuntime runtime, String caller, Permission permission, ExternalCallOutcome outcome, Enum<?> reason) {
+    private static boolean admitJournal(DozeRuntime runtime, Action action) {
         ExternalCallRateLimiter.Admission admission = JOURNAL_LIMIT.record(action);
-        if (!admission.getAdmitted()) return;
+        if (!admission.getAdmitted()) return false;
         if (admission.getSuppressed() > 0) {
             runtime.getJournal().emit(new DozeEvent(EventType.EXTERNAL_CALL,
                     "action=" + action.name() + " suppressed=" + admission.getSuppressed()));
         }
+        return true;
+    }
+
+    static void journalReapplySkipped(DozeRuntime runtime, ReapplySkip reason) {
+        if (!admitJournal(runtime, Action.REAPPLY_DOZE)) return;
+        runtime.getJournal().emit(new DozeEvent(EventType.SKIPPED, reason.name()));
+    }
+
+    private void journal(DozeRuntime runtime, String caller, Permission permission, ExternalCallOutcome outcome, Enum<?> reason) {
+        if (!admitJournal(runtime, action)) return;
         // Caller identity is platform supplied, never an Intent extra. Do not record target packages/values.
         runtime.getJournal().emit(new DozeEvent(EventType.EXTERNAL_CALL,
                 permission.name().toLowerCase(java.util.Locale.ROOT) + " action=" + action.name() + " caller=" + caller

@@ -18,6 +18,37 @@ class ExternalControlWiringTest {
         assertFalse("receiver deadline is admission-only, not a multi-command deadline", start.contains("withDeadline("))
     }
 
+    @Test fun externalReapplyMustPassTheSessionWatchdogBeforeEntering() {
+        val start = service().substringAfter("public int onStartCommand(").substringBefore("private void reapplyEnter(")
+        val gate = start.indexOf("runtime.getWatchdog().onExternalReapply(")
+        val enter = start.indexOf("reapplyEnter(generation, epoch);")
+        assertTrue("external requests must reserve the shared spacing and session budget before entering", gate >= 0 && gate < enter)
+        assertFalse("explicit basic-control consent does not require automatic enforcement", start.contains("Prefs.KEEP_DOZE_ENFORCED"))
+        assertTrue("policy sees both fresh deep/light state and latched maintenance", start.contains("DozeStateReading reading = runtime.readState();") && start.contains("onExternalReapply(reading, maintenance, Build.VERSION.SDK_INT)"))
+        val stateRead = start.indexOf("DozeStateReading reading = runtime.readState();")
+        val consent = start.indexOf("Prefs.ALLOW_EXTERNAL_BASIC_CONTROL")
+        assertTrue("consent, deadline and generation are checked after the blocking state read", stateRead >= 0 && stateRead < consent && consent < gate)
+        assertTrue(start.substring(stateRead, consent).contains("now = runtime.getClock().elapsedRealtime();"))
+        val skipped = start.substringAfter("if (decision instanceof Decision.SKIP)").substringBefore("reapplyEnter(generation, epoch);")
+        assertTrue("a typed policy rejection is journaled and returns before enter", skipped.contains("journalReapplySkipped(runtime, ((Decision.SKIP) decision).getReason())") && skipped.contains("return;"))
+        val enterCore = service().substringAfter("private void enterDoze(boolean sensors, long generation,").substringBefore("private EnterResult enterConfiguredDoze(")
+        assertTrue("every ordinary enter starts watchdog spacing before mutation", enterCore.indexOf("runtime.getWatchdog().recordEnter();") in 0 until enterCore.indexOf("runtime.getController().enterCore("))
+        val call = receiver().substringAfter("case REAPPLY_DOZE:").substringBefore("break;")
+        assertTrue("broadcast remains REQUESTED, never claims a completed reforce", call.contains("Outcome.REQUESTED, ExecutionReason.REAPPLY_REQUESTED"))
+    }
+
+    @Test fun externalSpacingAndBudgetPrecheckReturnsBeforeAnyStateRead() {
+        val start = service().substringAfter("if (reapply) {").substringBefore("private void reapplyEnter(")
+        val precheck = start.indexOf("runtime.getWatchdog().precheckExternalReapply()")
+        val read = start.indexOf("runtime.readState()")
+        assertTrue("spacing and budget must be checked before shell reads", precheck >= 0 && precheck < read)
+        val rejection = start.substring(precheck, read)
+        assertTrue("pre-check rejection must journal its typed reason through the existing limiter",
+            rejection.contains("if (precheck != null)") && rejection.contains("journalReapplySkipped(runtime, precheck)"))
+        assertTrue("a rejected pre-check must return without reading", rejection.contains("return;"))
+        assertTrue("post-read reservation remains authoritative", start.indexOf("onExternalReapply(") > read)
+    }
+
     @Test fun foregroundReapplySkipsPromotionAndOtherPromotionDenialsAreCaught() {
         val start = service().substringAfter("public int onStartCommand(").substringBefore("public void reloadSettings()")
         val guarded = start.indexOf("if (!reapply || !foreground)")
@@ -61,10 +92,15 @@ class ExternalControlWiringTest {
         assertTrue("timer after policy admission cannot assert definite failure", source.contains("Outcome.UNVERIFIED, ExecutionReason.TIMED_OUT"))
         assertFalse("unknown readback cannot assert definite failure", source.contains("Outcome.FAILED, ExecutionReason.UNVERIFIED"))
         assertTrue("lane results share the tested outcome mapping", source.contains("Outcome.fromCommand(result)"))
+        val limiter = source.substringAfter("private static boolean admitJournal(").substringBefore("private void journal(")
+        assertTrue("all outcomes, including service skips, share the process limiter", limiter.contains("JOURNAL_LIMIT.record(action)"))
+        assertTrue("suppressed counts are coalesced without caller/target extras", limiter.contains("suppressed="))
+        assertTrue(limiter.contains("if (!admission.getAdmitted()) return false;"))
         val journal = source.substringAfter("private void journal(").substringBefore("private final class Call")
-        assertTrue("all outcomes, including denials, share the process limiter", journal.contains("JOURNAL_LIMIT.record(action)"))
-        assertTrue("suppressed counts are coalesced without caller/target extras", journal.contains("suppressed="))
-        assertTrue(journal.contains("if (!admission.getAdmitted()) return;"))
+        assertTrue("receiver outcomes use shared admission", journal.contains("if (!admitJournal(runtime, action)) return;"))
+        val skip = source.substringAfter("static void journalReapplySkipped(").substringBefore("private void journal(")
+        assertTrue("service rejections are rate-limited under REAPPLY_DOZE", skip.contains("if (!admitJournal(runtime, Action.REAPPLY_DOZE)) return;"))
+        assertTrue("SKIPPED details come from a typed enum", skip.contains("EventType.SKIPPED, reason.name()"))
     }
 
     @Test fun bootReceiverRejectsUnrelatedAndNullActionsBeforePreferenceOrServiceWork() {

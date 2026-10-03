@@ -439,13 +439,26 @@ public class ForceDozeService extends Service {
                 long now = runtime.getClock().elapsedRealtime();
                 // Also preserve a due callback already queued on the worker, rather than entering twice.
                 if (enterDueElapsed > now || pendingEnter != null) {
-                    runtime.getJournal().emit(new DozeEvent(EventType.SKIPPED, "EXTERNAL_REAPPLY_ENTER_PENDING"));
+                    ExternalControlReceiver.journalReapplySkipped(runtime, ReapplySkip.EXTERNAL_REAPPLY_ENTER_PENDING);
                     return;
                 }
+                ReapplySkip precheck = runtime.getWatchdog().precheckExternalReapply();
+                if (precheck != null) {
+                    ExternalControlReceiver.journalReapplySkipped(runtime, precheck);
+                    return;
+                }
+                DozeStateReading reading = runtime.readState();
+                // State reads may block; retain deadline, consent and generation admission afterwards.
+                now = runtime.getClock().elapsedRealtime();
                 if (generation != runtime.getController().getCurrentGeneration() || epoch != exitEpoch.get()
                         || now >= deadline || !admitted() || !getDefaultSharedPreferences(this).getBoolean(
                                 Prefs.ALLOW_EXTERNAL_BASIC_CONTROL, Prefs.DEFAULT_ALLOW_EXTERNAL_BASIC_CONTROL)) {
-                    runtime.getJournal().emit(new DozeEvent(EventType.SKIPPED, "EXTERNAL_REAPPLY_NOT_ADMITTED"));
+                    ExternalControlReceiver.journalReapplySkipped(runtime, ReapplySkip.EXTERNAL_REAPPLY_NOT_ADMITTED);
+                    return;
+                }
+                Decision decision = runtime.getWatchdog().onExternalReapply(reading, maintenance, Build.VERSION.SDK_INT);
+                if (decision instanceof Decision.SKIP) {
+                    ExternalControlReceiver.journalReapplySkipped(runtime, ((Decision.SKIP) decision).getReason());
                     return;
                 }
                 // The broadcast has already completed REQUESTED. Its deadline is admission-only.
@@ -762,6 +775,7 @@ public class ForceDozeService extends Service {
         try {
             DozeConfig core = new DozeConfig(Build.VERSION.SDK_INT, runtime.getAccess().getLevel(), runtime.grants(),
                     sensors, runtime.getAllowToken(), getDefaultSharedPreferences(this).getBoolean(Prefs.TURN_ON_BATTERY_SAVER, false));
+            runtime.getWatchdog().recordEnter();
             EnterResult result = runtime.getController().enterCore(core, generation, this::admitted);
             coreRetryNeeded = needsEnterRetry(result);
             if (result.getStatus() == EnterStatus.CANCELLED || !admitted()

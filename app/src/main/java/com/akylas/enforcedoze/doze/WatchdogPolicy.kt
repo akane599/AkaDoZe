@@ -6,11 +6,23 @@ sealed interface Decision {
     data object REFORCE : Decision
     data object IGNORE : Decision
     data class DEFER(val untilElapsed: Long) : Decision
+    data class SKIP(val reason: ReapplySkip) : Decision
+}
+
+/** Typed journal details, not user-visible text or new event types. */
+enum class ReapplySkip {
+    EXTERNAL_REAPPLY_ENTER_PENDING,
+    EXTERNAL_REAPPLY_NOT_ADMITTED,
+    EXTERNAL_REAPPLY_MAINTENANCE,
+    EXTERNAL_REAPPLY_STATE_UNKNOWN,
+    EXTERNAL_REAPPLY_SPACING,
+    EXTERNAL_REAPPLY_BUDGET,
 }
 
 /** Caller owns a single deferred callback and cancels it at every generation/session change. */
 class WatchdogPolicy(private val clock: Clock) {
     private var lastReforce: Long? = null
+    private var lastEnter: Long? = null
     private var reforces = 0
     private var deferred = false
 
@@ -18,26 +30,79 @@ class WatchdogPolicy(private val clock: Clock) {
     @Suppress("UNUSED_PARAMETER")
     @Synchronized
     fun onIdleChanged(snapshot: DozeStateReading, screenOn: Boolean, charging: Boolean, admission: Boolean): Decision {
-        if (screenOn || !admission || reforces >= MAX_REFORCES ||
-            snapshot.deep == null || snapshot.deep == DeepState.UNKNOWN ||
-            snapshot.deep == DeepState.IDLE || snapshot.deep == DeepState.IDLE_MAINTENANCE
+        if (screenOn || !admission || unknownDeep(snapshot) || maintenance(snapshot) ||
+            snapshot.deep == DeepState.IDLE
         ) return Decision.IGNORE
+        return when (reserveReforce()) {
+            null -> Decision.REFORCE
+            ReapplySkip.EXTERNAL_REAPPLY_SPACING -> {
+                if (deferred) Decision.IGNORE else {
+                    deferred = true
+                    Decision.DEFER(requireNotNull(lastReforce) + MIN_INTERVAL_MS)
+                }
+            }
+            else -> Decision.IGNORE
+        }
+    }
+
+    /** Explicit basic-control consent does not depend on the automatic enforcement preference.
+     * Unlike automatic motion enforcement, an explicit reapply may reforce IDLE, but never
+     * schedules a deferred request or consumes budget when rejected.
+     */
+    @Synchronized
+    fun onExternalReapply(snapshot: DozeStateReading, maintenanceInProgress: Boolean, apiLevel: Int): Decision {
+        if (maintenanceInProgress || maintenance(snapshot)) {
+            return Decision.SKIP(ReapplySkip.EXTERNAL_REAPPLY_MAINTENANCE)
+        }
+        if (unknownDeep(snapshot) || (apiLevel >= 24 && snapshot.deep != DeepState.IDLE &&
+                (snapshot.light == null || snapshot.light == LightState.UNKNOWN))) {
+            return Decision.SKIP(ReapplySkip.EXTERNAL_REAPPLY_STATE_UNKNOWN)
+        }
+        val reason = precheckExternalReapply() ?: reserveReforce()
+        return if (reason == null) Decision.REFORCE else Decision.SKIP(reason)
+    }
+
+    /** Non-reserving external check avoids state reads for spacing/budget rejections. */
+    @Synchronized
+    fun precheckExternalReapply(): ReapplySkip? {
+        if (reforces >= MAX_REFORCES) return ReapplySkip.EXTERNAL_REAPPLY_BUDGET
+        val reforce = lastReforce
+        val enter = lastEnter
+        val latest = if (reforce == null) enter else if (enter == null) reforce else maxOf(reforce, enter)
+        if (latest != null && clock.elapsedRealtime() < latest + MIN_INTERVAL_MS) {
+            return ReapplySkip.EXTERNAL_REAPPLY_SPACING
+        }
+        return null
+    }
+
+    /** Only external reapplies are spaced from ordinary enters; no reforce budget is spent. */
+    @Synchronized
+    fun recordEnter() {
+        lastEnter = clock.elapsedRealtime()
+    }
+
+    private fun unknownDeep(snapshot: DozeStateReading): Boolean =
+        snapshot.deep == null || snapshot.deep == DeepState.UNKNOWN
+
+    private fun maintenance(snapshot: DozeStateReading): Boolean =
+        snapshot.deep == DeepState.IDLE_MAINTENANCE || snapshot.light == LightState.IDLE_MAINTENANCE
+
+    /** Both sources reserve from the same session budget before issuing any mutation. */
+    private fun reserveReforce(): ReapplySkip? {
+        if (reforces >= MAX_REFORCES) return ReapplySkip.EXTERNAL_REAPPLY_BUDGET
         val now = clock.elapsedRealtime()
         val due = lastReforce?.plus(MIN_INTERVAL_MS)
-        if (due != null && now < due) {
-            if (deferred) return Decision.IGNORE
-            deferred = true
-            return Decision.DEFER(due)
-        }
+        if (due != null && now < due) return ReapplySkip.EXTERNAL_REAPPLY_SPACING
         deferred = false
         lastReforce = now
         reforces++
-        return Decision.REFORCE
+        return null
     }
 
     @Synchronized
     fun resetSession() {
         lastReforce = null
+        lastEnter = null
         reforces = 0
         deferred = false
     }

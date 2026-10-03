@@ -23,6 +23,13 @@ class DozePolicyTest {
         assertEquals(Decision.REFORCE, trigger(charging = true))
     }
 
+    @Test fun lightMaintenanceNeverConsumesTheSharedReforceBudget() {
+        val maintenance = DozeStateParser.parse("mState=ACTIVE mLightState=IDLE_MAINTENANCE")
+        assertEquals("light maintenance must not be cut short", Decision.IGNORE,
+            policy.onIdleChanged(maintenance, false, false, true))
+        assertEquals("maintenance skip leaves the session budget untouched", Decision.REFORCE, trigger())
+    }
+
     @Test fun watchdogReturnsOnlyOneDeferredRetryThenRespectsSessionCapAndReset() {
         assertEquals(Decision.REFORCE, trigger())
         clock.elapsed = 1
@@ -40,6 +47,44 @@ class DozePolicyTest {
         assertEquals(Decision.IGNORE, trigger())
         policy.resetSession()
         assertEquals(Decision.REFORCE, trigger())
+    }
+
+    @Test fun firstAutomaticReforceAfterAnOrdinaryEnterIsImmediate() {
+        policy.recordEnter()
+        clock.elapsed = 10_000
+        assertEquals("an ordinary enter must not delay the first automatic kick", Decision.REFORCE, trigger())
+    }
+
+    @Test fun accessChurnCannotLoseTheNextAutomaticReforce() {
+        var scheduledCallback: Decision.DEFER? = null
+        fun kick(): Decision = trigger().also {
+            if (it is Decision.DEFER) scheduledCallback = it
+        }
+        policy.recordEnter()
+        clock.elapsed = 10_000
+        kick()
+        clock.elapsed = 20_000
+        // DozeRuntime.bumpGeneration cancels the worker callback, not policy state.
+        scheduledCallback = null
+        clock.elapsed = 30_000
+        policy.recordEnter()
+        clock.elapsed = 50_000
+        val next = kick()
+        assertTrue("after access returns the kick must reforce or schedule a new callback, not disappear",
+            next == Decision.REFORCE || (next is Decision.DEFER && scheduledCallback == next))
+        assertEquals("automatic spacing still starts at the T0+10 reforce", Decision.DEFER(70_000), next)
+    }
+
+    @Test fun ordinaryReenterDoesNotMoveAutomaticSpacingOrReplaceItsDeferredCallback() {
+        assertEquals(Decision.REFORCE, trigger())
+        clock.elapsed = 10_000
+        assertEquals(Decision.DEFER(60_000), trigger())
+        clock.elapsed = 30_000
+        policy.recordEnter()
+        clock.elapsed = 50_000
+        assertEquals("existing callback is still the sole automatic retry", Decision.IGNORE, trigger())
+        clock.elapsed = 60_000
+        assertEquals("ordinary re-enter must not move the automatic retry deadline", Decision.REFORCE, trigger())
     }
 
     @Test fun safetyNetRestoresSensorsWithAppDumpButRaisesUnforceDebt() {
