@@ -11,6 +11,9 @@ import java.io.InputStreamReader;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.FutureTask;
 
 import rikka.shizuku.Shizuku;
 import rikka.shizuku.ShizukuRemoteProcess;
@@ -18,9 +21,10 @@ import rikka.shizuku.ShizukuRemoteProcess;
 public class ShizukuHandler {
     private static final String TAG = "ShizukuHandler";
     private static ShizukuHandler instance;
+    private static final ExecutorService COMMAND_EXECUTOR = Executors.newSingleThreadExecutor();
     private Context context;
-    private boolean isShizukuAvailable = false;
-    private OnAvailibilityChange onAvailibilityChangeListener;
+    private volatile boolean isShizukuAvailable = false;
+    private volatile OnAvailibilityChange onAvailibilityChangeListener;
 
     interface OnAvailibilityChange {
         public void onChange(Boolean value);
@@ -31,15 +35,14 @@ public class ShizukuHandler {
             (requestCode, grantResult) -> {
                 boolean granted = grantResult == PackageManager.PERMISSION_GRANTED;
                 Log.i(TAG, "Shizuku permission result: " + granted);
-                isShizukuAvailable = granted;
-                if (onAvailibilityChangeListener != null) {
-                    onAvailibilityChangeListener.onChange(isShizukuAvailable);
-                }
+                checkShizukuAvailability();
             };
 
     private ShizukuHandler(Context context) {
         this.context = context.getApplicationContext();
         checkShizukuAvailability();
+        Shizuku.addBinderReceivedListenerSticky(this::checkShizukuAvailability);
+        Shizuku.addBinderDeadListener(this::checkShizukuAvailability);
     }
 
     public static synchronized ShizukuHandler getInstance(Context context) {
@@ -70,6 +73,10 @@ public class ShizukuHandler {
         } catch (Exception e) {
             Log.e(TAG, "Error checking Shizuku availability: " + e.getMessage());
             isShizukuAvailable = false;
+        }
+        OnAvailibilityChange listener = onAvailibilityChangeListener;
+        if (listener != null) {
+            listener.onChange(isShizukuAvailable);
         }
     }
 
@@ -117,7 +124,7 @@ public class ShizukuHandler {
      * @param printOutput Whether to print the output to logs
      */
     public void executeCommand(@NonNull String command, @NonNull OnCommandResultListener callback, boolean printOutput) {
-        new Thread(() -> {
+        COMMAND_EXECUTOR.execute(() -> {
             List<String> stdout = new ArrayList<>();
             List<String> stderr = new ArrayList<>();
             int exitCode = -1;
@@ -145,30 +152,36 @@ public class ShizukuHandler {
                 ShizukuRemoteProcess process = (ShizukuRemoteProcess) shizukuNewProcessMethod.invoke(null, invokeArgs);
 //                ShizukuRemoteProcess process = Shizuku.newProcess(new String[]{"sh", "-c", command}, null, null);
 
-                // Read stdout
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        stdout.add(line);
-                        if (printOutput) {
-                            Log.i(TAG, line);
+                try {
+                    // Drain stderr alongside stdout so either pipe can fill safely.
+                    FutureTask<Void> stderrTask = new FutureTask<>(() -> {
+                        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
+                            String line;
+                            while ((line = reader.readLine()) != null) {
+                                stderr.add(line);
+                                if (printOutput) {
+                                    Log.e(TAG, line);
+                                }
+                            }
+                        }
+                        return null;
+                    });
+                    new Thread(stderrTask, "Shizuku-stderr").start();
+
+                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            stdout.add(line);
+                            if (printOutput) {
+                                Log.i(TAG, line);
+                            }
                         }
                     }
+                    stderrTask.get();
+                    exitCode = process.waitFor();
+                } finally {
+                    process.destroy();
                 }
-
-                // Read stderr
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        stderr.add(line);
-                        if (printOutput) {
-                            Log.e(TAG, line);
-                        }
-                    }
-                }
-
-                exitCode = process.waitFor();
-                process.destroy();
 
             } catch (Exception e) {
                 Log.e(TAG, "Error executing command: " + e.getMessage());
@@ -176,7 +189,7 @@ public class ShizukuHandler {
             }
 
             callback.onCommandResult(0, exitCode, stdout, stderr);
-        }).start();
+        });
     }
 
     /**

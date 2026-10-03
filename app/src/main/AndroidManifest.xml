@@ -62,9 +62,7 @@
         <receiver android:name="com.akylas.enforcedoze.AutoRestartOnUpdate"
             android:exported="true">
             <intent-filter>
-                <action android:name="android.intent.action.PACKAGE_REPLACED" />
-
-                <data android:scheme="package" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
         <receiver
@@ -118,7 +116,11 @@
         <service
             android:name="com.akylas.enforcedoze.ForceDozeService"
             android:enabled="true"
-            android:exported="false" android:foregroundServiceType="specialUse"/>
+            android:exported="false" android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Forces Doze idle mode and restricts motion sensors while the screen is off" />
+        </service>
         <service
             android:name="com.akylas.enforcedoze.ForceDozeTileService"
             android:icon="@drawable/ic_power_settings_new_white_24dp"

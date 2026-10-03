@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.ActivityManager;
 import android.app.AlarmManager;
 import android.app.AppOpsManager;
+import android.app.ForegroundServiceStartNotAllowedException;
 import android.app.KeyguardManager;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -44,6 +45,7 @@ import static android.content.Context.BATTERY_SERVICE;
 import static android.preference.PreferenceManager.getDefaultSharedPreferences;
 
 import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 public class Utils {
@@ -59,18 +61,20 @@ public class Utils {
             return;
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            AlarmManager mgr = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
-            Intent i = new Intent(context, ForceDozeService.class);
-            PendingIntent pi = PendingIntent.getForegroundService(context, 0, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-
-            if (mgr.canScheduleExactAlarms()) {
-                mgr.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + 200 ,pi);
+        Intent intent = new Intent(context, ForceDozeService.class);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ContextCompat.startForegroundService(context, intent);
             } else {
-                context.startForegroundService(i);
+                context.startService(intent);
             }
-        } else {
-            context.startService(new Intent(context, ForceDozeService.class));
+        } catch (IllegalStateException e) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                    && e instanceof ForegroundServiceStartNotAllowedException) {
+                logToLogcat("EnforceDoze", "Foreground service start not allowed: " + e.getMessage());
+                return;
+            }
+            throw e;
         }
 
         // Hide disabled notification
