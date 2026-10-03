@@ -23,6 +23,19 @@ import com.akylas.enforcedoze.Utils;
 import com.akylas.enforcedoze.access.AccessLevel;
 import com.akylas.enforcedoze.doze.DozeEvent;
 import com.akylas.enforcedoze.doze.DozeEventSink;
+import com.akylas.enforcedoze.access.Prefs;
+import com.akylas.enforcedoze.doze.EventType;
+import com.akylas.enforcedoze.monitor.JournalEvent;
+import com.akylas.enforcedoze.monitor.SessionAggregator;
+import com.akylas.enforcedoze.monitor.SessionSummary;
+import com.akylas.enforcedoze.service.JournalSink;
+
+import android.os.AsyncTask;
+
+import androidx.preference.PreferenceManager;
+
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * App-lifetime presentation of service events as notifications on the existing tips channel.
@@ -72,6 +85,12 @@ public final class NoticeSink implements DozeEventSink {
                 break;
             case ERROR:
                 if ("FOREGROUND_START_DENIED".equals(detail)) notifyStartDenied();
+                break;
+            case SCREEN_ON:
+                armSummary();
+                break;
+            case SCREEN_OFF:
+                summaryArmed = false;
                 break;
             default:
                 break;
@@ -197,6 +216,74 @@ public final class NoticeSink implements DozeEventSink {
         } catch (RuntimeException rejected) {
             return false;
         }
+    }
+
+    // --- Screen-on summary (opt-in, default off): armed by SCREEN_ON, posted after the exit-time
+    // history import so OS history is merged first. Every gate is re-checked at post time, because
+    // the pref can also be switched on externally without the Settings permission flow.
+
+    private static final int ID_SUMMARY = 8805;
+    private boolean summaryArmed;
+    private final Runnable afterHistoryImport = this::onHistoryImported;
+
+    private void armSummary() {
+        if (!summaryEnabled()) return;
+        summaryArmed = true;
+        // The runtime already exists (it is emitting this event); the hook runs on doze-worker.
+        MyApplication.getDozeRuntime(app).setAfterHistoryImport(afterHistoryImport);
+    }
+
+    private synchronized void onHistoryImported() {
+        if (!summaryArmed) return;
+        summaryArmed = false;
+        JournalSink journal = MyApplication.getDozeRuntime(app).getJournal();
+        long sessionId = journal.getSessionId();
+        int bootId = journal.getBootId();
+        AsyncTask.THREAD_POOL_EXECUTOR.execute(() -> postSummary(journal, sessionId, bootId));
+    }
+
+    private void postSummary(JournalSink journal, long sessionId, int bootId) {
+        try {
+            List<JournalEvent> segment = MonitorData.lastSegment(
+                    journal.querySession(sessionId, bootId).get(2, TimeUnit.SECONDS));
+            // Enforcement never ran (e.g. a short screen-off): nothing worth summarizing.
+            boolean enforced = false;
+            for (JournalEvent event : segment) if (event.getType() == EventType.ENTER_STEP) enforced = true;
+            if (!enforced) return;
+            List<SessionSummary> summaries = SessionAggregator.summarize(segment);
+            if (summaries.isEmpty() || !summaryEnabled() || !tipsChannelEnabled()) return;
+            SessionSummary summary = summaries.get(summaries.size() - 1);
+            String line = MonitorFormat.summaryLine(app, summary);
+            Intent open = DozeMonitorActivity.sessionIntent(app, summary.getBootId(), summary.getSessionId(),
+                    summary.getStartElapsed()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            post(ID_SUMMARY, new NotificationCompat.Builder(app, ForceDozeService.CHANNEL_TIPS)
+                    .setSmallIcon(R.drawable.ic_battery_health)
+                    .setContentTitle(app.getString(R.string.notice_summary_title))
+                    .setContentText(line)
+                    .setStyle(new NotificationCompat.BigTextStyle().bigText(line))
+                    .setPriority(NotificationCompat.PRIORITY_LOW)
+                    .setSilent(true)
+                    .setAutoCancel(true)
+                    .setContentIntent(PendingIntent.getActivity(app, 6, open,
+                            PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT))
+                    .build());
+        } catch (Exception unavailable) {
+            // Journal busy/unreadable: skip quietly, this is presentation only.
+        }
+    }
+
+    private boolean summaryEnabled() {
+        return PreferenceManager.getDefaultSharedPreferences(app)
+                .getBoolean(Prefs.SCREEN_ON_SUMMARY, Prefs.DEFAULT_SCREEN_ON_SUMMARY);
+    }
+
+    /** post() checks POST_NOTIFICATIONS and app-level enablement; this adds the channel's own switch. */
+    private boolean tipsChannelEnabled() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true;
+        NotificationManager manager = app.getSystemService(NotificationManager.class);
+        if (manager == null) return false;
+        NotificationChannel channel = manager.getNotificationChannel(ForceDozeService.CHANNEL_TIPS);
+        return channel == null || channel.getImportance() != NotificationManager.IMPORTANCE_NONE;
     }
 
     /** The service creates the channel, but notices can arrive in a process where it never started. */
