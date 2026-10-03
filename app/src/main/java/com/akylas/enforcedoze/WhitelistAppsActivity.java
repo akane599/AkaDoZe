@@ -31,7 +31,18 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 
-import eu.chainfire.libsuperuser.Shell;
+import android.os.Build;
+import com.akylas.enforcedoze.access.AccessManager;
+import com.akylas.enforcedoze.access.CommandRunner;
+import com.akylas.enforcedoze.access.CommandResult;
+import com.akylas.enforcedoze.access.CommandCatalog;
+import com.akylas.enforcedoze.access.CapabilityResolver;
+import com.akylas.enforcedoze.access.FeatureStatus;
+import com.akylas.enforcedoze.access.Feature;
+import com.akylas.enforcedoze.access.Grants;
+import com.akylas.enforcedoze.access.PackageNames;
+import com.akylas.enforcedoze.access.Reason;
+import java.util.Collections;
 
 public class WhitelistAppsActivity extends AppCompatActivity {
     RecyclerView recyclerView;
@@ -41,7 +52,8 @@ public class WhitelistAppsActivity extends AppCompatActivity {
     ArrayList<AppsItem> listData;
     public static String TAG = "EnforceDoze";
     boolean showDozeWhitelistWarning = true;
-    boolean isSuAvailable = false;
+    private AccessManager accessManager;
+    public WhitelistResult lastResult;
     MaterialDialog progressDialog = null;private static void log(String message) {
         logToLogcat(TAG, message);
     }
@@ -63,8 +75,8 @@ public class WhitelistAppsActivity extends AppCompatActivity {
         sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
         whitelistAppsAdapter = new AppsAdapter(this, listData);
         recyclerView.setAdapter(whitelistAppsAdapter);
+        accessManager = AccessManager.getInstance(this);
         loadPackagesFromWhitelist();
-        isSuAvailable = sharedPreferences.getBoolean("isSuAvailable", false);
         showDozeWhitelistWarning = sharedPreferences.getBoolean("showDozeWhitelistWarning", true);
 
         ItemTouchHelper.SimpleCallback simpleItemTouchCallback = new ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT) {
@@ -142,53 +154,93 @@ public class WhitelistAppsActivity extends AppCompatActivity {
                 .progress(true, 0)
                 .show();
 
-        Tasks.executeInBackground(WhitelistAppsActivity.this, new BackgroundWork<List<String>>() {
+        Tasks.executeInBackground(this, () -> readWhitelist(accessManager.reads()), new Completion<WhitelistResult>() {
             @Override
-            public List<String> doInBackground() throws Exception {
-                List<String> output;
-                List<String> packages = new ArrayList<>();
-                output = Shell.SH.run("dumpsys deviceidle whitelist");
-                for (String s : output) {
-                    packages.add(s.split(",")[1]);
+            public void onSuccess(Context context, WhitelistResult result) {
+                dismissProgress();
+                lastResult = result;
+                if (!result.verified) {
+                    displayDialog(getString(R.string.error_text), getString(R.string.error_text));
+                    whitelistAppsAdapter.notifyDataSetChanged();
+                    return;
                 }
-
-                return new ArrayList<>(new LinkedHashSet<>(packages));
-            }
-        }, new Completion<List<String>>() {
-            @Override
-            public void onSuccess(Context context, List<String> result) {
-                if (progressDialog != null) {
-                    progressDialog.dismiss();
-                }
-
-                if (!result.isEmpty()) {
-                    if (!listData.isEmpty() || !whitelistedPackages.isEmpty()) {
-                        listData.clear();
-                        whitelistedPackages.clear();
+                listData.clear();
+                whitelistedPackages.clear();
+                for (String pkg : result.packages) {
+                    AppsItem item = new AppsItem();
+                    item.setAppPackageName(pkg);
+                    whitelistedPackages.add(pkg);
+                    try {
+                        item.setAppName(getPackageManager().getApplicationLabel(getPackageManager()
+                                .getApplicationInfo(pkg, PackageManager.GET_META_DATA)).toString());
+                    } catch (PackageManager.NameNotFoundException e) {
+                        item.setAppName("System package");
                     }
-                    for (String r : result) {
-                        AppsItem appItem = new AppsItem();
-                        appItem.setAppPackageName(r);
-                        whitelistedPackages.add(r);
-                        try {
-                            appItem.setAppName(getPackageManager().getApplicationLabel(getPackageManager().getApplicationInfo(r, PackageManager.GET_META_DATA)).toString());
-                        } catch (PackageManager.NameNotFoundException e) {
-                            appItem.setAppName("System package");
-                        }
-                        listData.add(appItem);
-                    }
+                    listData.add(item);
                 }
                 whitelistAppsAdapter.notifyDataSetChanged();
-
-                log("Whitelisted packages: " + listData.size() + " packages in total");
             }
-
             @Override
-            public void onError(Context context, Exception e) {
-                Log.e(TAG, "Error loading packages: " + e.getMessage());
-
+            public void onError(Context context, Exception error) {
+                dismissProgress();
+                log("Error loading packages: " + error.getMessage());
+                displayDialog(getString(R.string.error_text), getString(R.string.error_text));
+                whitelistAppsAdapter.notifyDataSetChanged();
             }
         });
+    }
+
+    private void dismissProgress() {
+        if (progressDialog != null) progressDialog.dismiss();
+    }
+
+    public static final class WhitelistResult {
+        public final List<String> packages;
+        public final boolean verified;
+        public final Reason reason;
+        WhitelistResult(List<String> packages, boolean verified, Reason reason) {
+            this.packages = Collections.unmodifiableList(new ArrayList<>(packages));
+            this.verified = verified;
+            this.reason = reason;
+        }
+    }
+
+    static WhitelistResult readWhitelist(CommandRunner reads) {
+        return parseWhitelist(reads.run("dumpsys deviceidle whitelist"));
+    }
+
+    static WhitelistResult parseWhitelist(CommandResult result) {
+        LinkedHashSet<String> packages = new LinkedHashSet<>();
+        boolean parsed = result.getOk();
+        for (String line : result.getStdout()) {
+            if (line.trim().isEmpty()) continue;
+            String[] fields = line.trim().split(",", -1);
+            if (fields.length == 3 && PackageNames.isValid(fields[1].trim())
+                    && fields[2].trim().matches("[0-9]+")
+                    && (fields[0].equals("system") || fields[0].equals("system-excidle") || fields[0].equals("user"))) {
+                packages.add(fields[1].trim());
+            } else {
+                parsed = false;
+            }
+        }
+        return new WhitelistResult(new ArrayList<>(packages), parsed, parsed ? null : Reason.UNVERIFIED);
+    }
+
+    static WhitelistResult editWhitelist(CommandRunner control, CommandRunner reads, int apiLevel,
+                                         Grants grants, String pkg, boolean remove) {
+        if (pkg == null || !PackageNames.isValid(pkg)) {
+            return new WhitelistResult(Collections.emptyList(), false, Reason.UNVERIFIED);
+        }
+        FeatureStatus status = CapabilityResolver.status(Feature.WHITELIST_EDIT, control.getLevel(), apiLevel, grants);
+        if (status instanceof FeatureStatus.Unavailable) {
+            return new WhitelistResult(Collections.emptyList(), false, ((FeatureStatus.Unavailable) status).getReason());
+        }
+        List<String> commands = CommandCatalog.setEnabled(Feature.WHITELIST_EDIT, apiLevel, !remove, pkg);
+        if (commands == null) return new WhitelistResult(Collections.emptyList(), false, Reason.UNVERIFIED);
+        for (String command : commands) control.run(command);
+        WhitelistResult readback = readWhitelist(reads);
+        boolean verified = readback.verified && (readback.packages.contains(pkg) != remove);
+        return new WhitelistResult(readback.packages, verified, verified ? null : Reason.UNVERIFIED);
     }
 
     public void showManuallyAddPackageDialog() {
@@ -225,7 +277,6 @@ public class WhitelistAppsActivity extends AppCompatActivity {
             displayDialog(getString(R.string.info_text), getString(R.string.app_already_whitelisted_text));
         } else {
             modifyWhitelist(packageName, false);
-            loadPackagesFromWhitelist();
         }
     }
 
@@ -234,18 +285,33 @@ public class WhitelistAppsActivity extends AppCompatActivity {
             displayDialog(getString(R.string.info_text), getString(R.string.app_not_whitelisted_text));
         } else {
             modifyWhitelist(packageName, true);
-            loadPackagesFromWhitelist();
         }
     }
 
     public void modifyWhitelist(String packageName, boolean remove) {
-        if (remove) {
-            log("Removing app " + packageName + " from Doze whitelist");
-            executeCommand("dumpsys deviceidle whitelist -" + packageName);
-        } else {
-            log("Adding app " + packageName + " to Doze whitelist");
-            executeCommand("dumpsys deviceidle whitelist +" + packageName);
+        if (packageName == null || !PackageNames.isValid(packageName)) {
+            displayDialog(getString(R.string.error_text), getString(R.string.error_text));
+            whitelistAppsAdapter.notifyDataSetChanged();
+            return;
         }
+        Tasks.executeInBackground(this, () -> {
+            if (!remove) getPackageManager().getApplicationInfo(packageName, 0);
+            return editWhitelist(accessManager.control(), accessManager.reads(), Build.VERSION.SDK_INT,
+                    accessManager.getState().getGrants(), packageName, remove);
+        }, new Completion<WhitelistResult>() {
+            @Override
+            public void onSuccess(Context context, WhitelistResult result) {
+                lastResult = result;
+                if (!result.verified) displayDialog(getString(R.string.error_text), getString(R.string.error_text));
+                loadPackagesFromWhitelist();
+            }
+            @Override
+            public void onError(Context context, Exception error) {
+                log("Error modifying whitelist: " + error.getMessage());
+                displayDialog(getString(R.string.error_text), getString(R.string.error_text));
+                whitelistAppsAdapter.notifyDataSetChanged();
+            }
+        });
     }
 
     public void displayDialog(String title, String message) {
@@ -256,11 +322,5 @@ public class WhitelistAppsActivity extends AppCompatActivity {
         builder.show();
     }
 
-    public void executeCommand(final String command) {
-        if (Utils.isDeviceRunningOnN() && isSuAvailable) {
-            Shell.SU.run(command);
-        } else {
-            Shell.SH.run(command);
-        }
-    }
+
 }
