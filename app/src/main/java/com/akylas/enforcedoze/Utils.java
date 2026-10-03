@@ -4,7 +4,6 @@ import android.Manifest;
 import android.app.ActivityManager;
 import android.app.AlarmManager;
 import android.app.AppOpsManager;
-import android.app.ForegroundServiceStartNotAllowedException;
 import android.app.KeyguardManager;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -32,6 +31,9 @@ import android.util.Log;
 import android.view.Display;
 import android.content.ComponentName;
 
+import java.io.File;
+import android.os.AsyncTask;
+import com.akylas.enforcedoze.access.AccessManager;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.text.SimpleDateFormat;
@@ -69,14 +71,10 @@ public class Utils {
                 context.startService(intent);
             }
         } catch (IllegalStateException e) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                    && e instanceof ForegroundServiceStartNotAllowedException) {
-                logToLogcat("EnforceDoze", "Foreground service start not allowed: " + e.getMessage());
-                MyApplication.getDozeRuntime(context).getJournal().emit(new com.akylas.enforcedoze.doze.DozeEvent(
-                        com.akylas.enforcedoze.doze.EventType.ERROR, "FOREGROUND_START_DENIED"));
-                return false;
-            }
-            throw e;
+            logToLogcat("EnforceDoze", "Service start denied: " + e.getMessage());
+            MyApplication.getDozeRuntime(context).getJournal().emit(new com.akylas.enforcedoze.doze.DozeEvent(
+                    com.akylas.enforcedoze.doze.EventType.ERROR, "FOREGROUND_START_DENIED"));
+            return false;
         }
 
         // Hide disabled notification
@@ -111,8 +109,9 @@ public class Utils {
         boolean shouldRunService = isInsideCustomDozePeriod(context);
 
         if (shouldRunService) {
-            updateSettingBool(context, "serviceEnabled", true);
-            startForceDozeService(context);
+            if (startForceDozeService(context)) {
+                updateSettingBool(context, "serviceEnabled", true);
+            }
         } else {
             updateSettingBool(context, "serviceEnabled", false);
             stopForceDozeService(context);
@@ -605,43 +604,36 @@ public class Utils {
                 .getString("executionMode", "root").equals("shizuku");
     }
 
+    /** Compatibility bridge for consumers not yet migrated; grants have one shared authority. */
     public static void grantPermissionsViaShizuku(Context context) {
-        ShizukuHandler shizukuHandler = ShizukuHandler.getInstance(context);
-        if (!Utils.isDumpPermissionGranted(context)) {
-            logToLogcat("Utils", "Granting android.permission.DUMP to com.akylas.enforcedoze via Shizuku");
-            shizukuHandler.executeCommand("pm grant com.akylas.enforcedoze android.permission.DUMP",
-                    (commandCode, exitCode, stdout, stderr) -> {
-                        if (exitCode == 0) {
-                            logToLogcat("Utils", "DUMP permission granted successfully");
-                        } else {
-                            Log.e("Utils", "Failed to grant DUMP permission");
-                        }
-                    }, true);
-        }
-        if (!Utils.isReadPhoneStatePermissionGranted(context)) {
-            logToLogcat("Utils", "Granting android.permission.READ_PHONE_STATE to com.akylas.enforcedoze via Shizuku");
-            shizukuHandler.executeCommand("pm grant com.akylas.enforcedoze android.permission.READ_PHONE_STATE",
-                    (commandCode, exitCode, stdout, stderr) -> {
-                        if (exitCode == 0) {
-                            logToLogcat("Utils", "READ_PHONE_STATE permission granted successfully");
-                        } else {
-                            Log.e("Utils", "Failed to grant READ_PHONE_STATE permission");
-                        }
-                    }, true);
-        }
-        if (!Utils.isSecureSettingsPermissionGranted(context) && Utils.isDeviceRunningOnN()) {
-            logToLogcat("Utils", "Granting android.permission.WRITE_SECURE_SETTINGS to com.akylas.enforcedoze via Shizuku");
-            shizukuHandler.executeCommand("pm grant com.akylas.enforcedoze android.permission.WRITE_SECURE_SETTINGS",
-                    (commandCode, exitCode, stdout, stderr) -> {
-                        if (exitCode == 0) {
-                            logToLogcat("Utils", "WRITE_SECURE_SETTINGS permission granted successfully");
-                        } else {
-                            Log.e("Utils", "Failed to grant WRITE_SECURE_SETTINGS permission");
-                        }
-                    }, true);
-        }
+        AccessManager manager = AccessManager.getInstance(context);
+        AsyncTask.execute(manager::grantHelpers);
     }
 
+    private static boolean preferencesRepaired;
+
+    public static synchronized void repairPreferencesPermissions(Context context) {
+        if (preferencesRepaired) return;
+        File directory = new File(context.getApplicationInfo().dataDir, "shared_prefs");
+        preferencesRepaired = PreferencesPermissions.repairDirectory(directory);
+    }
+
+    static final class PreferencesPermissions {
+        static boolean repairDirectory(File directory) {
+            File[] files = directory.listFiles();
+            if (files == null) return !directory.exists();
+            boolean repaired = true;
+            for (File file : files) {
+                if (!file.isFile()) continue;
+                boolean readable = file.setReadable(false, false);
+                boolean writable = file.setWritable(false, false);
+                boolean ownerRead = file.setReadable(true, true);
+                boolean ownerWrite = file.setWritable(true, true);
+                repaired &= readable && writable && ownerRead && ownerWrite;
+            }
+            return repaired;
+        }
+    }
 
     public static void openUrl(android.app.Activity activity, String url) {
         CustomTabs.with(activity.getApplicationContext())

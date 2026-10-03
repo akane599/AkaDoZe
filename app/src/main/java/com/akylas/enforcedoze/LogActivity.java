@@ -3,10 +3,8 @@ package com.akylas.enforcedoze;
 import static com.akylas.enforcedoze.Utils.logToLogcat;
 
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.net.Uri;
-import android.os.AsyncTask;
 import android.os.Bundle;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -14,31 +12,27 @@ import androidx.appcompat.widget.Toolbar;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
-import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.EditText;
 
 import com.afollestad.materialdialogs.MaterialDialog;
-import com.google.android.material.dialog.MaterialAlertDialogBuilder;
-import com.nanotasks.BackgroundWork;
 import com.nanotasks.Completion;
 import com.nanotasks.Tasks;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
 import java.util.List;
 
-import eu.chainfire.libsuperuser.Shell;
+import com.akylas.enforcedoze.access.AccessManager;
+import com.akylas.enforcedoze.access.CommandResult;
+import com.akylas.enforcedoze.monitor.ReportExporter;
+import java.util.ArrayList;
+import java.util.Collections;
 
 public class LogActivity extends AppCompatActivity {
 
     public static String TAG = "EnforceDoze";
-    public List<String> log;
-    boolean isSuAvailable;
+    public List<String> log = Collections.emptyList();
     MaterialDialog progressDialog = null;
 
     private static void log(String message) {
@@ -69,7 +63,6 @@ public class LogActivity extends AppCompatActivity {
             return windowInsets;
         });
 
-        grantLogsPermissionAndPrintLog();
         progressDialog = new MaterialDialog.Builder(this)
                 .title("Please wait")
                 .cancelable(false)
@@ -77,6 +70,7 @@ public class LogActivity extends AppCompatActivity {
                 .content("Requesting SU access and fetching log")
                 .progress(true, 0)
                 .show();
+        grantLogsPermissionAndPrintLog();
     }
 
     @Override
@@ -104,164 +98,68 @@ public class LogActivity extends AppCompatActivity {
         return super.onOptionsItemSelected(item);
     }
 
-    public void getAndPrintLogcat() {
-        Tasks.executeInBackground(LogActivity.this, new BackgroundWork<List<String>>() {
-            @Override
-            public List<String> doInBackground() throws Exception {
-                List<String> output = Shell.SH.run("logcat -d -s \"ForceDozeService\",\"ForceDoze\"");
-                return output;
-            }
-        }, new Completion<List<String>>() {
-            @Override
-            public void onSuccess(Context context, List<String> result) {
-                if (progressDialog != null) {
-                    progressDialog.cancel();
-                }
-                EditText logcatEd = (EditText) findViewById(R.id.editText);
-                if (result != null) {
-                    log = result;
-                    logcatEd.setLongClickable(false);
-                    logcatEd.setFocusable(false);
-                    logcatEd.setClickable(true);
-                    logcatEd.setText(result.toString());
-                } else {
-                    log = null;
-                    logcatEd.setLongClickable(false);
-                    logcatEd.setFocusable(false);
-                    logcatEd.setClickable(true);
-                    logcatEd.setText("Unable to get logcat");
-                }
-            }
-
-            @Override
-            public void onError(Context context, Exception e) {
-                Log.e(TAG, "Error getting logcat: " + e.getMessage());
-            }
-        });
+    static String logCommand(boolean full) {
+        return full ? "logcat -d" : "logcat -d -s EnforceDoze ForceDozeService ShizukuHandler Utils ForceDozeTileService BlockAppsActivity AirplaneTileService";
     }
 
-    public void getFullLogcat() {
-        Tasks.executeInBackground(LogActivity.this, new BackgroundWork<List<String>>() {
+    public void getAndPrintLogcat() { readLogs(false); }
+    public void getFullLogcat() { readLogs(true); }
+    public void grantLogsPermissionAndPrintLog() { getAndPrintLogcat(); }
+
+    private void readLogs(boolean full) {
+        AccessManager manager = AccessManager.getInstance(this);
+        Tasks.executeInBackground(this, () -> manager.reads().run(logCommand(full)), new Completion<CommandResult>() {
             @Override
-            public List<String> doInBackground() throws Exception {
-                List<String> output = Shell.SH.run("logcat -d");
-                return output;
+            public void onSuccess(Context context, CommandResult result) {
+                dismissProgress();
+                if (full) {
+                    if (result.getOk()) saveAndShareFullLog(result.getStdout());
+                    else log("Unable to get full logcat");
+                    return;
+                }
+                log = result.getOk() ? new ArrayList<>(result.getStdout()) : Collections.emptyList();
+                EditText view = findViewById(R.id.editText);
+                view.setLongClickable(false);
+                view.setFocusable(false);
+                view.setClickable(true);
+                view.setText(result.getOk() ? android.text.TextUtils.join("\n", log) : "Unable to get logcat");
             }
-        }, new Completion<List<String>>() {
             @Override
-            public void onSuccess(Context context, List<String> result) {
-                if (progressDialog != null) {
-                    progressDialog.cancel();
-                }
-
-                if (result != null) {
-                    saveAndShareFullLog(result);
-                } else {
-                    log("Unable to get full logcat");
-                }
-            }
-
-            @Override
-            public void onError(Context context, Exception e) {
-                Log.e(TAG, "Error getting logcat: " + e.getMessage());
-            }
-        });
-    }
-
-    public void grantLogsPermissionAndPrintLog() {
-        if (!Utils.isReadLogsPermissionGranted(getApplicationContext())) {
-            Tasks.executeInBackground(LogActivity.this, new BackgroundWork<Boolean>() {
-                @Override
-                public Boolean doInBackground() throws Exception {
-                    return Shell.SU.available();
-                }
-            }, new Completion<Boolean>() {
-                @Override
-                public void onSuccess(Context context, Boolean result) {
-                    if (progressDialog != null) {
-                        progressDialog.dismiss();
-                    }
-                    isSuAvailable = result;
-                    if (isSuAvailable) {
-                        if (!Utils.isReadLogsPermissionGranted(context)) {
-                            executeCommand("pm grant com.akylas.enforcedoze android.permission.READ_LOGS");
-                        }
-                        getAndPrintLogcat();
-                    } else {
-                        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(LogActivity.this);
-                        builder.setTitle(getString(R.string.error_text));
-                        builder.setMessage(getString(R.string.read_logcat_su_not_avail_or_denied_error_text));
-                        builder.setPositiveButton(getString(R.string.okay_button_text), new DialogInterface.OnClickListener() {
-                            @Override
-                            public void onClick(DialogInterface dialogInterface, int i) {
-                                dialogInterface.dismiss();
-                            }
-                        });
-                        builder.show();
-                    }
-                }
-
-                @Override
-                public void onError(Context context, Exception e) {
-                    Log.e(TAG, "Error querying SU: " + e.getMessage());
-                }
-            });
-        } else {
-            getAndPrintLogcat();
-        }
-    }
-
-    public void executeCommand(final String command) {
-        AsyncTask.execute(new Runnable() {
-            @Override
-            public void run() {
-                List<String> output = Shell.SU.run(command);
-                if (output != null) {
-                    printShellOutput(output);
-                } else {
-                    log("Error occurred while executing command (" + command + ")");
+            public void onError(Context context, Exception error) {
+                dismissProgress();
+                log("Error getting logcat: " + error.getMessage());
+                if (!full) {
+                    log = Collections.emptyList();
+                    ((EditText) findViewById(R.id.editText)).setText("Unable to get logcat");
                 }
             }
         });
     }
 
-    public void printShellOutput(List<String> output) {
-        if (!output.isEmpty()) {
-            for (String s : output) {
-                log(s);
+    private void dismissProgress() {
+        if (progressDialog != null) progressDialog.dismiss();
+    }
+
+    public void saveAndShareLog() { shareLines(log); }
+    public void saveAndShareFullLog(List<String> logcat) { shareLines(logcat); }
+
+    private void shareLines(List<String> lines) {
+        if (lines == null || lines.isEmpty()) {
+            log("Unable to get logcat");
+            return;
+        }
+        String text = android.text.TextUtils.join("\n", new ArrayList<>(lines));
+        ReportExporter exporter = new ReportExporter(this);
+        Tasks.executeInBackground(this, () -> exporter.export(text), new Completion<Uri>() {
+            @Override
+            public void onSuccess(Context context, Uri uri) {
+                startActivity(Intent.createChooser(exporter.shareIntent(uri), ""));
             }
-        }
+            @Override
+            public void onError(Context context, Exception error) {
+                log("Error sharing logcat: " + error.getMessage());
+            }
+        });
     }
 
-    public void saveAndShareLog() {
-        File file = new File(getExternalFilesDir(null), "app_log_forcedoze.txt");
-        try {
-            OutputStream os = new FileOutputStream(file);
-            os.write(log.toString().getBytes());
-            os.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        shareLogFile("app_log_forcedoze.txt");
-    }
-
-    public void saveAndShareFullLog(List<String> logcat) {
-        File file = new File(getExternalFilesDir(null), "full_logcat_forcedoze.txt");
-        try {
-            OutputStream os = new FileOutputStream(file);
-            os.write(logcat.toString().getBytes());
-            os.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        shareLogFile("full_logcat_forcedoze.txt");
-    }
-
-    public void shareLogFile(String filename) {
-        Intent intent = new Intent(android.content.Intent.ACTION_SEND);
-        intent.setType("text/plain");
-        intent.putExtra(Intent.EXTRA_STREAM, Uri.fromFile(new File(getExternalFilesDir(null), filename)));
-        startActivity(Intent.createChooser(intent, ""));
-    }
 }

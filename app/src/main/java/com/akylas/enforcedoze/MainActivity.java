@@ -17,9 +17,6 @@ import android.graphics.Color;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.HandlerThread;
-import android.preference.Preference;
 import android.preference.PreferenceManager;
 import android.service.quicksettings.TileService;
 
@@ -39,7 +36,6 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
 
 import android.text.SpannableString;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -48,23 +44,19 @@ import android.widget.CompoundButton;
 import android.widget.TextView;
 
 import com.afollestad.materialdialogs.MaterialDialog;
-import com.nanotasks.Completion;
-import com.nanotasks.Tasks;
 
-import java.util.List;
 
 //import de.cketti.library.changelog.ChangeLog;
-import eu.chainfire.libsuperuser.Shell;
-import eu.chainfire.libsuperuser.StreamGobbler;
-import rikka.shizuku.Shizuku;
+import com.akylas.enforcedoze.access.AccessManager;
+import com.akylas.enforcedoze.access.AccessLevel;
+import com.akylas.enforcedoze.access.AccessState;
+import com.akylas.enforcedoze.access.Reason;
 
 public class MainActivity extends AppCompatActivity implements CompoundButton.OnCheckedChangeListener,  SharedPreferences.OnSharedPreferenceChangeListener {
 
-    private int mLastExitCode = -1;
-    private boolean mCommandRunning = false;
-    private HandlerThread mCallbackThread = null;
-    private static Shell.Interactive rootSession;
-    private static Shell.Interactive nonRootSession;
+    private AccessManager accessManager;
+    private boolean helpersRequested;
+    private final AccessManager.Listener accessListener = this::onAccessChanged;
     private UpdateForceDozeEnabledState updateStateFromTile;
     public static String TAG = "EnforceDoze";
     SharedPreferences settings;
@@ -82,7 +74,6 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
     MaterialDialog progressDialog = null;
     TextView textViewStatus;
     CoordinatorLayout coordinatorLayout;
-    ShizukuHandler shizukuHandler;
 
     private static void log(String message) {
         logToLogcat(TAG, message);
@@ -136,7 +127,8 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         isDozeEnabledByOEM = Utils.checkForAutoPowerModesFlag();
 //        showDonateDevDialog = settings.getBoolean("showDonateDevDialog2", true);
         isDozeDisabled = settings.getBoolean("isDozeDisabled", false);
-        isSuAvailable = settings.getBoolean("isSuAvailable", false);
+        accessManager = AccessManager.getInstance(this);
+        AsyncTask.execute(() -> Utils.repairPreferencesPermissions(getApplicationContext()));
         ignoreLockscreenTimeout = settings.getBoolean("ignoreLockscreenTimeout", true);
         toggleForceDozeSwitch = (SwitchCompat) findViewById(R.id.switch1);
         isDumpPermGranted = Utils.isDumpPermissionGranted(getApplicationContext());
@@ -156,180 +148,10 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
 
         toggleForceDozeSwitch.setOnCheckedChangeListener(this);
         
-        // Initialize Shizuku handler
-        shizukuHandler = ShizukuHandler.getInstance(getApplicationContext());
-
-        // Check execution mode
-        boolean useShizuku = Utils.isShizukuMode(getApplicationContext());
-        
-        if (useShizuku) {
-            // Shizuku mode - check if Shizuku is available
-            log("Shizuku mode selected");
-            shizukuHandler.checkShizukuAvailability();
-            isShizukuAvailable = shizukuHandler.isShizukuAvailable();
-            
-            if (!isShizukuAvailable) {
-                // Request Shizuku permission
-                try {
-                    shizukuHandler.requestShizukuPermission();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-            
-            if (!Utils.isDeviceRunningOnN() && isDumpPermGranted) {
-                log("android.permission.DUMP already granted and user not on Nougat, skipping setup checks");
-                doAfterSuCheckSetup();
-            } else if (Utils.isDeviceRunningOnN() && isDumpPermGranted && isWriteSecureSettingsPermGranted) {
-                log("android.permission.DUMP & android.permission.WRITE_SECURE_SETTINGS already granted and user on Nougat, skipping setup checks");
-                doAfterSuCheckSetup();
-            } else if (isShizukuAvailable) {
-                log("Shizuku is available, granting permissions");
-                Utils.grantPermissionsViaShizuku(getApplicationContext());
-                doAfterSuCheckSetup();
-            } else {
-                log("Shizuku is not available");
-                toggleForceDozeSwitch.setChecked(false);
-                toggleForceDozeSwitch.setEnabled(false);
-                textViewStatus.setText(R.string.service_disabled);
-                MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this);
-                builder.setTitle(getString(R.string.error_text));
-                builder.setMessage(getString(R.string.shizuku_not_available_error));
-                builder.setPositiveButton(getString(R.string.close_button_text), null);
-                builder.show();
-            }
-        } else {
-            // Root mode - use existing logic
-            if (!Utils.isDeviceRunningOnN() && isDumpPermGranted) {
-                log("android.permission.DUMP already granted and user not on Nougat, skipping SU check");
-                doAfterSuCheckSetup();
-            } else if (Utils.isDeviceRunningOnN() && isDumpPermGranted && isWriteSecureSettingsPermGranted) {
-                log("android.permission.DUMP & android.permission.WRITE_SECURE_SETTINGS already granted and user on Nougat, skipping SU check");
-                doAfterSuCheckSetup();
-            } else {
-                progressDialog = new MaterialDialog.Builder(this)
-                    .title(R.string.please_wait_text)
-                    .autoDismiss(false)
-                    .cancelable(false)
-                    .content(R.string.requesting_su_access_text)
-                    .progress(true, 0)
-                    .show();
-            log("Check if SU is available, and request SU permission if it is");
-            Tasks.executeInBackground(MainActivity.this, () -> {
-                if (rootSession != null) {
-                    if (rootSession.isRunning()) {
-                        return true;
-                    } else {
-                        dispose();
-                    }
-                }
-
-                mCallbackThread = new HandlerThread("SU callback");
-                mCallbackThread.start();
-
-                mCommandRunning = true;
-                rootSession = new Shell.Builder().useSU()
-                        .setHandler(new Handler(mCallbackThread.getLooper()))
-                        .setOnSTDERRLineListener(mStderrListener)
-                        .open(mOpenListener);
-
-                waitForCommandFinished();
-
-                if (mLastExitCode != Shell.OnShellOpenResultListener.SHELL_RUNNING) {
-                    dispose();
-                    return false;
-                }
-
-                return true;
-            }, new Completion<Boolean>() {
-                @Override
-                public void onSuccess(Context context, Boolean result) {
-                    if (progressDialog != null) {
-                        progressDialog.dismiss();
-                    }
-                    isSuAvailable = result;
-                    log("SU available: " + Boolean.toString(result));
-                    if (isSuAvailable) {
-                        log("Phone is rooted and SU permission granted");
-                        editor = settings.edit();
-                        editor.putBoolean("isSuAvailable", true);
-                        editor.apply();
-                        if (!Utils.isDumpPermissionGranted(getApplicationContext())) {
-                                log("Granting android.permission.DUMP to com.akylas.enforcedoze");
-                                executeCommand("pm grant com.akylas.enforcedoze android.permission.DUMP");
-                        }
-                        if (!Utils.isReadPhoneStatePermissionGranted(getApplicationContext())) {
-                            log("Granting android.permission.READ_PHONE_STATE to com.akylas.enforcedoze");
-                            executeCommand("pm grant com.akylas.enforcedoze android.permission.READ_PHONE_STATE");
-                        }
-                        if (!Utils.isSecureSettingsPermissionGranted(getApplicationContext()) && Utils.isDeviceRunningOnN()) {
-                            log("Granting android.permission.WRITE_SECURE_SETTINGS to com.akylas.enforcedoze");
-                            executeCommand("pm grant com.akylas.enforcedoze android.permission.WRITE_SECURE_SETTINGS");
-                        }
-                        if (serviceEnabled) {
-                            toggleForceDozeSwitch.setChecked(true);
-                            if (!Utils.isMyServiceRunning(ForceDozeService.class, MainActivity.this)) {
-                                log("Starting ForceDozeService");
-                                Utils.startForceDozeService(context);
-                            } else {
-                                log("Service already running");
-                            }
-                        } else {
-                            log("Service not enabled");
-                        }
-
-//                        ChangeLog cl = new ChangeLog(MainActivity.this);
-//                        if (cl.isFirstRun()) {
-//                            cl.getFullLogDialog().show();
-//                        }
-                    } else {
-                        log("SU permission denied or not available");
-                        toggleForceDozeSwitch.setChecked(false);
-                        toggleForceDozeSwitch.setEnabled(false);
-                        textViewStatus.setText(R.string.service_disabled);
-                        editor = settings.edit();
-                        editor.putBoolean("isSuAvailable", false);
-                        editor.apply();
-                        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(context);
-                        builder.setTitle(getString(R.string.error_text));
-                        builder.setMessage(getString(R.string.root_workaround_text));
-                        builder.setPositiveButton(getString(R.string.close_button_text), null);
-                        builder.setNegativeButton(getString(R.string.root_workaround_button_text), new DialogInterface.OnClickListener() {
-                            @Override
-                            public void onClick(DialogInterface dialogInterface, int i) {
-                                dialogInterface.dismiss();
-                                showRootWorkaroundInstructions();
-                            }
-                        });
-                        builder.show();
-                    }
-                }
-
-                @Override
-                public void onError(Context context, Exception e) {
-                    Log.e(TAG, "Error querying SU: " + e.getMessage());
-                    log("SU permission denied or not available");
-                    toggleForceDozeSwitch.setChecked(false);
-                    toggleForceDozeSwitch.setEnabled(false);
-                    textViewStatus.setText(R.string.service_disabled);
-                    editor = settings.edit();
-                    editor.putBoolean("isSuAvailable", false);
-                    editor.apply();
-                    MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(context);
-                    builder.setTitle(getString(R.string.error_text));
-                    builder.setMessage(getString(R.string.root_workaround_text));
-                    builder.setPositiveButton(getString(R.string.close_button_text), null);
-                    builder.setNegativeButton(getString(R.string.root_workaround_button_text), new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialogInterface, int i) {
-                            dialogInterface.dismiss();
-                            showRootWorkaroundInstructions();
-                        }
-                    });
-                    builder.show();
-                }
-            });
-            }
+        accessManager.refresh();
+        if (Utils.isShizukuMode(this)
+                && accessManager.getShizukuState().getReason() == Reason.SHIZUKU_PERMISSION_MISSING) {
+            accessManager.requestShizukuPermission();
         }
 
         if (Utils.isLockscreenTimeoutValueTooHigh(getContentResolver())) {
@@ -354,6 +176,9 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         if (settings != null) {
             settings.registerOnSharedPreferenceChangeListener(this);
         }
+        accessManager.addListener(accessListener);
+        accessManager.refresh();
+        ForceDozeService.requestSafetyCheck(this);
         updateToggleState();
         // Show disabled notification if EnforceDoze is disabled
         if (!serviceEnabled) {
@@ -364,6 +189,7 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
     @Override
     protected void onPause() {
         super.onPause();
+        accessManager.removeListener(accessListener);
         if (settings != null) {
             settings.unregisterOnSharedPreferenceChangeListener(this);
         }
@@ -380,8 +206,8 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         }
     }
 
-    final int POST_NOTIF_PERMISSION_REQUEST_CODE =112;
-    final int READ_PHONE_STATE_PERMISSION_REQUEST_CODE =113;
+    static final int POST_NOTIF_PERMISSION_REQUEST_CODE = 112;
+    static final int READ_PHONE_STATE_PERMISSION_REQUEST_CODE = 113;
     public void requestNotificationPermission(){
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -407,79 +233,54 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
-        switch (requestCode) {
-            case POST_NOTIF_PERMISSION_REQUEST_CODE:
-                if (grantResults.length > 0 &&
-                        grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                }  else {
-                    PreferenceManager.getDefaultSharedPreferences(getApplicationContext())
-                            .edit()
-                            .putBoolean("showPersistentNotif", false)
-                            .apply();
-                }
-                if (!Utils.isReadPhoneStatePermissionGranted(this)) {
-                    requestReadPhoneStatePermission();
-                }
-                break;
-
-            case READ_PHONE_STATE_PERMISSION_REQUEST_CODE:
-                if (grantResults.length > 0 &&
-                        grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                }  else {
-                    PreferenceManager.getDefaultSharedPreferences(getApplicationContext())
-                            .edit()
-                            .putBoolean("showPersistentNotif", false)
-                            .apply();
-                }
-                break;
-
+        if (grantResults.length == 0 || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+            String preference = deniedPermissionPreference(requestCode);
+            if (preference != null) settings.edit().putBoolean(preference, false).apply();
         }
+        if (requestCode == POST_NOTIF_PERMISSION_REQUEST_CODE && !Utils.isReadPhoneStatePermissionGranted(this)) {
+            requestReadPhoneStatePermission();
+        }
+        accessManager.refresh();
+    }
 
+    static String deniedPermissionPreference(int requestCode) {
+        // Phone-state denial affects call detection, never notification preferences.
+        return requestCode == POST_NOTIF_PERMISSION_REQUEST_CODE ? "showPersistentNotif" : null;
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (shizukuHandler != null) {
-            shizukuHandler.removePermissionResultListener();
+        accessManager.removeListener(accessListener);
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(updateStateFromTile);
+    }
+
+    private void onAccessChanged(AccessState state) {
+        isSuAvailable = state.getLevel() == AccessLevel.ROOT;
+        isShizukuAvailable = Utils.isShizukuMode(this)
+                && (state.getLevel() == AccessLevel.SHELL || isSuAvailable);
+        isDumpPermGranted = state.getGrants().getDump();
+        isWriteSecureSettingsPermGranted = state.getGrants().getWriteSecureSettings();
+        settings.edit().putBoolean("isSuAvailable", isSuAvailable).apply();
+        if (isSuAvailable || isShizukuAvailable) {
+            if (!helpersRequested) {
+                helpersRequested = true;
+                AsyncTask.execute(() -> accessManager.grantHelpers());
+            }
+        } else {
+            helpersRequested = false;
         }
-        if (rootSession != null) {
-            rootSession.close();
-            rootSession = null;
-        }
-        if (nonRootSession != null) {
-            nonRootSession.close();
-            nonRootSession = null;
-        }
+        boolean usable = isSuAvailable || isShizukuAvailable || isDumpPermGranted;
+        toggleForceDozeSwitch.setEnabled(usable);
+        if (usable) doAfterSuCheckSetup();
+        else textViewStatus.setText(R.string.service_disabled);
     }
 
     public void doAfterSuCheckSetup() {
-        if (serviceEnabled) {
-            toggleForceDozeSwitch.setChecked(true);
-            textViewStatus.setText(R.string.service_active);
-            if (!Utils.isMyServiceRunning(ForceDozeService.class, MainActivity.this)) {
-                log("Starting ForceDozeService");
-                Utils.startForceDozeService(this);
-            } else {
-                log("Service already running");
-            }
-            boolean useShizuku = Utils.isShizukuMode(getApplicationContext());
-            if (isSuAvailable || (useShizuku && isShizukuAvailable)) {
-                executeCommand("chmod 664 /data/data/com.akylas.enforcedoze/shared_prefs/com.akylas.enforcedoze_preferences.xml");
-                executeCommand("chmod 755 /data/data/com.akylas.enforcedoze/shared_prefs");
-            }
-        } else {
-            textViewStatus.setText(R.string.service_inactive);
-            log("Service not enabled");
+        updateToggleState();
+        if (serviceEnabled && !Utils.isMyServiceRunning(ForceDozeService.class, this)) {
+            Utils.startForceDozeService(this);
         }
-//        ChangeLog cl = new ChangeLog(this);
-//        if (cl.isFirstRun()) {
-//            cl.getFullLogDialog().show();
-//        } else {
-//            if (showDonateDevDialog) {
-//                showDonateDevDialog();
-//            }
-//        }
     }
 
     @Override
@@ -521,15 +322,13 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
     @Override
     public void onCheckedChanged(CompoundButton compoundButton, boolean b) {
         if (b) {
-            editor = settings.edit();
-            editor.putBoolean("serviceEnabled", true);
-            editor.apply();
+            if (!Utils.startForceDozeService(this)) {
+                updateToggleState();
+                return;
+            }
+            settings.edit().putBoolean("serviceEnabled", true).apply();
             serviceEnabled = true;
             textViewStatus.setText(R.string.service_active);
-            if (!Utils.isMyServiceRunning(ForceDozeService.class, MainActivity.this)) {
-                log("Enabling ForceDoze");
-                Utils.startForceDozeService(MainActivity.this);
-            }
             showForceDozeActiveDialog();
         } else {
             editor = settings.edit();
@@ -595,14 +394,17 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         builder.setNegativeButton(getString(R.string.enable_doze_button_text), new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialogInterface, int i) {
-                executeCommand("setprop persist.sys.doze_powersave true");
-                if (Utils.isDeviceRunningOnN() && isSuAvailable) {
-                    executeCommandWithRoot("dumpsys deviceidle disable all");
-                    executeCommandWithRoot("dumpsys deviceidle enable all");
-                } else if (!Utils.isDeviceRunningOnN()) {
-                    executeCommand("dumpsys deviceidle disable");
-                    executeCommand("dumpsys deviceidle enable");
-                }
+                AsyncTask.execute(() -> {
+                    if (accessManager.getLevel() != AccessLevel.ROOT) {
+                        log(Reason.REQUIRES_ROOT.name());
+                        return;
+                    }
+                    accessManager.control().run("setprop persist.sys.doze_powersave true");
+                    String suffix = Utils.isDeviceRunningOnN() ? " all" : "";
+                    accessManager.control().run("dumpsys deviceidle disable" + suffix);
+                    accessManager.control().run("dumpsys deviceidle enable" + suffix);
+                    // Legacy root-only workaround: transport success is not an effectiveness claim.
+                });
                 dialogInterface.dismiss();
             }
         });
@@ -750,178 +552,11 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
 
 
 
-    private final Shell.OnShellOpenResultListener mOpenListener = new Shell.OnShellOpenResultListener() {
-        @Override
-        public void onOpenResult(boolean success, int reason) {
-            mLastExitCode = reason;
-            synchronized (mCallbackThread) {
-                mCommandRunning = false;
-                mCallbackThread.notifyAll();
-            }
-        }
-
-    };
-
-//    private final Shell.OnCommandLineListener mStdoutListener = new Shell.OnCommandLineListener() {
-//
-//        @Override
-//        public void onSTDOUT(@NonNull String line) {
-//            log(line);
-//        }
-//
-//        @Override
-//        public void onSTDERR(@NonNull String line) {
-//            Log.e(TAG, line);
-//        }
-//
-//        @Override
-//        public void onCommandResult(int commandCode, int exitCode) {
-//            mLastExitCode = exitCode;
-//            synchronized (mCallbackThread) {
-//                mCommandRunning = false;
-//                mCallbackThread.notifyAll();
-//            }
-//        }
-//    };
-
-    private final StreamGobbler.OnLineListener mStderrListener = new StreamGobbler.OnLineListener() {
-        @Override
-        public void onLine(String line) {
-            log(line);
-        }
-    };
-
-    private void waitForCommandFinished() {
-        synchronized (mCallbackThread) {
-            while (mCommandRunning) {
-                try {
-                    mCallbackThread.wait();
-                } catch (Exception e)  {
-                    if (e instanceof InterruptedException) {
-                        log("InterruptedException occurred while waiting for command to finish");
-                        e.printStackTrace();
-                    } else if (e instanceof NullPointerException) {
-                        log("NPE occurred while waiting for command to finish");
-                        e.printStackTrace();
-                    }
-                }
-            }
-        }
-
-        if (mLastExitCode == Shell.OnCommandResultListener.WATCHDOG_EXIT || mLastExitCode == Shell.OnCommandResultListener.SHELL_DIED) {
-            dispose();
-        }
-    }
-
-    public synchronized void dispose() {
-        if (rootSession == null) {
-            return;
-        }
-
-        try {
-            rootSession.close();
-        } catch (Exception ignored) {
-        }
-        rootSession = null;
-
-        mCallbackThread.quit();
-        mCallbackThread = null;
-    }
-
-    public void executeCommand(final String command) {
-        boolean useShizuku = Utils.isShizukuMode(getApplicationContext());
-        
-        if (useShizuku && isShizukuAvailable) {
-            shizukuHandler.executeCommand(command, (commandCode, exitCode, stdout, stderr) -> {
-                printShellOutput(stdout);
-            }, true);
-        } else if (isSuAvailable) {
-            executeCommandWithRoot(command);
-        } else {
-            executeCommandWithoutRoot(command);
-        }
-    }
-
-    public void executeCommandWithRoot(final String command) {
-        AsyncTask.execute(new Runnable() {
-            @Override
-            public void run() {
-                if (rootSession != null) {
-                    rootSession.addCommand(command, 0, new Shell.OnCommandResultListener() {
-                        @Override
-                        public void onCommandResult(int commandCode, int exitCode, List<String> output) {
-                            printShellOutput(output);
-                        }
-                    });
-                } else {
-                    rootSession = new Shell.Builder().
-                            useSU().
-                            setWatchdogTimeout(5).
-                            setMinimalLogging(true).
-                            open((success, reason) -> {
-                                if (reason != Shell.OnShellOpenResultListener.SHELL_RUNNING) {
-                                    log("Error opening root shell: exitCode " + reason);
-                                } else {
-                                    rootSession.addCommand(command, 0, new Shell.OnCommandResultListener() {
-                                        @Override
-                                        public void onCommandResult(int commandCode, int exitCode, List<String> output) {
-                                            printShellOutput(output);
-                                        }
-                                    });
-                                }
-                            });
-                }
-            }
-        });
-    }
-
-    public void executeCommandWithoutRoot(final String command) {
-        AsyncTask.execute(new Runnable() {
-            @Override
-            public void run() {
-                if (nonRootSession != null) {
-                    nonRootSession.addCommand(command, 0, new Shell.OnCommandResultListener() {
-                        @Override
-                        public void onCommandResult(int commandCode, int exitCode, List<String> output) {
-                            printShellOutput(output);
-                        }
-                    });
-                } else {
-                    nonRootSession = new Shell.Builder().
-                            useSH().
-                            setWatchdogTimeout(5).
-                            setMinimalLogging(true).
-                            open((success, reason) -> {
-                                if (reason != Shell.OnShellOpenResultListener.SHELL_RUNNING) {
-                                        log("Error opening shell: exitCode " + reason);
-                                    } else {
-                                        nonRootSession.addCommand(command, 0, new Shell.OnCommandResultListener2() {
-                                            @Override
-                                            public void onCommandResult(int commandCode, int exitCode, @NonNull List<String> STDOUT, @NonNull List<String> STDERR) {
-                                                printShellOutput(STDOUT);
-                                            }
-                                        });
-                                    }
-                                }
-                            );
-                }
-            }
-        });
-    }
-
-    public void printShellOutput(List<String> output) {
-        if (output != null && !output.isEmpty()) {
-            for (String s : output) {
-                log(s);
-            }
-        }
-    }
-
     class UpdateForceDozeEnabledState extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
             log("User toggled the QuickTile, now updating the state in app");
-            toggleForceDozeSwitch.setChecked(intent.getBooleanExtra("isActive", false));
+            updateToggleState();
         }
     }
 }

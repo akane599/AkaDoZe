@@ -69,8 +69,10 @@ public class ForceDozeTileService extends TileService {
             Utils.stopForceDozeService(this);
         } else {
             log("Enabling EnforceDoze");
-            settings.edit().putBoolean("serviceEnabled", true).apply();
-            Utils.startForceDozeService(this);
+            if (Utils.startForceDozeService(this)) {
+                settings.edit().putBoolean("serviceEnabled", true).apply();
+                Utils.updateTileState(this);
+            }
         }
     }
 

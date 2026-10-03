@@ -41,20 +41,23 @@ import com.jakewharton.processphoenix.ProcessPhoenix;
 import com.nanotasks.Completion;
 import com.nanotasks.Tasks;
 
-import java.util.List;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Set;
 
-import eu.chainfire.libsuperuser.Shell;
+import com.akylas.enforcedoze.access.AccessManager;
+import com.akylas.enforcedoze.access.AccessLevel;
+import com.akylas.enforcedoze.access.AccessState;
+import com.akylas.enforcedoze.access.CapabilityResolver;
+import com.akylas.enforcedoze.access.Feature;
+import com.akylas.enforcedoze.access.FeatureStatus;
+import com.akylas.enforcedoze.access.Reason;
 
 public class SettingsActivity extends AppCompatActivity {
     public static String TAG = "EnforceDoze";
     static MaterialDialog progressDialog1 = null;
-    private static Shell.Interactive rootSession;
-    private static Shell.Interactive nonRootSession;
 
     private static void log(String message) {
             logToLogcat(TAG, message);
@@ -87,16 +90,6 @@ public class SettingsActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (rootSession != null) {
-            if (rootSession.isRunning()) {
-                rootSession.close();
-            }
-            rootSession = null;
-        }
-        if (nonRootSession != null) {
-            nonRootSession.close();
-            nonRootSession = null;
-        }
         reloadSettings(this);
     }
 
@@ -115,7 +108,71 @@ public class SettingsActivity extends AppCompatActivity {
 
         boolean isSuAvailable = false;
         boolean isShizukuAvailable = false;
-        private ShizukuHandler shizukuHandler;
+        private AccessManager accessManager;
+        private final ModeSwitch modeSwitch = new ModeSwitch();
+        private final AccessManager.Listener accessListener = this::onAccessChanged;
+
+        // The switch is consumed once, only after the selected transport is usable.
+        static final class ModeSwitch {
+            private String pending;
+            private int generation;
+            int select(String mode) { pending = mode; return ++generation; }
+            boolean ready(String selected, AccessLevel level) {
+                return pending != null && pending.equals(selected)
+                        && (level == AccessLevel.ROOT || ("shizuku".equals(selected) && level == AccessLevel.SHELL));
+            }
+            int consume() { pending = null; return generation; }
+            boolean current(int token) { return token == generation; }
+            boolean waitingForRoot() { return "root".equals(pending); }
+        }
+
+        @Override
+        public void onStart() {
+            super.onStart();
+            accessManager.addListener(accessListener);
+            accessManager.refresh();
+        }
+
+        @Override
+        public void onStop() {
+            accessManager.removeListener(accessListener);
+            super.onStop();
+        }
+
+        @Override
+        public void onDestroy() {
+            PreferenceManager.getDefaultSharedPreferences(requireContext())
+                    .unregisterOnSharedPreferenceChangeListener(this);
+            super.onDestroy();
+        }
+
+        private void onAccessChanged(AccessState state) {
+            if (!isAdded()) return;
+            isSuAvailable = state.getLevel() == AccessLevel.ROOT;
+            isShizukuAvailable = Utils.isShizukuMode(requireContext())
+                    && (isSuAvailable || state.getLevel() == AccessLevel.SHELL);
+            if (!modeSwitch.waitingForRoot() || isSuAvailable) {
+                toggleRootFeatures(isSuAvailable || isShizukuAvailable);
+            }
+            String selected = PreferenceManager.getDefaultSharedPreferences(requireContext())
+                    .getString("executionMode", "root");
+            if (!modeSwitch.ready(selected, state.getLevel())) return;
+            int token = modeSwitch.consume();
+            Context context = requireContext().getApplicationContext();
+            AsyncTask.execute(() -> {
+                accessManager.grantHelpers();
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                    SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+                    if (!modeSwitch.current(token) || !selected.equals(prefs.getString("executionMode", "root"))) return;
+                    if (accessManager.getLevel() != AccessLevel.ROOT && accessManager.getLevel() != AccessLevel.SHELL) return;
+                    if (prefs.getBoolean("serviceEnabled", false)) {
+                        context.stopService(new Intent(context, ForceDozeService.class));
+                        Utils.startForceDozeService(context);
+                    }
+                    ForceDozeService.requestSafetyCheck(context);
+                });
+            });
+        }
 
         private void removeIconSpace(PreferenceGroup group) {
             for (int i = 0; i < group.getPreferenceCount(); i++) {
@@ -174,28 +231,9 @@ public class SettingsActivity extends AppCompatActivity {
             super.onCreate(savedInstanceState);
         }
 
-        private void initializeShizuku() {
-            shizukuHandler.checkShizukuAvailability();
-            shizukuHandler.setOnAvailibilityChangeListener(value -> {
-                isShizukuAvailable = value;
-                toggleRootFeatures(isShizukuAvailable || isSuAvailable);
-            });
-            isShizukuAvailable = shizukuHandler.isShizukuAvailable();
-            log("Shizuku mode enabled, available: " + isShizukuAvailable);
-        }
-
-
         @Override
         public void onCreatePreferences(@Nullable Bundle savedInstanceState, String rootKey) {
-            shizukuHandler = ShizukuHandler.getInstance(getActivity());
-            boolean useShizuku = Utils.isShizukuMode(getActivity());
-            isShizukuAvailable = false;
-            if (useShizuku) {
-                initializeShizuku();
-            }
-            // Initialize root and non-root shell
-            executeCommandWithRoot("whoami");
-            executeCommandWithoutRoot("whoami");
+            accessManager = AccessManager.getInstance(requireContext());
 
             addPreferencesFromResource(R.xml.prefs);
             removeIconSpace(getPreferenceScreen());
@@ -246,21 +284,14 @@ public class SettingsActivity extends AppCompatActivity {
 
 
             executionMode.setOnPreferenceChangeListener((preference, value) -> {
-                if (value.equals("shizuku")) {
-                    initializeShizuku();
-                    ShizukuHandler.getInstance(getActivity()).requestShizukuPermission();
-                    Utils.grantPermissionsViaShizuku(getActivity());
-                    toggleRootFeatures(isSuAvailable || isShizukuAvailable);
-                } else {
-                    toggleRootFeatures(isSuAvailable);
+                modeSwitch.select((String) value);
+                if ("shizuku".equals(value)) {
+                    accessManager.refreshShizuku();
+                    if (accessManager.getShizukuState().getReason() == Reason.SHIZUKU_PERMISSION_MISSING) {
+                        accessManager.requestShizukuPermission();
+                    }
                 }
-                boolean serviceEnabled = sharedPreferences.getBoolean("serviceEnabled", false);
-                if (serviceEnabled) {
-                    Context context = getActivity();
-                    Intent intent = new Intent(context, ForceDozeService.class);
-                    context.stopService(intent);
-                    context.startService(intent);
-                }
+                // SharedPreferences and AccessManager publish the selected mode before we consume it.
                 return true;
             });
 
@@ -340,7 +371,7 @@ public class SettingsActivity extends AppCompatActivity {
                     if (isSuAvailable || isShizukuAvailable) {
                         log("Root or Shizuku permission granted");
                         log("Granting android.permission.READ_PHONE_STATE to com.akylas.enforcedoze");
-                        executeCommand("pm grant com.akylas.enforcedoze android.permission.READ_PHONE_STATE");
+                        AsyncTask.execute(() -> accessManager.grantHelpers());
                         return true;
                     } else {
                         log("SU permission denied or not available");
@@ -379,21 +410,19 @@ public class SettingsActivity extends AppCompatActivity {
                 return true;
             });
 
-            whitelistCurrentApp.setOnPreferenceChangeListener((preference, o) -> {
-                final boolean newValue = (boolean) o;
-                if (newValue) {
-                    // we need to check if we have notifications permissions
-                    if (!isSuAvailable && !Utils.isUsageStatsPermissionGranted(getContext())) {
-                        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(getActivity());
-                        builder.setTitle(getString(R.string.usage_access_permission));
-                        builder.setMessage(getString(R.string.usage_access_explanation));
-                        builder.setPositiveButton(getString(R.string.open_button_text), (dialogInterface, i) -> {
-                            getActivity().startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS));
-                            dialogInterface.dismiss();
-                        });
-                        builder.show();
-                    }
+            whitelistCurrentApp.setOnPreferenceChangeListener((preference, value) -> {
+                if (!(boolean) value) return true;
+                AccessState state = accessManager.getState();
+                FeatureStatus status = CapabilityResolver.status(Feature.FOCUSED_APP, state.getLevel(),
+                        Build.VERSION.SDK_INT, state.getGrants());
+                if (!(status instanceof FeatureStatus.Available)) {
+                    log(((FeatureStatus.Unavailable) status).getReason().name());
+                    return false;
                 }
+                AsyncTask.execute(() -> {
+                    com.akylas.enforcedoze.access.CommandResult result = accessManager.reads().run("dumpsys activity activities");
+                    if (!result.getOk()) log(Reason.UNVERIFIED.name());
+                });
                 return true;
             });
 
@@ -574,38 +603,30 @@ public class SettingsActivity extends AppCompatActivity {
         }
 
         public void resetForceDoze() {
-            log("Starting ForceDoze reset procedure");
-            if (Utils.isMyServiceRunning(ForceDozeService.class, getActivity())) {
-                log("Stopping ForceDozeService");
-                getActivity().stopService(new Intent(getActivity(), ForceDozeService.class));
-            }
-            log("Enabling sensors, just in case they are disabled");
-            executeCommand("dumpsys sensorservice enable");
-            log("Disabling and re-enabling Doze mode");
-            if (Utils.isDeviceRunningOnN()) {
-                executeCommand("dumpsys deviceidle disable all");
-                executeCommand("dumpsys deviceidle enable all");
-            } else {
-                executeCommand("dumpsys deviceidle disable");
-                executeCommand("dumpsys deviceidle enable");
-            }
-            log("Resetting app preferences");
-            PreferenceManager.getDefaultSharedPreferences(getActivity()).edit().clear().apply();
-            log("Trying to revoke android.permission.DUMP");
-            executeCommand("pm revoke com.akylas.enforcedoze android.permission.DUMP");
-            executeCommand("pm revoke com.akylas.enforcedoze android.permission.READ_LOGS");
-            executeCommand("pm revoke com.akylas.enforcedoze android.permission.READ_PHONE_STATE");
-            executeCommand("pm revoke com.akylas.enforcedoze android.permission.WRITE_SECURE_SETTINGS");
-            executeCommand("pm revoke com.akylas.enforcedoze android.permission.WRITE_SETTINGS");
-            log("ForceDoze reset procedure complete");
-            MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(getActivity());
-            builder.setTitle(getString(R.string.reset_complete_dialog_title));
-            builder.setMessage(getString(R.string.reset_complete_dialog_text));
-            builder.setPositiveButton(getString(R.string.okay_button_text), (dialogInterface, i) -> {
-                dialogInterface.dismiss();
-                ProcessPhoenix.triggerRebirth(getActivity());
+            Context context = requireContext().getApplicationContext();
+            context.stopService(new Intent(context, ForceDozeService.class));
+            ForceDozeService.requestSafetyCheck(context);
+            AsyncTask.execute(() -> {
+                String suffix = Utils.isDeviceRunningOnN() ? " all" : "";
+                accessManager.control().run("dumpsys deviceidle disable" + suffix);
+                accessManager.control().run("dumpsys deviceidle enable" + suffix);
+                for (String permission : new String[]{"DUMP", "READ_LOGS", "READ_PHONE_STATE", "WRITE_SECURE_SETTINGS", "WRITE_SETTINGS"}) {
+                    accessManager.control().run("pm revoke " + context.getPackageName() + " android.permission." + permission);
+                }
+                // Preserve the selected runner until all resets/revocations have completed.
+                PreferenceManager.getDefaultSharedPreferences(context).edit().clear().commit();
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                    if (!isAdded()) return;
+                    MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(requireContext());
+                    builder.setTitle(getString(R.string.reset_complete_dialog_title));
+                    builder.setMessage(getString(R.string.reset_complete_dialog_text));
+                    builder.setPositiveButton(getString(R.string.okay_button_text), (dialogInterface, i) -> {
+                        dialogInterface.dismiss();
+                        ProcessPhoenix.triggerRebirth(requireContext());
+                    });
+                    builder.show();
+                });
             });
-            builder.show();
         }
 
         public void toggleRootFeatures(final boolean enabled) {
@@ -680,86 +701,12 @@ public class SettingsActivity extends AppCompatActivity {
             }
         }
 
-        public void executeCommand(final String command) {
-            if (isSuAvailable || isShizukuAvailable) {
-                executeCommandWithRoot(command);
-            } else {
-                executeCommandWithoutRoot(command);
-            }
-        }
-
-
-        public void executeCommandWithRoot(final String command) {
-            boolean useShizuku = Utils.isShizukuMode(getActivity());
-            if (useShizuku && isShizukuAvailable) {
-                shizukuHandler.executeCommand(command, (commandCode, exitCode, stdout, stderr) -> {
-                    if (exitCode == 0) {
-                        toggleRootFeatures(true);
-                    } else {
-                        toggleRootFeatures(false);
-                    }
-                }, false);
-                return;
-            }
-            AsyncTask.execute(() -> {
-                if (rootSession != null) {
-                    rootSession.addCommand(command, 0, (Shell.OnCommandResultListener2) (commandCode, exitCode, STDOUT, STDERR) -> printShellOutput(STDOUT));
-                } else {
-                    rootSession = new Shell.Builder().
-                            useSU().
-                            setWatchdogTimeout(5).
-                            setMinimalLogging(true).
-                            open((success, reason) -> {
-                                if (reason != Shell.OnShellOpenResultListener.SHELL_RUNNING) {
-                                    log("Error opening root shell: exitCode " + reason);
-                                    isSuAvailable = false;
-                                    toggleRootFeatures(false);
-                                } else {
-                                    rootSession.addCommand(command, 0, (Shell.OnCommandResultListener2) (commandCode, exitCode, STDOUT, STDERR) -> {
-                                        printShellOutput(STDOUT);
-                                        isSuAvailable = true;
-                                        toggleRootFeatures(true);
-                                    });
-                                }
-                            });
-                }
-            });
-        }
-
-        public void executeCommandWithoutRoot(final String command) {
-            AsyncTask.execute(() -> {
-                if (nonRootSession != null) {
-                    nonRootSession.addCommand(command, 0, (Shell.OnCommandResultListener2) (commandCode, exitCode, STDOUT, STDERR) -> printShellOutput(STDOUT));
-                } else {
-                    nonRootSession = new Shell.Builder().
-                            useSH().
-                            setWatchdogTimeout(5).
-                            setMinimalLogging(true).
-                            open((success, reason) -> {
-                                if (reason != Shell.OnShellOpenResultListener.SHELL_RUNNING) {
-                                    log("Error opening shell: exitCode " + reason);
-//                                    isSuAvailable = false;
-                                } else {
-                                    nonRootSession.addCommand(command, 0, (Shell.OnCommandResultListener2) (commandCode, exitCode, STDOUT, STDERR) -> {
-                                        printShellOutput(STDOUT);
-//                                        isSuAvailable = false;
-                                    });
-                                }
-                            });
-                }
-            });
-        }
-
-        public void printShellOutput(List<String> output) {
-            if (!output.isEmpty()) {
-                for (String s : output) {
-                    log(s);
-                }
-            }
-        }
-
         @Override
         public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, @Nullable String key) {
+            if ("executionMode".equals(key)) {
+                onAccessChanged(accessManager.getState());
+                return;
+            }
             if ("customDozePeriods".equals(key)) {
                 updateCustomDozePeriodsSummary(findPreference("customDozePeriods"), sharedPreferences);
             }

@@ -29,7 +29,6 @@ import androidx.preference.PreferenceScreen;
 import androidx.recyclerview.widget.RecyclerView;
 
 import android.text.TextUtils;
-import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -37,20 +36,19 @@ import android.widget.Toast;
 
 import com.afollestad.materialdialogs.MaterialDialog;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
-import com.nanotasks.BackgroundWork;
 import com.nanotasks.Completion;
 import com.nanotasks.Tasks;
 
 import java.util.List;
 
-import eu.chainfire.libsuperuser.Shell;
+import com.akylas.enforcedoze.access.AccessManager;
+import com.akylas.enforcedoze.access.AccessLevel;
 
 public class DozeTunablesActivity extends AppCompatActivity {
 
     public static String TAG = "EnforceDoze";
     public static boolean suAvailable = false;
-    static boolean isShizukuAvailable = false;
-    private static ShizukuHandler shizukuHandler;
+    public DozeTunableHandler.ApplyResult lastApplyResult;
     private final String tunableCommand = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE ? "device_config put device_idle" : "settings put global device_idle_constants";
 
     private static void log(String message) {
@@ -87,8 +85,8 @@ public class DozeTunablesActivity extends AppCompatActivity {
     public boolean onPrepareOptionsMenu(Menu menu) {
         super.onPrepareOptionsMenu(menu);
 
-        // Applying needs root or a running Shizuku; without either only the adb command can be copied.
-        boolean canApply = suAvailable || (Utils.isShizukuMode(this) && isShizukuAvailable);
+        // Applying needs root, Shizuku (shell) or WRITE_SECURE_SETTINGS; otherwise only the adb command can be copied.
+        boolean canApply = suAvailable;
         menu.findItem(R.id.action_apply_tunables).setVisible(canApply);
 
         return true;
@@ -114,18 +112,27 @@ public class DozeTunablesActivity extends AppCompatActivity {
     }
 
     public void applyTunables() {
-        String tunable_string = DozeTunableHandler.getInstance().getTunableString();
-        log("Setting device_idle_constants=" + tunable_string);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            for (String s : tunable_string.split(",")) {
-                executeCommand(tunableCommand + " " + TextUtils.join(" ", s.split("=")));
-            }
-        } else {
-            executeCommand(tunableCommand + " " + tunable_string);
-
-        }
-        // The commands run asynchronously and are not read back here, so do not claim success.
-        Toast.makeText(this, getString(R.string.tunables_apply_sent), Toast.LENGTH_SHORT).show();
+        lastApplyResult = null;
+        String tunables = DozeTunableHandler.getInstance().getTunableString();
+        AccessManager manager = AccessManager.getInstance(this);
+        Tasks.executeInBackground(this, () -> DozeTunableHandler.apply(manager.control(), manager.reads(),
+                Build.VERSION.SDK_INT, manager.getState().getGrants(), tunables),
+                new Completion<DozeTunableHandler.ApplyResult>() {
+                    @Override
+                    public void onSuccess(Context context, DozeTunableHandler.ApplyResult result) {
+                        lastApplyResult = result;
+                        if (result.allApplied()) {
+                            Toast.makeText(DozeTunablesActivity.this, getString(R.string.applied_success_text), Toast.LENGTH_SHORT).show();
+                        } else {
+                            log("Tunable readback: " + result.keys);
+                            showApplyResult(result.applied, result.notEffective, result.failed);
+                        }
+                    }
+                    @Override
+                    public void onError(Context context, Exception error) {
+                        log("Error applying tunables: " + error.getMessage());
+                    }
+                });
     }
 
     /**
@@ -179,47 +186,34 @@ public class DozeTunablesActivity extends AppCompatActivity {
         builder.show();
     }
 
-    public static void executeCommand(final String command) {
-        boolean useShizuku = Utils.isShizukuMode(applicationContext.getApplicationContext());
-
-        if (useShizuku && isShizukuAvailable) {
-            shizukuHandler.executeCommand(command, (commandCode, exitCode, stdout, stderr) -> {
-                printShellOutput(stderr);
-                if (exitCode == 0) {
-                    printShellOutput(stdout);
-
-                } else {
-                    log("Error occurred while executing command (" + command + ")");
-                }
-            }, false);
-            return;
-        }
-        AsyncTask.execute(new Runnable() {
-            @Override
-            public void run() {
-                List<String> output = Shell.SU.run(command);
-                if (output != null) {
-                    printShellOutput(output);
-                } else {
-                    log("Error occurred while executing command (" + command + ")");
-                }
-            }
-        });
-    }
-
-    public static void printShellOutput(List<String> output) {
-        if (!output.isEmpty()) {
-            for (String s : output) {
-                log(s);
-            }
-        }
-    }
-
     @SuppressLint("ValidFragment")
     public  static class DozeTunablesFragment extends PreferenceFragmentCompat {
 
         MaterialDialog grantPermProgDialog;
-        boolean isSuAvailable = false;
+        private AccessManager accessManager;
+        private boolean helpersRequested;
+        private final AccessManager.Listener accessListener = state -> {
+            suAvailable = state.getLevel() == AccessLevel.ROOT || state.getLevel() == AccessLevel.SHELL
+                    || state.getGrants().getWriteSecureSettings();
+            refreshApplyMenuItem();
+            if (!helpersRequested && (state.getLevel() == AccessLevel.ROOT || state.getLevel() == AccessLevel.SHELL)) {
+                helpersRequested = true;
+                AsyncTask.execute(() -> accessManager.grantHelpers());
+            }
+        };
+
+        @Override
+        public void onStart() {
+            super.onStart();
+            accessManager.addListener(accessListener);
+            accessManager.refresh();
+        }
+
+        @Override
+        public void onStop() {
+            accessManager.removeListener(accessListener);
+            super.onStop();
+        }
 
         private void removeIconSpace(PreferenceGroup group) {
             for (int i = 0; i < group.getPreferenceCount(); i++) {
@@ -269,107 +263,7 @@ public class DozeTunablesActivity extends AppCompatActivity {
                 preferenceScreen.removePreference(lightDozeSettings);
             }
 
-            shizukuHandler = ShizukuHandler.getInstance(getActivity());
-            boolean useShizuku = Utils.isShizukuMode(getActivity());
-            isShizukuAvailable = false;
-            if (useShizuku) {
-                shizukuHandler.checkShizukuAvailability();
-                shizukuHandler.setOnAvailibilityChangeListener(value -> {
-                    isShizukuAvailable = value;
-                    refreshApplyMenuItem();
-                });
-                isShizukuAvailable = shizukuHandler.isShizukuAvailable();
-                log("Shizuku mode enabled, available: " + isShizukuAvailable);
-                if (isShizukuAvailable && !Utils.isSecureSettingsPermissionGranted(getActivity())) {
-                    executeCommand("pm grant com.akylas.enforcedoze android.permission.WRITE_SECURE_SETTINGS");
-                }
-                return;
-            }
-
-            if (!preferences.getBoolean("isSuAvailable", false)) {
-                grantPermProgDialog = new MaterialDialog.Builder(getActivity())
-                        .title(getString(R.string.please_wait_text))
-                        .cancelable(false)
-                        .autoDismiss(false)
-                        .content(getString(R.string.requesting_su_access_text))
-                        .progress(true, 0)
-                        .show();
-                log("Check if SU is available, and request SU permission if it is");
-                Tasks.executeInBackground(getActivity(), new BackgroundWork<Boolean>() {
-                    @Override
-                    public Boolean doInBackground() throws Exception {
-                        return Shell.SU.available();
-                    }
-                }, new Completion<Boolean>() {
-                    @Override
-                    public void onSuccess(Context context, Boolean result) {
-                        if (grantPermProgDialog != null) {
-                            grantPermProgDialog.dismiss();
-                        }
-                        isSuAvailable = result;
-                        suAvailable = isSuAvailable;
-                        refreshApplyMenuItem();
-                        log("SU available: " + Boolean.toString(result));
-                        if (isSuAvailable) {
-                            log("Phone is rooted and SU permission granted");
-                            if (!Utils.isSecureSettingsPermissionGranted(getActivity())) {
-                                executeCommand("pm grant com.akylas.enforcedoze android.permission.WRITE_SECURE_SETTINGS");
-                            }
-                        } else {
-                            log("SU permission denied or not available");
-                            MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(context);
-                            builder.setTitle(getString(R.string.error_text));
-                            builder.setMessage(getString(R.string.tunables_su_not_available_error_text));
-                            builder.setPositiveButton(getString(R.string.okay_button_text), new DialogInterface.OnClickListener() {
-                                @Override
-                                public void onClick(DialogInterface dialogInterface, int i) {
-                                    dialogInterface.dismiss();
-                                }
-                            });
-                            builder.show();
-                        }
-                    }
-
-                    @Override
-                    public void onError(Context context, Exception e) {
-                        Log.e(TAG, "Error querying SU: " + e.getMessage());
-                    }
-                });
-            } else {
-                suAvailable = true;
-            }
-        }
-
-
-//        public void executeCommand(final String command) {
-//            boolean useShizuku = Utils.isShizukuMode(getActivity());
-//
-//            if (useShizuku && isShizukuAvailable) {
-//                shizukuHandler.executeCommand(command, (commandCode, exitCode, stdout, stderr) -> {
-//                        printShellOutput(stdout);
-//                        printShellOutput(stderr);
-//                }, false);
-//                return;
-//            }
-//            AsyncTask.execute(new Runnable() {
-//                @Override
-//                public void run() {
-//                    List<String> output = Shell.SU.run(command);
-//                    if (output != null) {
-//                        printShellOutput(output);
-//                    } else {
-//                        log("Error occurred while executing command (" + command + ")");
-//                    }
-//                }
-//            });
-//        }
-
-        public void printShellOutput(List<String> output) {
-            if (!output.isEmpty()) {
-                for (String s : output) {
-                    log(s);
-                }
-            }
+            accessManager = AccessManager.getInstance(requireContext());
         }
 
         // Access is detected asynchronously, after the menu was first prepared.

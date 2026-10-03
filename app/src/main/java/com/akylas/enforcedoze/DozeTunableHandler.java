@@ -6,6 +6,23 @@ import android.content.SharedPreferences;
 import android.preference.PreferenceManager;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.math.BigDecimal;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import com.akylas.enforcedoze.access.CommandRunner;
+import com.akylas.enforcedoze.access.CommandResult;
+import com.akylas.enforcedoze.access.CommandCatalog;
+import com.akylas.enforcedoze.access.CapabilityResolver;
+import com.akylas.enforcedoze.access.Feature;
+import com.akylas.enforcedoze.access.FeatureStatus;
+import com.akylas.enforcedoze.access.Grants;
+import com.akylas.enforcedoze.access.AccessLevel;
+import com.akylas.enforcedoze.access.Reason;
+import com.akylas.enforcedoze.doze.parse.DozeStateParser;
 
 public class DozeTunableHandler {
     private static DozeTunableHandler single_instance = null;
@@ -121,35 +138,111 @@ public class DozeTunableHandler {
     }
 
     public ArrayList<String> getCommandsList() {
-        ArrayList<String> commands = new ArrayList();
-        final String prefix = "device_config put ";
-                commands.add(prefix + DozeTunableConstants.KEY_LIGHT_IDLE_AFTER_INACTIVE_TIMEOUT + " " + LIGHT_IDLE_AFTER_INACTIVE_TIMEOUT);
-        commands.add(prefix + DozeTunableConstants.KEY_LIGHT_PRE_IDLE_TIMEOUT + " " + LIGHT_PRE_IDLE_TIMEOUT);
-        commands.add(prefix + DozeTunableConstants.KEY_LIGHT_IDLE_TIMEOUT + " " + LIGHT_IDLE_TIMEOUT);
-        commands.add(prefix + DozeTunableConstants.KEY_LIGHT_IDLE_FACTOR + " " + LIGHT_IDLE_FACTOR);
-        commands.add(prefix + DozeTunableConstants.KEY_LIGHT_MAX_IDLE_TIMEOUT + " " + LIGHT_MAX_IDLE_TIMEOUT);
-        commands.add(prefix + DozeTunableConstants.KEY_LIGHT_IDLE_MAINTENANCE_MIN_BUDGET + " " + LIGHT_IDLE_MAINTENANCE_MIN_BUDGET);
-        commands.add(prefix + DozeTunableConstants.KEY_LIGHT_IDLE_MAINTENANCE_MAX_BUDGET + " " + LIGHT_IDLE_MAINTENANCE_MAX_BUDGET);
-        commands.add(prefix + DozeTunableConstants.KEY_MIN_LIGHT_MAINTENANCE_TIME + " " + MIN_LIGHT_MAINTENANCE_TIME);
-        commands.add(prefix + DozeTunableConstants.KEY_MIN_DEEP_MAINTENANCE_TIME + " " + MIN_DEEP_MAINTENANCE_TIME);
-        commands.add(prefix + DozeTunableConstants.KEY_INACTIVE_TIMEOUT + " " + INACTIVE_TIMEOUT);
-        commands.add(prefix + DozeTunableConstants.KEY_SENSING_TIMEOUT + " " + SENSING_TIMEOUT);
-        commands.add(prefix + DozeTunableConstants.KEY_LOCATING_TIMEOUT + " " + LOCATING_TIMEOUT);
-        commands.add(prefix + DozeTunableConstants.KEY_LOCATION_ACCURACY + " " + LOCATION_ACCURACY);
-        commands.add(prefix + DozeTunableConstants.KEY_MOTION_INACTIVE_TIMEOUT + " " + MOTION_INACTIVE_TIMEOUT);
-        commands.add(prefix + DozeTunableConstants.KEY_IDLE_AFTER_INACTIVE_TIMEOUT + " " + IDLE_AFTER_INACTIVE_TIMEOUT);
-        commands.add(prefix + DozeTunableConstants.KEY_IDLE_PENDING_TIMEOUT + " " + IDLE_PENDING_TIMEOUT);
-        commands.add(prefix + DozeTunableConstants.KEY_MAX_IDLE_PENDING_TIMEOUT + " " + MAX_IDLE_PENDING_TIMEOUT);
-        commands.add(prefix + DozeTunableConstants.KEY_IDLE_PENDING_FACTOR + " " + IDLE_PENDING_FACTOR);
-        commands.add(prefix + DozeTunableConstants.KEY_IDLE_TIMEOUT + " " + IDLE_TIMEOUT);
-        commands.add(prefix + DozeTunableConstants.KEY_MAX_IDLE_TIMEOUT + " " + MAX_IDLE_TIMEOUT);
-        commands.add(prefix + DozeTunableConstants.KEY_IDLE_FACTOR + " " + IDLE_FACTOR);
-        commands.add(prefix + DozeTunableConstants.KEY_MIN_TIME_TO_ALARM + " " + MIN_TIME_TO_ALARM);
-        commands.add(prefix + DozeTunableConstants.KEY_MAX_TEMP_APP_WHITELIST_DURATION + " " + MAX_TEMP_APP_WHITELIST_DURATION);
-        commands.add(prefix + DozeTunableConstants.KEY_MMS_TEMP_APP_WHITELIST_DURATION + " " + MMS_TEMP_APP_WHITELIST_DURATION);
-        commands.add(prefix + DozeTunableConstants.KEY_SMS_TEMP_APP_WHITELIST_DURATION + " " + SMS_TEMP_APP_WHITELIST_DURATION);
-        commands.add(prefix + DozeTunableConstants.KEY_NOTIFICATION_WHITELIST_DURATION + " " + NOTIFICATION_WHITELIST_DURATION);
+        ArrayList<String> commands = new ArrayList<>();
+        for (String pair : getTunableString().split(",")) {
+            commands.add("cmd device_config put device_idle " + pair.replace('=', ' '));
+        }
         return commands;
+    }
+
+    public enum Outcome { APPLIED, NOT_EFFECTIVE, UNVERIFIED, UNAVAILABLE }
+
+    public static final class ApplyResult {
+        public final Map<String, Outcome> keys;
+        public final Reason reason;
+        public final List<String> applied;
+        public final List<String> notEffective;
+        public final List<String> failed;
+        ApplyResult(Map<String, Outcome> keys, Reason reason) {
+            this.keys = Collections.unmodifiableMap(new LinkedHashMap<>(keys));
+            this.reason = reason;
+            ArrayList<String> appliedKeys = new ArrayList<>();
+            ArrayList<String> notEffectiveKeys = new ArrayList<>();
+            ArrayList<String> failedKeys = new ArrayList<>();
+            for (Map.Entry<String, Outcome> key : keys.entrySet()) {
+                switch (key.getValue()) {
+                    case APPLIED: appliedKeys.add(key.getKey()); break;
+                    case NOT_EFFECTIVE: notEffectiveKeys.add(key.getKey()); break;
+                    default: failedKeys.add(key.getKey());
+                }
+            }
+            applied = Collections.unmodifiableList(appliedKeys);
+            notEffective = Collections.unmodifiableList(notEffectiveKeys);
+            failed = Collections.unmodifiableList(failedKeys);
+        }
+        public boolean allApplied() {
+            if (keys.isEmpty()) return false;
+            for (Outcome outcome : keys.values()) if (outcome != Outcome.APPLIED) return false;
+            return true;
+        }
+    }
+
+    /** Blocking: callers run off-main. Only effective dumpsys Settings values establish success. */
+    public static ApplyResult apply(CommandRunner control, CommandRunner reads, int apiLevel,
+                                    Grants grants, String tunables) {
+        List<String> fallback = CommandCatalog.apply(Feature.TUNABLES, apiLevel, null, tunables);
+        Map<String, String> requested = new LinkedHashMap<>();
+        for (String pair : tunables.split(",")) {
+            String[] fields = pair.split("=", -1);
+            if (fields.length == 2) requested.put(fields[0], fields[1]);
+        }
+        Map<String, Outcome> outcomes = new LinkedHashMap<>();
+        FeatureStatus status = CapabilityResolver.status(Feature.TUNABLES, control.getLevel(), apiLevel, grants);
+        if (status instanceof FeatureStatus.Unavailable || fallback == null) {
+            for (String key : requested.keySet()) outcomes.put(key, Outcome.UNAVAILABLE);
+            return new ApplyResult(outcomes, status instanceof FeatureStatus.Unavailable
+                    ? ((FeatureStatus.Unavailable) status).getReason() : Reason.API_TOO_OLD);
+        }
+        boolean deviceConfig = apiLevel >= 29
+                && (control.getLevel() == AccessLevel.SHELL || control.getLevel() == AccessLevel.ROOT);
+        if (deviceConfig) {
+            for (Map.Entry<String, String> pair : requested.entrySet()) {
+                control.run("cmd device_config put device_idle " + pair.getKey() + " " + pair.getValue());
+            }
+        } else {
+            for (String command : fallback) control.run(command);
+        }
+        CommandResult readback = reads.run("dumpsys deviceidle");
+        Map<String, String> actual = DozeStateParser.parse(readback.getStdout()).getSettings();
+        for (Map.Entry<String, String> pair : requested.entrySet()) {
+            outcomes.put(pair.getKey(), !readback.getOk() ? Outcome.UNVERIFIED
+                    : equivalentValue(pair.getValue(), actual.get(pair.getKey())) ? Outcome.APPLIED : Outcome.NOT_EFFECTIVE);
+        }
+        Reason reason = outcomes.containsValue(Outcome.UNVERIFIED) ? Reason.UNVERIFIED
+                : outcomes.containsValue(Outcome.NOT_EFFECTIVE) ? Reason.NOT_EFFECTIVE_ON_THIS_VERSION : null;
+        return new ApplyResult(outcomes, reason);
+    }
+
+    // dumpsys formats timeout values using TimeUtils, while factors are decimal numbers.
+    static boolean equivalentValue(String expected, String actual) {
+        if (actual == null) return false;
+        try {
+            BigDecimal desired = new BigDecimal(expected);
+            try {
+                return desired.compareTo(new BigDecimal(actual)) == 0;
+            } catch (NumberFormatException duration) {
+                String text = actual.startsWith("+") ? actual.substring(1) : actual;
+                Matcher parts = Pattern.compile("([0-9]+)(ms|d|h|m|s)").matcher(text);
+                BigDecimal millis = BigDecimal.ZERO;
+                int end = 0;
+                while (parts.find()) {
+                    if (parts.start() != end) return false;
+                    long scale;
+                    switch (parts.group(2)) {
+                        case "d": scale = 86400000; break;
+                        case "h": scale = 3600000; break;
+                        case "m": scale = 60000; break;
+                        case "s": scale = 1000; break;
+                        default: scale = 1;
+                    }
+                    millis = millis.add(new BigDecimal(parts.group(1)).multiply(BigDecimal.valueOf(scale)));
+                    end = parts.end();
+                }
+                return end > 0 && end == text.length() && desired.compareTo(millis) == 0;
+            }
+        } catch (NumberFormatException invalid) {
+            return false;
+        }
     }
 
     public long getLightAfterInactiveTo() { return LIGHT_IDLE_AFTER_INACTIVE_TIMEOUT;}
