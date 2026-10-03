@@ -151,9 +151,13 @@ class DozeController(
 
     /** Bump before waiting for the control lane so an active enter stops at its next boundary. */
     @JvmOverloads
-    fun exit(apiLevel: Int = this.apiLevel, grants: Grants = this.grants): ExitResult {
+    fun exit(
+        apiLevel: Int = this.apiLevel,
+        grants: Grants = this.grants,
+        admission: () -> Boolean = { true },
+    ): ExitResult {
         bumpGeneration()
-        return restoreLedger(apiLevel, grants, { true }) { true }
+        return restoreLedger(apiLevel, grants, { true }, admission)
     }
 
     /** Wake the keyguard before USER_PRESENT without undoing the wait-for-unlock session. */
@@ -241,8 +245,13 @@ class DozeController(
                     errors.add(ExitError.LEDGER_SAVE_FAILED)
                     emit(EventType.ERROR, entry.feature, entry.target, Reason.UNVERIFIED)
                 }
-                // Notify once per retained entry, including unknown reads and failed durable cleanup.
-                if (ledger.entries.any { sameKey(it, entry.feature, entry.target) }) {
+                // Announce new failures or debt transitions, not every retry/screen cycle.
+                // A verified restore with failed durable cleanup must still announce retained intent.
+                val newFailure = entry.attempts == 0 && !entry.debt
+                val debtChanged = entry.debt != (debtReason != null)
+                if ((success || newFailure || debtChanged) &&
+                    ledger.entries.any { sameKey(it, entry.feature, entry.target) }
+                ) {
                     emit(EventType.RECOVERY_DEBT, entry.feature, entry.target, debtReason ?: Reason.UNVERIFIED)
                 }
             }
