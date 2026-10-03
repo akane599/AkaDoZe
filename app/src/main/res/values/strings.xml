@@ -229,4 +229,13 @@
     <!-- SQ-15: list screens edge-to-edge -->
     <string name="blocklist_empty_text">No apps in this blocklist yet.\nTap Add to block an app.</string>
     <string name="package_chooser_title">Choose an app</string>
+    <!-- SQ-16: screen chrome (Main, Log, Doze tunables) -->
+    <string name="main_service_switch_description">EnforceDoze service</string>
+    <string name="log_output_hint">Log output</string>
+    <string name="tunables_apply_sent">Tunables sent. Not verified yet.</string>
+    <string name="tunables_result_title_applied">Tunables applied</string>
+    <string name="tunables_result_title_partial">Some tunables were not applied</string>
+    <string name="tunables_result_applied">Applied (%1$d)</string>
+    <string name="tunables_result_not_effective">Not effective on this Android version (%1$d)</string>
+    <string name="tunables_result_failed">Failed (%1$d)</string>
 </resources>

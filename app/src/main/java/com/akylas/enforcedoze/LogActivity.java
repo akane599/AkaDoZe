@@ -10,9 +10,14 @@ import android.os.AsyncTask;
 import android.os.Bundle;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.Toolbar;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.View;
 import android.widget.EditText;
 
 import com.afollestad.materialdialogs.MaterialDialog;
@@ -45,9 +50,24 @@ public class LogActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_log);
 
-        if (getSupportActionBar() != null) {
-            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-        }
+        Toolbar toolbar = findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
+        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+
+        View appBar = findViewById(R.id.appbarlayout);
+        View logContent = findViewById(R.id.logContent);
+        int contentPaddingLeft = logContent.getPaddingLeft();
+        int contentPaddingTop = logContent.getPaddingTop();
+        int contentPaddingRight = logContent.getPaddingRight();
+        int contentPaddingBottom = logContent.getPaddingBottom();
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.coordinatorLayout), (v, windowInsets) -> {
+            Insets bars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars()
+                    | WindowInsetsCompat.Type.displayCutout() | WindowInsetsCompat.Type.ime());
+            appBar.setPadding(bars.left, bars.top, bars.right, 0);
+            logContent.setPadding(contentPaddingLeft + bars.left, contentPaddingTop,
+                    contentPaddingRight + bars.right, contentPaddingBottom + bars.bottom);
+            return windowInsets;
+        });
 
         grantLogsPermissionAndPrintLog();
         progressDialog = new MaterialDialog.Builder(this)
@@ -78,7 +98,7 @@ public class LogActivity extends AppCompatActivity {
                     .show();
             getFullLogcat();
         } else if (id == android.R.id.home) {
-            onBackPressed();
+            getOnBackPressedDispatcher().onBackPressed();
             return true;
         }
         return super.onOptionsItemSelected(item);

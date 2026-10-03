@@ -5,6 +5,9 @@ import android.content.ClipboardManager;
 import android.os.Bundle;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import android.view.MenuItem;
 import android.view.View;
@@ -31,6 +34,18 @@ public class TaskerBroadcastsActivity extends AppCompatActivity {
         getSupportActionBar().setDisplayHomeAsUpEnabled(true);
 
         listView = (ListView) findViewById(R.id.listViewBroadcasts);
+        View appBar = findViewById(R.id.appbarlayout);
+        int listPaddingLeft = listView.getPaddingLeft();
+        int listPaddingTop = listView.getPaddingTop();
+        int listPaddingRight = listView.getPaddingRight();
+        int listPaddingBottom = listView.getPaddingBottom();
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.coordinatorLayout), (v, windowInsets) -> {
+            Insets bars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            appBar.setPadding(bars.left, bars.top, bars.right, 0);
+            listView.setPadding(listPaddingLeft + bars.left, listPaddingTop,
+                    listPaddingRight + bars.right, listPaddingBottom + bars.bottom);
+            return windowInsets;
+        });
         items = new ArrayList<>();
         items.add(new TaskerBroadcastsItem("com.akylas.enforcedoze.ENABLE_FORCEDOZE",
                 "Broadcast values required: None"));
@@ -68,7 +83,7 @@ public class TaskerBroadcastsActivity extends AppCompatActivity {
         int id = item.getItemId();
         switch (id) {
             case android.R.id.home:
-                onBackPressed();
+                getOnBackPressedDispatcher().onBackPressed();
                 return true;
         }
         return super.onOptionsItemSelected(item);
