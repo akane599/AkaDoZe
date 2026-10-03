@@ -839,7 +839,8 @@ public class ForceDozeService extends Service {
         if (!admitted() || generation != runtime.getController().getCurrentGeneration()) return null;
         try {
             selectedGroups = config(false, playingMusic);
-            return runtime.getController().enterGroups(selectedGroups, generation, this::admitted);
+            return runtime.getController().enterGroupsSafely(selectedGroups, generation, this::admitted,
+                    "FEATURE_SELECTION_FAILED");
         } catch (Exception error) {
             runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "FEATURE_SELECTION_FAILED"));
             return null;
@@ -1056,8 +1057,8 @@ public class ForceDozeService extends Service {
         }
         if (!maintenance && reading.getDeep() == DeepState.IDLE && !verifiedIdleSeen && admitted()) {
             recordVerifiedEnter();
-            if (selectedGroups != null) runtime.getController().enterGroups(selectedGroups,
-                    runtime.getController().getCurrentGeneration(), this::admitted);
+            if (selectedGroups != null) runtime.getController().enterGroupsSafely(selectedGroups,
+                    runtime.getController().getCurrentGeneration(), this::admitted, "FEATURE_SELECTION_FAILED");
         }
         if (maintenance) return;
         if (!getDefaultSharedPreferences(this).getBoolean(Prefs.KEEP_DOZE_ENFORCED, Prefs.DEFAULT_KEEP_DOZE_ENFORCED)) return;
@@ -1088,7 +1089,7 @@ public class ForceDozeService extends Service {
         boolean firstVerified = !verifiedIdleSeen;
         recordVerifiedEnter();
         if (firstVerified && verifiedIdleSeen && selectedGroups != null) {
-            runtime.getController().enterGroups(selectedGroups, generation, this::admitted);
+            runtime.getController().enterGroupsSafely(selectedGroups, generation, this::admitted, "REFORCE_FAILED");
         }
     }
 

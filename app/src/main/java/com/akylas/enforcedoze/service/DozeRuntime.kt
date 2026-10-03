@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.PowerManager
+import android.util.Log
 import com.akylas.enforcedoze.access.AccessLevel
 import com.akylas.enforcedoze.access.AccessManager
 import com.akylas.enforcedoze.access.CapabilityResolver
@@ -51,8 +52,12 @@ class DozeRuntime(context: Context) {
                 .also { selfTestRecorder?.add(SelfTestCommand.of(command, it)) }
         }
     }
+    private val diagnosticLogger: (String, Throwable) -> Unit = { message, error ->
+        Log.w("DozeRuntime", message, error)
+    }
     val controller = DozeController(
         control, CommandCatalog, CapabilityResolver, store, clock, journal, Build.VERSION.SDK_INT, grants(),
+        diagnosticLogger,
     )
     val watchdog = WatchdogPolicy(clock)
     val session = SessionLifecycle()
@@ -71,7 +76,7 @@ class DozeRuntime(context: Context) {
     @Volatile var allowToken: String = app.packageName
     private var thread: HandlerThread? = null
     private var handler: Handler? = null
-    private val selfTests = SelfTestQueue()
+    private val selfTests = SelfTestQueue(diagnosticLogger)
     private var shutdownQueued = false
     private var deferred: Runnable? = null
 
@@ -168,7 +173,7 @@ class DozeRuntime(context: Context) {
         val result = try {
             SelfTest(
                 controller, CapabilityResolver, journal::addSink, journal::removeSink,
-                { sessionActive }, ::checkSafety, { selfTests.attached && !screenOffPending },
+                { sessionActive }, ::checkSafety, { selfTests.attached && !screenOffPending }, diagnosticLogger,
             )
                 .run(kind, DozeConfig(Build.VERSION.SDK_INT, access.level, grants(), allowToken = allowToken))
         } finally {

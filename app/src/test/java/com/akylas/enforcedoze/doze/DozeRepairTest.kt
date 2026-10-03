@@ -132,7 +132,10 @@ class DozeRepairTest {
     }
 
     @Test fun constructorRequiresExplicitPlatformFacts() {
-        assertTrue("no silent API or grants defaults", DozeController::class.java.constructors.all { it.parameterCount == 8 })
+        assertTrue("no silent API or grants defaults", DozeController::class.java.constructors.all {
+            it.parameterCount >= 8 && it.parameterTypes[6] == Int::class.javaPrimitiveType &&
+                it.parameterTypes[7] == Grants::class.java
+        })
     }
 
     @Test fun safetyNetDoesNotUndoForeignSensorOwnerOrUnownedForce() {

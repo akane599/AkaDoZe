@@ -47,7 +47,9 @@ public class DozeEngineJavaApiTest {
         assertTrue(exit.getComplete());
         assertTrue(exit.getErrors().isEmpty());
         for (java.lang.reflect.Constructor<?> constructor : DozeController.class.getConstructors()) {
-            assertEquals("API and grants are mandatory", 8, constructor.getParameterCount());
+            assertTrue("API and grants are mandatory", constructor.getParameterCount() >= 8);
+            assertEquals(int.class, constructor.getParameterTypes()[6]);
+            assertEquals(Grants.class, constructor.getParameterTypes()[7]);
         }
         LedgerEntry entry = new LedgerEntry(com.akylas.enforcedoze.access.Feature.LOCATION,
                 null, "1", 0, 0, false, 34);

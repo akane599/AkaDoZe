@@ -11,8 +11,23 @@ import com.akylas.enforcedoze.doze.EventType
 import com.akylas.enforcedoze.doze.LightState
 import com.akylas.enforcedoze.doze.SensorMode
 import com.akylas.enforcedoze.doze.parse.HistoryKind
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+
+/** Shared submission seam; the write and its diagnostics run on the journal executor. */
+internal fun submitJournalInsert(
+    worker: ExecutorService,
+    onFailure: ((Exception) -> Unit)?,
+    insert: () -> Long,
+): Future<Long> = worker.submit<Long> {
+    try {
+        insert()
+    } catch (error: Exception) {
+        onFailure?.invoke(error)
+        throw error // Keep the existing failed-Future contract for callers that observe it.
+    }
+}
 
 /** Android adapter: all public journal operations are queued on one background worker. */
 class JournalDb(context: Context) : SQLiteOpenHelper(context.applicationContext, DB_NAME, null, 1) {
@@ -37,18 +52,19 @@ class JournalDb(context: Context) : SQLiteOpenHelper(context.applicationContext,
         error("Unsupported journal migration: $oldVersion -> $newVersion")
     }
 
-    fun insert(event: JournalEvent): Future<Long> = worker.submit<Long> {
-        val db = writableDatabase
-        db.beginTransaction()
-        try {
-            val id = save(db, event)
-            prune(db)
-            db.setTransactionSuccessful()
-            id
-        } finally {
-            db.endTransaction()
+    fun insert(event: JournalEvent, onFailure: ((Exception) -> Unit)? = null): Future<Long> =
+        submitJournalInsert(worker, onFailure) {
+            val db = writableDatabase
+            db.beginTransaction()
+            try {
+                val id = save(db, event)
+                prune(db)
+                db.setTransactionSuccessful()
+                id
+            } finally {
+                db.endTransaction()
+            }
         }
-    }
 
     /** Existing ids update their row, e.g. the merger's durable HISTORY_TRUNCATED session flag. */
     fun insertAll(events: List<JournalEvent>): Future<List<Long>> {

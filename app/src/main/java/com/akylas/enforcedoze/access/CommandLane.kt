@@ -6,6 +6,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import java.util.logging.Level
+import java.util.logging.Logger
 
 /** External requests cannot infer whether a timed-out mutation landed. Readback owns VERIFIED. */
 enum class ExternalCallOutcome {
@@ -92,16 +94,16 @@ class CommandLane(
             try {
                 execution.get(budget, TimeUnit.NANOSECONDS)
             } catch (_: TimeoutException) {
-                backend.reset()
                 execution.cancel(true)
+                resetBackend()
                 expired(started)
             } catch (e: InterruptedException) {
-                backend.reset()
                 execution.cancel(true)
+                resetBackend()
                 Thread.currentThread().interrupt()
                 failure(e, elapsed(started))
             } catch (e: ExecutionException) {
-                backend.reset()
+                resetBackend()
                 failure(e.cause ?: e, elapsed(started))
             }
         }
@@ -130,24 +132,32 @@ class CommandLane(
             val result = task.get(timeoutMs, TimeUnit.MILLISECONDS)
             CommandResult.snapshot(result.exitCode, result.stdout, result.stderr, elapsed(started), result.timedOut)
         } catch (_: TimeoutException) {
-            backend.reset()
             task.cancel(true)
+            resetBackend()
             CommandResult.snapshot(-1, emptyList(), emptyList(), elapsed(started), true)
         } catch (e: InterruptedException) {
-            backend.reset()
             task.cancel(true)
+            resetBackend()
             Thread.currentThread().interrupt()
             failure(e, elapsed(started))
         } catch (e: ExecutionException) {
-            backend.reset()
+            resetBackend()
             failure(e.cause ?: e, elapsed(started))
         }
     }
 
     override fun close() {
         queue.shutdownNow()
-        backend.reset()
         worker.shutdownNow()
+        resetBackend()
+    }
+
+    private fun resetBackend() {
+        try {
+            backend.reset()
+        } catch (error: Exception) {
+            Logger.getLogger(CommandLane::class.java.name).log(Level.WARNING, "Command backend reset failed", error)
+        }
     }
 
     companion object {
