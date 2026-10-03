@@ -2,34 +2,40 @@
 
 *Last Updated: 2026-10-03*
 
-Android app that forces Doze immediately after screen-off and restricts motion sensors (plus optional
-Wi-Fi/data/BT/GPS/airplane/app/notification toggles while dozing), using root (libsuperuser), Shizuku,
-or a limited non-root fallback. Package `com.akylas.enforcedoze`, everything in one Java package.
+AkaDoZe is an Android app that forces Doze right after screen-off and restricts motion sensors. It can also apply
+optional radio, location, biometrics, app-suspend and notification-block toggles while the device dozes. It works through
+root (libsuperuser) or Shizuku, and every change is verified by readback and undone from a durable restore ledger. The
+package is `com.akylas.enforcedoze`, and the current version is 1.11.0 (AkaDoZe 2.0).
 
-**Stack:** Java (43 files) + Kotlin (2) · XML Views + AndroidX Preference · Groovy Gradle 8.13 / AGP 8.13.2 · minSdk 23, target/compile 36
-**Shape:** single `:app` module, flat package; one large foreground service holds the logic, Activities are settings/list screens; state in default SharedPreferences.
+**Stack:** Java (51 files) + Kotlin (44) · XML Views + AndroidX Preference · platform SQLite · Groovy Gradle 8.13 / AGP 8.13.2 · minSdk 23, target/compile 36
+**Shape:** a single `:app` module in seven packages. The root package is the Android shell; pure Kotlin logic lives in
+`access/`, `doze/` (+ `parse/`), `monitor/` and `service/`; the newer screens are in `ui/`.
 
 ## Documents
 
 | Document | What's inside |
 |----------|---------------|
-| [architecture.md](./architecture.md) | Components, the screen-off → Doze → screen-on flow, state |
-| [entry-points.md](./entry-points.md) | Manifest components, public broadcast API (Tasker), tiles, alarms |
-| [communication.md](./communication.md) | Privileged shell commands (root / Shizuku / sh), local broadcasts, system APIs |
-| [modules.md](./modules.md) | Every source file grouped by role, with directory layout |
-| [tech-landscape.md](./tech-landscape.md) | Build setup, dependencies, tooling (fastlane, Weblate, docs site) |
-| [patterns.md](./patterns.md) | Recurring patterns, coding style, testing state, known oddities |
-| [onboarding.md](./onboarding.md) | Build/run/debug commands and common change recipes |
+| [architecture.md](./architecture.md) | Layers, access levels, the screen-off → Doze → restore flow, teardown, debt |
+| [entry-points.md](./entry-points.md) | Manifest components, gated automation API, tiles, alarms, boot/update triggers |
+| [communication.md](./communication.md) | Transports and lanes, capability matrix, command catalogue, engine events, local broadcasts |
+| [database.md](./database.md) | Preferences, restore ledger format, notice store, SQLite journal schema, backup rules |
+| [modules.md](./modules.md) | Every source file grouped by package and role, with directory layout |
+| [tech-landscape.md](./tech-landscape.md) | Build setup, dependencies, lint baseline, R8, tooling (fastlane, Weblate) |
+| [patterns.md](./patterns.md) | Design patterns, style, test suites and counts, known oddities |
+| [onboarding.md](./onboarding.md) | Gate commands, device testing, automation examples, where to change things |
 
 ## How to use this map
 
-- New here? Read `onboarding.md` then `architecture.md`.
-- Before touching code, skim the doc(s) for the area you're changing. Most behaviour lives in
-  `app/src/main/java/com/akylas/enforcedoze/ForceDozeService.java`.
-- These docs hold concrete file paths — use them to navigate straight to the relevant code.
+- New here? Read `onboarding.md`, then `architecture.md`.
+- Before touching code, skim the doc(s) for the area you're changing. The main code is in
+  `app/src/main/java/com/akylas/enforcedoze/`:
+  - Engine behaviour: `doze/DozeController.kt`.
+  - Process wiring: `service/DozeRuntime.kt` and `ForceDozeService.java`.
+  - Privileged commands: `access/`.
+- These docs hold concrete file paths; use them to go straight to the relevant code.
 
 ## Keeping this map current
 
-After a change that affects architecture, directory structure, dependencies, the data model, entry
-points, APIs/events, or conventions, refresh the affected docs with the `update-codebase-map` skill
-(`/codebase-mapper:update-codebase-map`). Small, internal-only changes don't need an update.
+Some changes call for a map refresh: architecture, directory structure, dependencies, the data model, entry points,
+APIs/events or conventions. After one of those, refresh the affected docs with the `update-codebase-map` skill
+(`/codebase-mapper:update-codebase-map`). Small internal-only changes don't need an update.

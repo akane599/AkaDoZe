@@ -1,49 +1,86 @@
-# Privileged Commands, Broadcasts and System APIs
+# Privileged Commands, Transports and Events
 
 *Last Updated: 2026-10-03*
 
-## Execution modes
+## Transports (`access/`)
 
-Pref `executionMode` (`root` default | `shizuku`), read by `Utils.isShizukuMode`. `isSuAvailable` is set
-by `MainActivity` after an su probe.
+`AccessManager.kt` is the singleton that owns every privileged command. It observes these sources:
+- the pref `executionMode` (`root` | `shizuku`);
+- the Shizuku binder, its permission and its death;
+- su discovery, run off-main on `access-probe`.
 
-| Path | Where | Mechanism |
-|------|-------|-----------|
-| Shizuku | `ShizukuHandler.executeCommand` | Reflection on `Shizuku.newProcess` → `sh -c <cmd>` on a new `Thread`; callback `(code, exit, stdout, stderr)` |
-| Root | `ForceDozeService.executeCommandWithRoot` | Persistent libsuperuser `Shell.Interactive` (`useSU`, 5 s watchdog) on `rootShellExecutor` |
-| Non-root shell | `ForceDozeService.executeCommand` | Same but `useSH`; works for `dumpsys` only after `pm grant … DUMP` via adb |
-| Activities | `MainActivity`, `SettingsActivity`, `DozeTunablesActivity` | Their own `executeCommand*` copies (duplicated logic) |
-| Receivers | `AddWhiteListReceiver`, `RemoveWhiteListReceiver`, `LogActivity` | Blocking `Shell.SH.run` in `AsyncTask` |
+It publishes `AccessState(level, …, grants, …)`. Listeners get updates on main; blocking commands refuse to run on main.
 
-Both service paths dispatch to Shizuku when `executionMode=shizuku` and Shizuku is available.
+| Backend | File | Mechanism |
+|---------|------|-----------|
+| Root | `RootCommandRunner.kt` | Persistent libsuperuser shell, owned by one lane |
+| Shizuku | `AccessManager` + `ShellCommandRunner.kt` | Reflective `Shizuku.newProcess(["sh","-c",cmd], …)` (kept by `app/proguard-rules.pro`) |
+| App shell | `ShellCommandRunner.kt` | Plain `sh`; useful only with adb-granted `DUMP` / `WRITE_SECURE_SETTINGS` |
 
-## Command catalogue (ForceDozeService unless noted)
+`CommandLane.kt` runs each lane as a FIFO with a supervisor and a serial backend. Control and read lanes are independent.
 
-| Purpose | Command |
-|---------|---------|
-| Force / leave Doze | `dumpsys deviceidle force-idle deep` / `unforce`; pre-N `force-idle` / `step` |
-| Non-root Doze (API 34+) | `device_config put device_idle …` (`DozeTunableHandler.getCommandsList`), reset with `device_config reset trusted_defaults device_idle` |
-| Non-root Doze (< 34) | `Settings.Global.putString("device_idle_constants", …)` |
-| Read state | `dumpsys deviceidle` (parsed in `getDeviceIdleState`) |
-| Self whitelist | `dumpsys deviceidle whitelist +com.akylas.enforcedoze` |
-| Sensors | `dumpsys sensorservice restrict [pkg]` / `enable`; all-sensors via sensor privacy (`setAllSensorsState`) |
-| Self grants | `pm grant com.akylas.enforcedoze android.permission.{DUMP,WRITE_SECURE_SETTINGS,READ_PHONE_STATE,MANAGE_SENSOR_PRIVACY}` |
-| App blocklist | `pm suspend/unsuspend <pkg>` or `pm disable/enable <pkg>` (`setPackageState`) |
-| Notification blocklist | `service call notification <txn> …` using a transaction code looked up by reflection (`setNotificationEnabledForPackage`) |
-| Radios | `svc wifi|data|bluetooth enable|disable`; `settings put global airplane_mode_on` + `am broadcast -a android.intent.action.AIRPLANE_MODE`; `settings put secure location_mode`; `settings put global low_power`; `settings put secure biometric_keyguard_enabled` |
-| Focused app | `dumpsys activity activities | grep -E 'CurrentFocus|ResumedActivity|FocusedApp'` (root) or `UsageStatsManager` (non-root) |
+- `run`: the default timeout is 8 s and excludes queue wait.
+- `runWithDeadline`: the deadline counts queue wait too, and admission is re-checked just before the backend runs.
+- A timeout kills/resets the backend; stdout and stderr are drained concurrently.
 
-## Local broadcasts (LocalBroadcastManager)
+`ShizukuHandler.java` is a legacy compatibility listener, not the authority.
 
-| Action | Sent by | Received by |
-|--------|---------|-------------|
-| `reload-settings` | `SettingsActivity`, `SettingsChangeReceiver`, `AirplaneTileService`, stats activities | `ForceDozeService.reloadSettings`, `Utils` (logcat flag) |
-| `reload-notification-blocklist` | `BlockNotificationsActivity` | `ForceDozeService` |
-| `reload-app-blocklist` | `BlockAppsActivity` | `ForceDozeService` |
-| `update-state-from-tile` | `ForceDozeTileService` | `MainActivity` |
-| `com.akylas.enforcedoze.ACTION_IGNORE_BATTERY_OPTIMIZATION_RESULT` | `RequestIgnoreBatteryActivity` | `ForceDozeService` |
+## Capabilities
+
+`CapabilityResolver.kt` maps (Feature, AccessLevel, API, Grants) to `FeatureStatus` (Available / Unavailable(Reason)).
+The README "Shizuku vs root" section describes it by hand. In short:
+- APP+DUMP: state readback and sensor recovery.
+- APP+WSS: tunables and biometrics.
+- SHELL/ROOT: almost everything.
+- Root only: all-sensor privacy, `setprop` Doze, `pm disable`, and the legacy notification block below Android 13.
+
+Doze **sessions** additionally need SHELL or ROOT (`service/SessionAccess.kt`).
+
+## Command catalogue (`access/CommandCatalog.kt`)
+
+Every feature has an apply command, an original-value read and a readback, chosen per API level. The full matrix, with the
+physical-device gaps, is in `docs/doze-feature-ledger.md`.
+
+| Feature | Apply / restore | Readback |
+|---------|-----------------|----------|
+| Force Doze | `dumpsys deviceidle force-idle deep` / `unforce` | `dumpsys deviceidle` (`mForceIdle`, `get deep`), parsed by `doze/parse/DozeStateParser.kt` |
+| Motion sensors | `dumpsys sensorservice restrict <package>` / `enable` | `dumpsys sensorservice` mode + allow token (`SensorModeParser.kt`) |
+| Battery saver | `settings put global low_power` / `cmd power set-mode` | `settings get global low_power` |
+| Wi-Fi / data / Bluetooth | `svc wifi|data|bluetooth`, `cmd wifi set-wifi-enabled`, `cmd bluetooth_manager` | `settings get global wifi_on|mobile_data|bluetooth_on` |
+| Airplane (API 30+) | `cmd connectivity airplane-mode enable|disable` | same command without argument |
+| Location | `cmd location set-location-enabled` / `settings put secure location_mode` | `cmd location is-location-enabled` / `location_mode` |
+| Biometrics | `settings put secure biometric_keyguard_enabled` | `settings get …` |
+| App suspend | `pm suspend|unsuspend` (root on API 23: `pm disable|enable`) | `dumpsys package <pkg>` |
+| Notification block | API 33+: `pm revoke|grant POST_NOTIFICATIONS` + user-fixed flags; below: `service call notification <txn>` (root, UNVERIFIED) | `dumpsys package` / `dumpsys notification` |
+| All-sensor privacy (root) | `service call sensor_privacy <txn>` | `dumpsys sensor_privacy` |
+| Tunables | `cmd device_config put device_idle` (API 34+) or `settings put global device_idle_constants` | matching `get` |
+| Whitelist | `dumpsys deviceidle whitelist +pkg|-pkg` | structured `whitelist` dump |
+
+Package names are validated by `CapabilityResolver.PackageNames` before they reach a command. External input is never
+interpolated into a shell string.
+
+## Engine events
+
+`doze/DozeModels.kt` `EventType`:
+- SCREEN_OFF, SCREEN_ON, ENTER_STEP, VERIFY, REFORCE, IDLE_CHANGED, MAINT_START, MAINT_END;
+- SENSORS_RESTRICTED, SENSORS_RESTORED, SKIPPED, RESTORE_FAILED, RECOVERY_DEBT;
+- ACCESS_CHANGED, EXTERNAL_CALL, ERROR.
+
+Logic emits typed `DozeEvent(type, detail, …, reason)`. The UI turns them into strings (`ui/MonitorFormat`).
+
+Fan-out: `service/EventSinks.kt` (exception-isolated) → `service/JournalSink.kt`, which records them in `monitor/JournalDb`
+and also feeds `ui/NoticeSink`. Notices go out on the existing tips channel:
+- access lost or resumed;
+- recovery debt;
+- the first rejected external call per gate;
+- foreground start denied;
+- the opt-in summary after screen-on.
+
+## Local broadcasts (LocalBroadcastManager, in-process)
+
+`reload-settings`, `reload-notification-blocklist`, `reload-app-blocklist`, `update-state-from-tile`, and the
+battery-optimization result. They are sent by Activities and tiles and received by `ForceDozeService` / `MainActivity`.
 
 ## External
 
-- No network API. `CustomTabs` / `ChromePackageHelper` open web links (donate, about).
-- Notification channels: stats, tips, silent (foreground requirement on S+).
+No network API. `CustomTabs` / `ChromePackageHelper` open web links.

@@ -2,51 +2,61 @@
 
 *Last Updated: 2026-10-03*
 
-All components are declared in `app/src/main/AndroidManifest.xml`; classes live in
-`app/src/main/java/com/akylas/enforcedoze/`.
+All components are declared in `app/src/main/AndroidManifest.xml`. Classes live in
+`app/src/main/java/com/akylas/enforcedoze/` unless prefixed `ui.`.
 
-## Activities
+## Activities (14)
 
-| Class | Purpose |
-|-------|---------|
-| `MainActivity` (launcher, also QS tile preferences) | Master toggle, root/Shizuku detection (`doAfterSuCheckSetup`), permission prompts, menu to other screens |
-| `SettingsActivity` | `PreferenceFragmentCompat` over `res/xml/prefs.xml`; execution mode, custom Doze periods, reset |
-| `DozeTunablesActivity` | Edit `device_idle_constants` (`res/xml/prefs_doze_tunables.xml`) |
-| `WhitelistAppsActivity` | Add/remove apps from the system Doze whitelist |
-| `BlockAppsActivity` / `BlockNotificationsActivity` | App blocklist (disabled while dozing) / notification blocklist |
-| `DozeBatteryStatsActivity`, `DozeStatsActivity` (old) | Stats from `dozeUsageDataAdvanced` |
-| `LogActivity` | Shows `logcat -d -s ForceDozeService,ForceDoze` |
-| `TaskerBroadcastsActivity` | Documents the broadcast API below |
-| `PackageChooserActivity`, `AboutAppActivity`, `RequestIgnoreBatteryActivity` (transparent, not exported) | Helpers |
+| Class | Exported | Purpose |
+|-------|----------|---------|
+| `MainActivity` | yes (launcher, shortcuts) | Master switch, access card (`ui/AccessCard`), navigation, safety check on resume |
+| `ui.DozeMonitorActivity` | yes (`QS_TILE_PREFERENCES`: long-press a tile) | Live Doze state, self-tests ("Test Doze now", "Test sensor restriction"), session list/timeline, "Restore system state", "Share report". Long-presses on other tiles are forwarded |
+| `SettingsActivity` | no | Capability-aware preferences (`res/xml/prefs.xml`), mode switch root ↔ Shizuku (`ui/ModeSwitchRules`), "Other apps" gates |
+| `DozeTunablesActivity` | no | `device_idle` tunables with per-key apply result |
+| `WhitelistAppsActivity` | no | System Doze whitelist, readback-verified |
+| `BlockAppsActivity` / `BlockNotificationsActivity` | no | App-suspend / notification-block lists |
+| `DozeBatteryStatsActivity`, `DozeStatsActivity` | no | Legacy stats (`dozeUsageDataAdvanced`) |
+| `LogActivity` | no | logcat view + share via FileProvider |
+| `TaskerBroadcastsActivity` | no | Automation help filtered by `ExternalControlPolicy` and showing gate state |
+| `PackageChooserActivity`, `AboutAppActivity`, `RequestIgnoreBatteryActivity` (transparent) | no | Helpers |
 
-## Services
+## Services and providers
 
-| Class | Type |
-|-------|------|
-| `ForceDozeService` | Foreground (`specialUse`), not exported — the engine |
-| `ForceDozeTileService` | QS tile: start/stop the service, sends local `update-state-from-tile` |
-| `AirplaneTileService` | QS tile for the airplane-in-Doze setting, sends local `reload-settings` |
-| `NotificationService.kt` | `NotificationListenerService`; finds the package playing media (`getPlayingPackageName`) |
+| Component | Notes |
+|-----------|-------|
+| `ForceDozeService` | Not exported, foreground `specialUse`, START_STICKY. The session host (see architecture.md) |
+| `ForceDozeTileService` | QS tile: start/stop the service |
+| `AirplaneTileService` | QS tile for the airplane-in-Doze setting |
+| `NotificationService.kt` | `NotificationListenerService`; media-playing app for the music whitelist |
+| `androidx.core.content.FileProvider` | Not exported, `${applicationId}.reports`, exposes `cache/reports/` only (`res/xml/file_paths.xml`) |
+| `rikka.shizuku.ShizukuProvider` | `${applicationId}.shizuku` (Shizuku binder delivery) |
 
-## Public broadcast API (exported receivers, no permission required)
+## Automation API (exported receivers, all extend `ExternalControlReceiver`)
 
-| Action | Receiver | Extras | Effect |
-|--------|----------|--------|--------|
-| `com.akylas.enforcedoze.ENABLE_FORCEDOZE` | `EnableForceDozeService` | — | `serviceEnabled=true`, start service |
-| `com.akylas.enforcedoze.DISABLE_FORCEDOZE` | `DisableForceDozeService` | — | `serviceEnabled=false`, stop service |
-| `com.akylas.enforcedoze.ADD_WHITELIST` | `AddWhiteListReceiver` | `packageName` | `dumpsys deviceidle whitelist +pkg` (via `Shell.SH`) |
-| `com.akylas.enforcedoze.REMOVE_WHITELIST` | `RemoveWhiteListReceiver` | `packageName` | `… whitelist -pkg` |
-| `com.akylas.enforcedoze.CHANGE_SETTING` | `SettingsChangeReceiver` | `settingName`, `settingValue` | Writes a whitelisted pref (`Utils.doesSettingExist`), sends `reload-settings` |
-| (explicit) | `ReenterDoze` | — | Sends local `reenter-doze` (nothing listens; see patterns.md) |
+| Action (`com.akylas.enforcedoze.`…) | Receiver | Gate | Extras |
+|--------|----------|------|--------|
+| `ENABLE_FORCEDOZE` | `EnableForceDozeService` | basic | — |
+| `DISABLE_FORCEDOZE` | `DisableForceDozeService` | basic | — |
+| explicit component, no filter | `ReenterDoze` | basic | — (reapply; never cancels a pending enter or shortens `dozeEnterDelay`) |
+| `ADD_WHITELIST` / `REMOVE_WHITELIST` | `AddWhiteListReceiver` / `RemoveWhiteListReceiver` | privileged | `packageName` |
+| `CHANGE_SETTING` | `SettingsChangeReceiver` | privileged | `settingName`, `settingValue` |
+
+- **Gates.** Pref `allowExternalBasicControl` (default **on**) and `allowExternalPrivilegedControl` (default **off**) are
+  independent; both live in `access/Prefs.kt`.
+- **Checks.** `ExternalControlReceiver` checks the gate before reading extras, then validates input. Work runs in
+  `goAsync` on a bounded queue with a deadline, and trust and capability are re-checked at backend admission.
+- **CHANGE_SETTING.** Only accepts the scalar keys listed by `access/ExternalControlPolicy.kt` (booleans,
+  `dozeEnterDelay` 0..1800). Gates, mode, ledger and access keys are rejected.
+- **Results.** Start/stop/reapply report REQUESTED, not verified Doze. Every call is journaled as `EXTERNAL_CALL`,
+  rate-limited for the journal only by `access/ExternalCallRateLimiter.kt` (10 per action per rolling minute).
+  `ui/NoticeSink` posts one notice per gate on the first rejection.
 
 ## System triggers
 
 | Trigger | Receiver |
 |---------|----------|
-| `BOOT_COMPLETED` | `BootCompleteReceiver` → start/stop service, re-arm custom period alarm |
-| `PACKAGE_REPLACED` (own package) | `AutoRestartOnUpdate` → restart service if enabled |
-| Exact alarm (custom periods) | `CustomDozePeriodReceiver` (not exported) → `Utils.applyForceDozeSchedule` |
+| `BOOT_COMPLETED` (code also accepts locked boot) | `BootCompleteReceiver`: start the service if enabled, re-arm schedule |
+| `MY_PACKAGE_REPLACED` | `AutoRestartOnUpdate`: restart the service if enabled |
+| Schedule alarm | `CustomDozePeriodReceiver` (not exported) |
+| Dynamic, not exported | `ForceDozeService.DozeReceiver`: screen/power/unlock/(light) idle changes |
 | Launcher shortcuts | `res/xml/shortcuts.xml` |
-
-`rikka.shizuku.ShizukuProvider` is declared with authority `${applicationId}.shizuku`.
-`MyApplication` only stores a static app context.

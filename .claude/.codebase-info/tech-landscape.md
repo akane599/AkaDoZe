@@ -9,9 +9,11 @@
 | Kotlin | 2.0.0 (`ext.kotlin_version`) | `build.gradle` |
 | JDK target | 17 (`compileOptions`, `jvmTarget`) | `app/build.gradle` |
 | SDK | compile/target 36, min 23 | `app/build.gradle` |
-| Version | `versionCode 86`, `versionName "1.10.2"` | `app/build.gradle` |
+| Version | `versionCode 87`, `versionName "1.11.0"` (AkaDoZe 2.0) | `app/build.gradle`, `CHANGELOG.md` |
 | Repos | `jcenter()`, `google()`, jitpack | `build.gradle` |
 | Gradle props | `-Xmx2048m`, Jetifier on, non-transitive R | `gradle.properties` |
+| Lint | `lint { baseline = file("lint-baseline.xml") }` (159 pre-existing issues; only new ones fail) | `app/build.gradle`, `app/lint-baseline.xml` |
+| R8 | release is minified; keeps `rikka.shizuku.Shizuku` / `ShizukuRemoteProcess` for the reflective `newProcess` call | `app/proguard-rules.pro` |
 
 Build scripts are Groovy (`apply plugin:`), no version catalog, no build-logic. Signing: debug key by
 default; release signing from env vars when `-PuseExternalSigning` is passed.
@@ -25,7 +27,8 @@ default; release signing from env vars when `-PuseExternalSigning` is passed.
 | Misc | `androidx.media2:media2-session:1.3.0` (media controller for playing-app detection), `androidx.localbroadcastmanager:1.1.0`, `com.fabiendevos:nanotasks:1.1.0` (async tasks), `com.jakewharton:process-phoenix:2.1.2` (app restart) |
 | Test | `junit:junit:4.13.2` (testImplementation) |
 
-No DI, database, networking, coroutines, Compose, lint or formatter config.
+AkaDoZe 2.0 added no dependencies. Storage is platform SQLite (`android.database.sqlite`, see database.md) and
+SharedPreferences. There is no DI, Room, networking, coroutines, Compose or formatter config.
 
 ## Tooling outside Gradle
 

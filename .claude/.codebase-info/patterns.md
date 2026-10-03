@@ -4,37 +4,70 @@
 
 ## Patterns
 
-- **God service.** `ForceDozeService` owns all behaviour; feature flags are fields reloaded from prefs in both
-  `onCreate` and `reloadSettings` (two parallel lists to keep in sync when adding a setting).
-- **Adding a setting** touches: `res/xml/prefs.xml`, `strings.xml` (+ translations via Weblate),
-  `ForceDozeService` (field, `onCreate`, `reloadSettings`, use site), possibly `SettingsActivity.toggleRootFeatures`
-  (root-only enablement) and `Utils.doesSettingExist`/`isSettingBool` (Tasker `CHANGE_SETTING`).
+- **Pure policies behind adapters.** Decisions live in plain Kotlin with no Android imports, so they're JVM-testable:
+  - `doze/DozeController.kt`, `SafetyNet.kt`, `WatchdogPolicy.kt`, `SchedulePolicy.kt`;
+  - `access/CapabilityResolver.kt`, `ExternalControlPolicy.kt`;
+  - `service/SessionLifecycle.kt`, `FeatureSelection.kt`;
+  - `ui/DebtRules.java`, `ModeSwitchRules.java`.
+
+  Android classes (`ForceDozeService`, Activities, `JournalDb`, `SharedPrefsLedgerStore`) only adapt.
+- **Readback is the oracle.** A command's exit code never proves an effect, so every mutation is confirmed by a state read
+  (`CommandCatalog` readbacks, `doze/FeatureReadback.kt`). Unknown or OEM output is UNVERIFIED, which is shown and never
+  retried in a loop.
+- **Ledger first.** The original value is read and committed to `RestoreLedger` before anything changes. Restore uses the
+  ledger, never the current prefs.
+- **Generations and admission.** Every screen event bumps a generation. Queued work re-checks the generation and
+  `admitted(...)` before it runs a command. Deadline work passes an admission lambda down to `CommandLane.runWithDeadline`.
+- **Typed outcomes, UI-owned strings.** Logic returns `Reason`, `EventType`, `ApplyResult` and `CommandResult`. Only `ui/`
+  (`MonitorFormat`, `AccessUi`, `NoticeSink`) and Activities turn them into `strings.xml` text.
+- **Capability gating, not hiding.** Settings the current access level can't perform are disabled with a reason, and the
+  saved values stay unchanged (`SettingsActivity` + `CapabilityResolver`).
 - **Prefs as IPC.** Activities write SharedPreferences, then send a local broadcast; the service re-reads.
-- **Shell as API.** Feature work is mostly a new `dumpsys`/`svc`/`settings`/`pm` command; each needs a root,
-  Shizuku and (where possible) non-root path.
-- **Timers.** `java.util.Timer` with fixed 2 s delays for sensor restrict/enable; wakelock `forcedoze:tempWakelock` (10 min cap) during delayed entry.
-- **Snapshot/restore.** Radio state captured on Doze entry (`was*` fields), restored on screen-on, reset after.
-- **Singletons**: `ShizukuHandler.getInstance`, `DozeTunableHandler.getInstance`, `NotificationService.getInstance`, `MyApplication.getAppContext`.
+- **Threading.** Engine work runs on `doze-worker` only. Access listeners run on main. Blocking commands throw if called
+  on main.
+- **Wakelocks.**
+  - `forcedoze:tempWakelock` (10 min cap) covers delayed entry.
+  - `forcedoze:restore` (30 s cap) covers the teardown follow-up.
+- **Singletons**: `AccessManager`, `MyApplication.getDozeRuntime()`, `DozeTunableHandler.getInstance`,
+  `NotificationService.getInstance`.
 
 ## Style
 
-- Java 17 source with some `var` and lambdas; legacy anonymous classes common. Kotlin only in `NotificationService.kt`, `MaterialListPreference.kt`.
-- `findViewById` + casts (no ViewBinding). Each class has `TAG` + private `log()` → `Utils.logToLogcat` (suppressed by pref `disableLogcat`).
-- Error handling: `try { … } catch (Exception e) { e.printStackTrace(); }`; shell failures only logged.
-- 4-space indent, no formatter/lint config in repo. Hard-coded English labels exist in the manifest (`android:label="Settings"` etc.).
+- Java 17 source in the root package and `ui/`, Kotlin for all new logic packages.
+- Legacy screens use `findViewById`. Classes log through `Utils.logToLogcat` with tag `EnforceDoze`; pref `disableLogcat`
+  suppresses it.
+- 4-space indent. There's no formatter config. Lint uses `app/lint-baseline.xml`, so only new issues fail.
 
 ## Testing
 
-None real: `app/src/test/…/ExampleUnitTest.java` and `app/src/androidTest/…/ApplicationTest.java` are template
-stubs, and the only test dependency is `testImplementation 'junit:junit:4.13.2'` (added 2026-10-03, SQ-1).
-Most logic needs a rooted/Shizuku device; pure logic worth unit-testing: `Utils` custom-period parsing
-(`isInsideCustomDozePeriod`, `getMillisUntilNextCustomDozePeriodBoundary`), `DozeTunableHandler` string/command
-building, `ForceDozeService.getDeviceIdleState` parsing.
+`app/src/test/java/com/akylas/enforcedoze/` has 42 JVM sources with 265 `@Test` methods (JUnit 4.13.2, no mocking library):
 
-## Known oddities (observed, not fixed)
+| Package | Files | Tests |
+|---------|-------|-------|
+| root | 2 | 14 |
+| access | 8 | 32 |
+| doze | 7 | 81 |
+| doze/parse | 6 | 23 |
+| monitor | 4 | 28 |
+| service | 12 | 64 |
+| ui | 3 | 23 |
 
-- `ReenterDoze` sends local `reenter-doze`; nothing registers for it.
-- `ForceDozeService.onDestroy` unregisters `reloadSettingsReceiver` and `ignoreBatteryResultReceiver` but not the two blocklist receivers.
-- `LogActivity` filters logcat by tags `ForceDozeService`/`ForceDoze`, while most classes log as `EnforceDoze`.
-- Exported receivers (`ENABLE_FORCEDOZE`, `CHANGE_SETTING`, `ADD_WHITELIST`, …) accept broadcasts from any app without a permission.
-- `libsuperuser:1.1.0.+` is a dynamic version; `jcenter()` is still a repository.
+The suites use these styles:
+- fake-backed behaviour tests: `FakeRunner` (a `CommandRunner`), `FakeClock` and an in-memory ledger store, in
+  `doze/DozeControllerTest.kt`;
+- `*JavaApiTest.java` files, which pin the Kotlin API as Java callers see it;
+- source-text wiring tests in `service/` that assert `ForceDozeService` wiring.
+
+The parser fixture is `app/src/test/resources/doze/deviceidle.txt`, and `ParserFixtures.kt` holds inline samples.
+
+`androidTest/…/ApplicationTest.java` is still a template stub. Real binder, root, OEM, SQLite, provider and notification
+behaviour needs a device: `docs/device-test-1.11.0.md`.
+
+## Known oddities
+
+- Strings and the README still say "EnforceDoze", and the package stays `com.akylas.enforcedoze`.
+- `ShizukuHandler.java` remains as a compatibility listener alongside `AccessManager`.
+- `libsuperuser:1.1.0.+` is a dynamic version, and `jcenter()` is still a repository (`build.gradle`).
+- The legacy notification block below Android 13 (`service call notification`) is root-only and UNVERIFIED on devices.
+- Exported automation receivers have no Android permission. Trust comes from the two in-app gates
+  (see entry-points.md).
