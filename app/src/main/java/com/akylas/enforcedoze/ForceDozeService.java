@@ -327,12 +327,10 @@ public class ForceDozeService extends Service {
                 scheduleRootProbeRetry();
                 return;
             }
+            runtime.announceAccess();
             if (!runtime.recoverAccess()) return;
-            AccessLevel old = previousAccess;
             previousAccess = access.getLevel();
             updateAccessFlags(access.getLevel());
-            runtime.getJournal().emit(new DozeEvent(EventType.ACCESS_CHANGED,
-                    access.getLevel().name() + (access.getLevel().compareTo(AccessLevel.SHELL) < 0 ? " NO_ACCESS" : "")));
             if (recoveryNeeded && access.getLevel().compareTo(AccessLevel.SHELL) >= 0) {
                 if (Utils.isScreenOn(this)) {
                     runtime.setSessionActive(false);
@@ -343,9 +341,6 @@ public class ForceDozeService extends Service {
                 }
             } else if (access.getLevel().compareTo(AccessLevel.SHELL) < 0) {
                 cancelEnter();
-                if (old != null && old.compareTo(AccessLevel.SHELL) >= 0 && runtime.getSessionActive()) {
-                    runtime.recordAccessDebt();
-                }
                 runtime.checkSafety();
             }
         });
@@ -353,14 +348,19 @@ public class ForceDozeService extends Service {
 
     /** Worker-only, finite backoff; a timeout never triggers an immediate main-thread probe loop. */
     private void scheduleRootProbeRetry() {
-        if (pendingRootRetry != null) return;
+        if (pendingRootRetry != null || !runtime.getAccess().getState().getRootProbeTimedOut()) return;
         Long delay = rootProbeRetry.nextDelay(runtime.getAccess().getState().getRootProbeTimedOut(),
                 runtime.getSessionActive() || runtime.hasPendingRestore());
-        if (delay == null) return;
+        if (delay == null) {
+            runtime.getAccess().finishRootDiscovery();
+            return;
+        }
         pendingRootRetry = () -> {
             pendingRootRetry = null;
             if (!destroyed && (runtime.getSessionActive() || runtime.hasPendingRestore())) {
                 runtime.getAccess().retryRootProbe();
+            } else {
+                runtime.getAccess().finishRootDiscovery();
             }
         };
         worker.postDelayed(pendingRootRetry, delay);

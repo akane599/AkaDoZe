@@ -195,6 +195,16 @@ class DozeRuntime(context: Context) {
         }, { runSelfTest(kind) })
     }
 
+    private var announcedAccess: com.akylas.enforcedoze.access.AccessState? = null
+
+    /** doze-worker only: feed both the timeline and NoticeSink, once per resolved change. */
+    fun announceAccess() {
+        val state = access.state
+        if (!state.resolved || state == announcedAccess) return
+        announcedAccess = state
+        AccessRecovery.announce(state, journal, Runnable { recordAccessDebt() })
+    }
+
     fun recordAccessDebt() {
         if (!access.state.resolved) return
         try {
@@ -248,7 +258,7 @@ class DozeRuntime(context: Context) {
     }
 
     fun hasPendingRestore(): Boolean = try {
-        store.load().entries.isNotEmpty() || store.corruptLines.isNotEmpty() || store.loadFailed
+        store.load().entries.isNotEmpty() || LedgerRecovery.needsRecovery(store.corruptLines, store.loadFailed)
     } catch (_: Exception) { true }
 
     /** Healthy sessions are not reconciled; unresolved access leaves durable intent untouched. */
@@ -263,37 +273,69 @@ class DozeRuntime(context: Context) {
 
     fun requestSafetyCheck() = requestRestoreOnly(Runnable {})
 
-    /** No session or FGS: retain the receiver at most nine seconds, including discovery and commands. */
+    /** No FGS: a bounded wakeful window plus one passive, process-lifetime access continuation. */
+    @JvmOverloads
+    fun requestRestoreOnly(completed: Runnable, source: RecoveryAccess = access) =
+        requestRestoreOnly(completed, source, true)
+
     @Synchronized
-    fun requestRestoreOnly(completed: Runnable) {
+    private fun requestRestoreOnly(completed: Runnable, source: RecoveryAccess, allowContinuation: Boolean) {
         pendingRecoveries++
         val worker = worker()
         val main = Handler(android.os.Looper.getMainLooper())
+        val power = app.getSystemService(PowerManager::class.java)
+        val wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "forcedoze:restore")
+        wakeLock.acquire(30_000L)
         val deadline = clock.elapsedRealtime() + 9_000L
-        val finished = java.util.concurrent.atomic.AtomicBoolean()
-        lateinit var listener: AccessManager.Listener
-        lateinit var timeout: Runnable
-        fun finish() {
-            if (!finished.compareAndSet(false, true)) return
-            access.removeListener(listener)
-            main.removeCallbacks(timeout)
-            synchronized(this@DozeRuntime) { pendingRecoveries-- }
-            try { completed.run() } finally { worker.post { quitIfDetached() } }
-        }
-        listener = AccessManager.Listener {
-            worker.post {
-                if (!finished.get() && access.state.resolved) {
-                    try {
-                        withDeadline(deadline, Runnable { reconcileAndCheck() })
-                    } finally {
-                        if (access.state.resolved) finish()
+        main.post {
+            RestoreOnlyRequest(source, clock::elapsedRealtime, { action -> main.post { action() } },
+                { deadline, action ->
+                    val timer = object : android.os.CountDownTimer(
+                        maxOf(1, deadline - clock.elapsedRealtime()), 9_000L,
+                    ) {
+                        override fun onTick(remaining: Long) = Unit
+                        override fun onFinish() { action() }
+                    }.start()
+                    ({ timer.cancel() })
+                },
+                { deadline, finished ->
+                    worker.post {
+                        try {
+                            withDeadline(deadline, Runnable {
+                                announceAccess()
+                                reconcileAndCheck()
+                            })
+                        } finally { finished() }
                     }
-                }
-            }
+                },
+                {
+                    synchronized(this@DozeRuntime) { pendingRecoveries-- }
+                    try {
+                        if (!selfTests.attached) access.finishRootDiscovery()
+                        completed.run()
+                    } finally {
+                        try { if (wakeLock.isHeld) wakeLock.release() }
+                        catch (_: RuntimeException) { /* Timeout release may race on API 23-27. */ }
+                        worker.post { quitIfDetached() }
+                    }
+                },
+                { requestRestoreOnly(Runnable {}, source, false) },
+                {
+                    // Never post to a retired window's worker; late debt briefly owns a fresh worker.
+                    synchronized(this@DozeRuntime) {
+                        pendingRecoveries++
+                        worker().post {
+                            try { announceAccess(); recordCorruptionDebt() }
+                            finally {
+                                synchronized(this@DozeRuntime) { pendingRecoveries-- }
+                                quitIfDetached()
+                            }
+                        }
+                    }
+                },
+                allowContinuation,
+            ).start(deadline)
         }
-        timeout = Runnable { finish() }
-        main.postDelayed(timeout, 9_000L)
-        access.addListener(listener)
     }
 
     /** User-confirmed dismiss. Call on doze-worker; commits before returning and preserves valid entries. */

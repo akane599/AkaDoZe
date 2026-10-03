@@ -46,7 +46,7 @@ class AccessReadinessTest {
 
     @Test fun bootPolicyIncludesRetainedDamageButNeverRequestsEmptyLedgerOrEnabledSession() {
         assertTrue(BootRestorePolicy.shouldRestore(false, "1|FORCE_DOZE|~|0|0|0|false|36", ""))
-        assertTrue(BootRestorePolicy.shouldRestore(false, "", "damaged intent"))
+        assertTrue(BootRestorePolicy.shouldRestore(false, "", "1|FORCE_DOZE|damaged intent"))
         assertFalse(BootRestorePolicy.shouldRestore(false, "", ""))
         assertFalse(BootRestorePolicy.shouldRestore(true, "pending", "damaged"))
     }
@@ -134,10 +134,15 @@ class AccessReadinessTest {
         val runtime = File(root, "service/DozeRuntime.kt").readText()
         val request = runtime.substringAfter("fun requestRestoreOnly").substringBefore("fun checkSafety()")
         assertTrue(request.contains("worker.post"))
-        assertTrue(request.contains("access.state.resolved"))
+        assertTrue(request.contains("RestoreOnlyRequest(source"))
         assertTrue(request.contains("withDeadline(deadline"))
-        assertTrue(request.contains("main.postDelayed(timeout, 9_000L)"))
-        assertTrue(request.contains("access.removeListener(listener)"))
+        assertTrue(request.contains("android.os.CountDownTimer("))
+        assertTrue(request.contains("wakeLock.acquire(30_000L)"))
+        assertTrue(request.contains("wakeLock.release()"))
+        assertTrue(request.contains("clock.elapsedRealtime() + 9_000L"))
+        assertTrue(changed.contains("runtime.announceAccess()"))
+        assertTrue(service.contains("!runtime.getAccess().getState().getRootProbeTimedOut()"))
+        assertTrue(File(root, "service/RestoreOnlyRequest.kt").readText().contains("access.removeListener(listener)"))
         assertTrue(runtime.contains("selfTests.attached || pendingRecoveries > 0"))
         assertFalse(request.contains("startForeground"))
         assertFalse(request.contains("sessionActive = true"))
