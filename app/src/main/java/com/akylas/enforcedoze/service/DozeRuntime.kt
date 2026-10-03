@@ -246,7 +246,11 @@ class DozeRuntime(context: Context) {
             try {
                 sessionActive = false
                 session.recordExit()
-                val result = SystemReset.run(control, Build.VERSION.SDK_INT, app.packageName) {
+                val result = SystemReset.run(control, Build.VERSION.SDK_INT, app.packageName,
+                    permissionGranted = { permission ->
+                        app.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+                    },
+                ) {
                     val exit = controller.reconcile(Build.VERSION.SDK_INT, grants())
                     recordExit(exit)
                     checkSafety()

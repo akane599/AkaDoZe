@@ -6,7 +6,7 @@ import java.util.Collections
 
 enum class ResetRestoreOutcome { COMPLETE, REMAINING_DEBT }
 
-/** Command transport results, not a claim of readback-verified system effectiveness. */
+/** OK requires a confirming readback; transport success alone is never sufficient. */
 enum class ResetCommandOutcome { OK, FAILED, TIMEOUT, UNVERIFIED }
 
 enum class ResetCommandId {
@@ -34,6 +34,8 @@ object SystemReset {
         control: CommandRunner,
         apiLevel: Int,
         packageName: String,
+        // Own-app platform permission check: true = granted, false = denied, null = unknown.
+        permissionGranted: (String) -> Boolean? = { null },
         restore: () -> ResetRestoreOutcome,
     ): SystemResetResult {
         val pkg = PackageNames.requireValid(packageName)
@@ -53,7 +55,11 @@ object SystemReset {
                 val result = control.run(command)
                 when {
                     result.timedOut -> ResetCommandOutcome.TIMEOUT
-                    result.ok -> ResetCommandOutcome.OK
+                    result.ok -> when (id) {
+                        ResetCommandId.DISABLE_DEVICE_IDLE -> verifyDeviceIdle(control, apiLevel, false)
+                        ResetCommandId.ENABLE_DEVICE_IDLE -> verifyDeviceIdle(control, apiLevel, true)
+                        else -> verifiedOutcome(permissionGranted(command.substringAfterLast(' '))?.not())
+                    }
                     result.exitCode < 0 -> ResetCommandOutcome.UNVERIFIED
                     else -> ResetCommandOutcome.FAILED
                 }
@@ -61,5 +67,40 @@ object SystemReset {
             ResetCommandResult(id, outcome)
         }
         return SystemResetResult(restoreOutcome, Collections.unmodifiableList(commands))
+    }
+
+    private fun verifiedOutcome(confirmed: Boolean?): ResetCommandOutcome = when (confirmed) {
+        true -> ResetCommandOutcome.OK
+        false -> ResetCommandOutcome.FAILED
+        null -> ResetCommandOutcome.UNVERIFIED
+    }
+
+    private fun verifyDeviceIdle(control: CommandRunner, apiLevel: Int, enabled: Boolean): ResetCommandOutcome {
+        // The combined "enabled all" value is an AND: 0 does not prove both modes disabled.
+        val reads = if (apiLevel >= 24) listOf("cmd deviceidle enabled deep", "cmd deviceidle enabled light")
+            else listOf("dumpsys deviceidle enabled")
+        val outcomes = reads.map { command ->
+            try {
+                val result = control.run(command)
+                when {
+                    result.timedOut -> ResetCommandOutcome.TIMEOUT
+                    !result.ok -> ResetCommandOutcome.UNVERIFIED
+                    else -> {
+                        val value = when (result.stdout.filterNot(String::isBlank).singleOrNull()?.trim()) {
+                            "1" -> true
+                            "0" -> false
+                            else -> null
+                        }
+                        verifiedOutcome(value?.let { it == enabled })
+                    }
+                }
+            } catch (_: Exception) { ResetCommandOutcome.UNVERIFIED }
+        }
+        return when {
+            ResetCommandOutcome.TIMEOUT in outcomes -> ResetCommandOutcome.TIMEOUT
+            ResetCommandOutcome.FAILED in outcomes -> ResetCommandOutcome.FAILED
+            ResetCommandOutcome.UNVERIFIED in outcomes -> ResetCommandOutcome.UNVERIFIED
+            else -> ResetCommandOutcome.OK
+        }
     }
 }
