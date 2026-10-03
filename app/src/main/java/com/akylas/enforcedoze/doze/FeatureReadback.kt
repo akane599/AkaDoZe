@@ -17,7 +17,15 @@ internal object FeatureReadback {
             Regex("(?:^|\\s)suspended=(true|false)(?:\\s|$)").find(header)?.groupValues?.get(1)
                 ?.let { if (it == "true") "1" else "0" }
         }
-        Feature.NOTIFICATION_BLOCK -> notification(output, target)
+        Feature.NOTIFICATION_BLOCK -> if (apiLevel >= 33) notification(output, target) else legacyNotification(output, target)
+        Feature.PM_DISABLE -> userZero(output, target)?.firstOrNull()?.let {
+            Regex("(?:^|\\s)enabled=([0-4])(?:\\s|$)").find(it)?.groupValues?.get(1)
+        }
+        Feature.SETPROP_DOZE -> bit(output)
+        Feature.SENSOR_PRIVACY_ALL -> output.mapNotNull {
+            Regex("\\s*All sensor privacy(?: enabled)?: (true|false)\\s*").matchEntire(it)
+                ?.groupValues?.get(1)
+        }.singleOrNull()?.let { if (it == "true") "1" else "0" }
         Feature.BATTERY_SAVER, Feature.WIFI, Feature.MOBILE_DATA, Feature.BLUETOOTH,
         Feature.AIRPLANE, Feature.BIOMETRICS -> bit(output)
         else -> null
@@ -26,8 +34,21 @@ internal object FeatureReadback {
     fun appliedValue(feature: Feature): String = when (feature) {
         Feature.MOTION_SENSORS -> "RESTRICTED"
         Feature.WIFI, Feature.MOBILE_DATA, Feature.BLUETOOTH, Feature.LOCATION, Feature.BIOMETRICS -> "0"
+        Feature.PM_DISABLE -> "2"
         Feature.NOTIFICATION_BLOCK -> "0,1,1" // grant,user-set,user-fixed
         else -> "1"
+    }
+
+    private fun legacyNotification(output: List<String>, target: String?): String? {
+        // A package-wide custom importance cannot be restored by the boolean hidden method.
+        // Only the explicit default/unblocked or NONE states have a reversible boolean value.
+        val pattern = Regex("\\s*PackagePreferences: " + Regex.escape(target ?: return null) +
+            " \\(([0-9]+)\\) importance=(UNSPECIFIED|-1000|NONE|0)(?:\\s.*)?")
+        val matches = output.mapNotNull { pattern.matchEntire(it) }
+        val match = matches.singleOrNull() ?: return null
+        val uid = match.groupValues[1].toIntOrNull()?.takeIf { it in 0..99_999 } ?: return null
+        val enabled = match.groupValues[2] !in setOf("NONE", "0")
+        return (if (enabled) "1" else "0") + ",$uid"
     }
 
     private fun bit(output: List<String>): String? = when (output.joinToString("\n").trim()) {

@@ -42,10 +42,12 @@ data class DozeConfig @JvmOverloads constructor(
     val appsToSuspend: Set<String> = emptySet(),
     val packagesToBlockNotifications: Set<String> = emptySet(),
     val keepDozeEnforced: Boolean = true,
+    val legacyNotificationTransaction: Int? = null,
 ) {
     init {
         require(features.all { it in setOf(Feature.WIFI, Feature.MOBILE_DATA, Feature.BLUETOOTH,
-            Feature.AIRPLANE, Feature.LOCATION, Feature.BIOMETRICS) }) { "Unsupported feature group" }
+            Feature.AIRPLANE, Feature.LOCATION, Feature.BIOMETRICS, Feature.SENSOR_PRIVACY_ALL,
+            Feature.SETPROP_DOZE) }) { "Unsupported feature group" }
     }
 }
 

@@ -35,22 +35,43 @@ class DozeController(
     fun bumpGeneration(): Long = generation.incrementAndGet()
 
     @Synchronized
-    fun enter(config: DozeConfig, generation: Long, admission: () -> Boolean): EnterResult {
+    fun enter(config: DozeConfig, generation: Long, admission: () -> Boolean): EnterResult =
+        enterConfigured(config, generation, admission, core = true)
+
+    @Synchronized
+    fun enterCore(config: DozeConfig, generation: Long, admission: () -> Boolean): EnterResult =
+        enterConfigured(config.copy(features = emptySet(), appsToSuspend = emptySet(),
+            packagesToBlockNotifications = emptySet()), generation, admission, core = true)
+
+    /** Deferred selection cannot reforce; groups still require a fresh verified deep IDLE. */
+    @Synchronized
+    fun enterGroups(config: DozeConfig, generation: Long, admission: () -> Boolean): EnterResult =
+        enterConfigured(config, generation, admission, core = false)
+
+    private fun enterConfigured(config: DozeConfig, generation: Long, admission: () -> Boolean, core: Boolean): EnterResult {
         apiLevel = config.apiLevel
         grants = config.grants
         val steps = mutableListOf<StepResult>()
+        if (generation != currentGeneration || !admission()) return EnterResult(EnterStatus.CANCELLED, steps)
+        var groupsAdmitted = !core && DozeStateParser.parseDeep(read(Feature.FORCE_DOZE, null, false)) == DeepState.IDLE
         val requests = buildList {
-            if (config.restrictSensors) add(Feature.MOTION_SENSORS to config.allowToken)
-            if (config.batterySaver) add(Feature.BATTERY_SAVER to null)
-            add(Feature.FORCE_DOZE to null)
+            if (core) {
+                if (config.batterySaver) add(Feature.BATTERY_SAVER to null)
+                if (config.restrictSensors) add(Feature.MOTION_SENSORS to config.allowToken)
+                add(Feature.FORCE_DOZE to null)
+            }
             config.features.sortedBy { it.ordinal }.forEach { add(it to null) }
-            config.appsToSuspend.sorted().forEach { add(Feature.APP_SUSPEND to it) }
+            config.appsToSuspend.sorted().forEach { add((if (apiLevel >= 24) Feature.APP_SUSPEND else Feature.PM_DISABLE) to it) }
             config.packagesToBlockNotifications.sorted().forEach { add(Feature.NOTIFICATION_BLOCK to it) }
         }
         fun admitted(): Boolean = generation == currentGeneration && admission()
         requestsLoop@ for ((feature, target) in requests) {
             if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps.toList())
             emit(EventType.ENTER_STEP, feature, target)
+            if (feature !in setOf(Feature.MOTION_SENSORS, Feature.BATTERY_SAVER, Feature.FORCE_DOZE) && !groupsAdmitted) {
+                steps.add(skip(feature, target, Reason.UNVERIFIED))
+                continue
+            }
             if (feature !in supported || target != null && !PackageNames.isValid(target)) {
                 steps.add(skip(feature, target, Reason.UNVERIFIED))
                 continue
@@ -61,8 +82,9 @@ class DozeController(
                 steps.add(skip(feature, target, unavailable.reason))
                 continue
             }
+            val legacyNotification = feature == Feature.NOTIFICATION_BLOCK && apiLevel < 33
             val commands = catalog.apply(feature, apiLevel, target)
-            if (commands == null) {
+            if (commands == null && (!legacyNotification || config.legacyNotificationTransaction == null)) {
                 steps.add(skip(feature, target, Reason.UNVERIFIED))
                 continue
             }
@@ -73,16 +95,21 @@ class DozeController(
                 continue
             }
             val original = if (prior != null) prior.originalValue else {
-                readValue(feature, target, original = true)
+                readValue(feature, target, original = true)?.let {
+                    if (legacyNotification) it + "," + config.legacyNotificationTransaction else it
+                }
             }
+            val applyCommands = if (legacyNotification) original?.let { legacyNotificationCommands(target, it, false, apiLevel) }
+                else commands
             if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps.toList())
             // Already-on features belong to their existing owner; do not later undo their state.
-            if (prior == null && original != null && original == FeatureReadback.appliedValue(feature)) {
+            if (prior == null && original != null && (if (legacyNotification) original.startsWith("0,") else original == FeatureReadback.appliedValue(feature))) {
                 steps.add(verifyEnter(feature, target))
+                if (feature == Feature.FORCE_DOZE) groupsAdmitted = lastDeep == DeepState.IDLE
                 if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps.toList())
                 continue
             }
-            if (original == null) {
+            if (original == null || applyCommands == null) {
                 steps.add(unverified(feature, target))
                 continue
             }
@@ -92,7 +119,7 @@ class DozeController(
                 ))
                 store.save(ledger) // A failure propagates: no command may run without durable intent.
             }
-            for (command in commands) {
+            for (command in applyCommands) {
                 if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps.toList())
                 val nowUnavailable = resolver.status(feature, minOf(control.level, config.level), apiLevel, grants)
                     as? FeatureStatus.Unavailable
@@ -110,12 +137,13 @@ class DozeController(
             ) {
                 if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps.toList())
                 if (resolver.status(feature, minOf(control.level, config.level), apiLevel, grants) == FeatureStatus.Available) {
-                    run(commands.single())
+                    run(applyCommands.single())
                     if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps.toList())
                     verified = verifyEnter(feature, target)
                 }
             }
             steps.add(verified)
+            if (feature == Feature.FORCE_DOZE) groupsAdmitted = verified.status == StepStatus.VERIFIED && lastDeep == DeepState.IDLE
             if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps.toList())
         }
         return EnterResult(EnterStatus.COMPLETED, steps.toList())
@@ -125,6 +153,18 @@ class DozeController(
     @JvmOverloads
     fun exit(apiLevel: Int = this.apiLevel, grants: Grants = this.grants): ExitResult {
         bumpGeneration()
+        return restoreLedger(apiLevel, grants, { true }) { true }
+    }
+
+    /** Wake the keyguard before USER_PRESENT without undoing the wait-for-unlock session. */
+    @Synchronized
+    fun restoreBiometrics(generation: Long, admission: () -> Boolean): ExitResult =
+        restoreLedger(apiLevel, grants, { it.feature == Feature.BIOMETRICS }) {
+            generation == currentGeneration && admission()
+        }
+
+    private fun restoreLedger(apiLevel: Int, grants: Grants, selected: (LedgerEntry) -> Boolean,
+                              admitted: () -> Boolean): ExitResult {
         return synchronized(this) {
             this.apiLevel = apiLevel
             this.grants = grants
@@ -136,7 +176,8 @@ class DozeController(
             }
             val errors = mutableListOf<ExitError>()
             val restored = mutableListOf<LedgerEntry>()
-            val ordered = ledger.entries.sortedBy {
+            // Stable core priority, then reverse durable apply order (airplane before radios).
+            val ordered = ledger.entries.asReversed().filter(selected).sortedBy {
                 when (it.feature) {
                     Feature.MOTION_SENSORS -> 0
                     Feature.FORCE_DOZE -> 1
@@ -145,6 +186,7 @@ class DozeController(
                 }
             }
             for (entry in ordered) {
+                if (!admitted()) break
                 val entryApi = entry.apiLevel ?: apiLevel
                 val unavailable = resolver.status(entry.feature, control.level, entryApi, grants) as? FeatureStatus.Unavailable
                 val commands = restoreCommands(entry, entryApi)
@@ -154,6 +196,7 @@ class DozeController(
                 var debtReason = unavailable?.reason
                 if (unavailable == null && commands != null) {
                     for (command in commands) {
+                        if (!admitted()) return@synchronized ExitResult(restored.toList(), ledger, errors.toList())
                         val current = resolver.status(entry.feature, control.level, entryApi, grants) as? FeatureStatus.Unavailable
                         if (current != null) {
                             debtReason = current.reason
@@ -161,6 +204,7 @@ class DozeController(
                         }
                         run(command)
                     }
+                    if (!admitted()) return@synchronized ExitResult(restored.toList(), ledger, errors.toList())
                     if (debtReason == null) {
                         success = verifyRestore(entry, entryApi)
                         if (!success && entry.feature == Feature.MOTION_SENSORS && lastSensor != SensorMode.UNVERIFIED &&
@@ -175,6 +219,7 @@ class DozeController(
                 if (!success && debtReason == null) {
                     debtReason = (resolver.status(entry.feature, control.level, entryApi, grants) as? FeatureStatus.Unavailable)?.reason
                 }
+                if (!admitted()) break
                 val updated = ledger.entries.toMutableList()
                 val index = updated.indexOf(entry)
                 if (success) {
@@ -205,6 +250,57 @@ class DozeController(
     @JvmOverloads
     fun reconcile(apiLevel: Int = this.apiLevel, grants: Grants = this.grants): ExitResult = exit(apiLevel, grants)
 
+    /** Temporarily restore/reapply only durable radio entries; never consult current preferences. */
+    @Synchronized
+    fun maintenance(restore: Boolean, generation: Long, admission: () -> Boolean): EnterResult {
+        val steps = mutableListOf<StepResult>()
+        fun admitted() = generation == currentGeneration && admission()
+        if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps)
+        val ledger = try { store.load() } catch (_: Exception) {
+            emit(EventType.ERROR, reason = Reason.UNVERIFIED)
+            return EnterResult(EnterStatus.CANCELLED, steps)
+        }
+        val entries = ledger.entries.filter { it.feature in radios }
+        for (entry in if (restore) entries.asReversed() else entries) {
+            if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps)
+            val entryApi = entry.apiLevel ?: apiLevel
+            val unavailable = resolver.status(entry.feature, control.level, entryApi, grants) as? FeatureStatus.Unavailable
+            if (unavailable != null) {
+                steps.add(skip(entry.feature, entry.target, unavailable.reason))
+                continue
+            }
+            val commands = if (restore) restoreCommands(entry, entryApi) else catalog.apply(entry.feature, entryApi, entry.target)
+            if (entry.debt || commands == null) {
+                steps.add(skip(entry.feature, entry.target, Reason.UNVERIFIED))
+                continue
+            }
+            for (command in commands) {
+                if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps)
+                val lost = resolver.status(entry.feature, control.level, entryApi, grants) as? FeatureStatus.Unavailable
+                if (lost != null) return EnterResult(EnterStatus.CANCELLED, steps + skip(entry.feature, entry.target, lost.reason))
+                run(command)
+            }
+            if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps)
+            val verified = if (restore) verifyRestore(entry, entryApi) else {
+                readValue(entry.feature, entry.target, false, entryApi) == FeatureReadback.appliedValue(entry.feature)
+            }
+            steps.add(StepResult(entry.feature, entry.target,
+                if (verified) StepStatus.VERIFIED else StepStatus.UNVERIFIED,
+                if (verified) null else Reason.UNVERIFIED))
+            if (!restore) emit(EventType.VERIFY, entry.feature, entry.target, if (verified) null else Reason.UNVERIFIED)
+            if (!verified && restore) emit(EventType.RESTORE_FAILED, entry.feature, entry.target, Reason.UNVERIFIED)
+        }
+        return EnterResult(EnterStatus.COMPLETED, steps)
+    }
+
+    private fun legacyNotificationCommands(target: String?, original: String, enabled: Boolean, apiLevel: Int): List<String>? {
+        val values = original.split(',')
+        if (values.size != 3 || values[0] !in setOf("0", "1") || target == null) return null
+        val uid = values[1].toIntOrNull() ?: return null
+        val transaction = values[2].toIntOrNull() ?: return null
+        return catalog.legacyNotification(apiLevel, target, uid, transaction, enabled)
+    }
+
     private var lastDeep: DeepState? = null
     private var lastSensor: SensorMode = SensorMode.UNVERIFIED
 
@@ -223,7 +319,10 @@ class DozeController(
                 emit(EventType.VERIFY, feature, target, deep = lastDeep)
                 lastDeep == DeepState.IDLE || lastDeep == DeepState.IDLE_MAINTENANCE
             }
-            else -> (readValue(feature, target, false) == FeatureReadback.appliedValue(feature)).also {
+            else -> readValue(feature, target, false).let { value ->
+                if (feature == Feature.NOTIFICATION_BLOCK && apiLevel < 33) value?.startsWith("0,") == true
+                else value == FeatureReadback.appliedValue(feature)
+            }.also {
                 emit(EventType.VERIFY, feature, target, if (it) null else Reason.UNVERIFIED)
             }
         }
@@ -232,7 +331,9 @@ class DozeController(
 
     private fun verifyRestore(entry: LedgerEntry, apiLevel: Int): Boolean {
         val value = readValue(entry.feature, entry.target, original = true, apiLevel = apiLevel)
-        val verified = value != null && value == entry.originalValue
+        val expected = if (entry.feature == Feature.NOTIFICATION_BLOCK && apiLevel < 33)
+            entry.originalValue?.substringBeforeLast(',') else entry.originalValue
+        val verified = value != null && value == expected
         emit(EventType.VERIFY, entry.feature, entry.target, if (verified) null else Reason.UNVERIFIED,
             sensor = if (entry.feature == Feature.MOTION_SENSORS) lastSensor else null)
         if (verified && entry.feature == Feature.MOTION_SENSORS) {
@@ -245,7 +346,9 @@ class DozeController(
         val original = entry.originalValue ?: return null
         if (entry.feature !in supported || entry.target != null && !PackageNames.isValid(entry.target)) return null
         return try {
-            if (entry.feature == Feature.NOTIFICATION_BLOCK) {
+            if (entry.feature == Feature.NOTIFICATION_BLOCK && apiLevel < 33) {
+                legacyNotificationCommands(entry.target, original, original.startsWith("1,"), apiLevel)
+            } else if (entry.feature == Feature.NOTIFICATION_BLOCK) {
                 val values = original.split(',')
                 val target = entry.target ?: return null
                 if (values.size != 3 || values.any { it != "0" && it != "1" }) return null
@@ -307,13 +410,15 @@ class DozeController(
     }
 
     private fun sameKey(entry: LedgerEntry, feature: Feature, target: String?): Boolean =
-        entry.feature == feature && (feature !in setOf(Feature.APP_SUSPEND, Feature.NOTIFICATION_BLOCK) || entry.target == target)
+        entry.feature == feature && (feature !in setOf(Feature.APP_SUSPEND, Feature.NOTIFICATION_BLOCK, Feature.PM_DISABLE) || entry.target == target)
 
     private companion object {
+        val radios = setOf(Feature.WIFI, Feature.MOBILE_DATA, Feature.BLUETOOTH, Feature.AIRPLANE, Feature.LOCATION)
         val supported = setOf(
             Feature.MOTION_SENSORS, Feature.BATTERY_SAVER, Feature.FORCE_DOZE, Feature.WIFI,
             Feature.MOBILE_DATA, Feature.BLUETOOTH, Feature.AIRPLANE, Feature.LOCATION,
-            Feature.BIOMETRICS, Feature.APP_SUSPEND, Feature.NOTIFICATION_BLOCK,
+            Feature.BIOMETRICS, Feature.APP_SUSPEND, Feature.NOTIFICATION_BLOCK, Feature.PM_DISABLE,
+            Feature.SETPROP_DOZE, Feature.SENSOR_PRIVACY_ALL,
         )
     }
 }
