@@ -7,6 +7,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.preference.PreferenceManager;
+import com.akylas.enforcedoze.service.BootRestore;
 
 public class BootCompleteReceiver extends BroadcastReceiver {
     public static String TAG = "EnforceDoze";
@@ -19,6 +20,8 @@ public class BootCompleteReceiver extends BroadcastReceiver {
         if (!Intent.ACTION_BOOT_COMPLETED.equals(action)
                 && !Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(action)
                 && !Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) return;
+        // Credential-protected preferences are unavailable until the ordinary boot broadcast.
+        if (Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(action)) return;
         boolean isServiceEnabled = PreferenceManager.getDefaultSharedPreferences(context).getBoolean("serviceEnabled", false);
         log("Received BOOT_COMPLETED intent, isServiceEnabled=" + Boolean.toString(isServiceEnabled));
         if (isServiceEnabled) {
@@ -26,6 +29,10 @@ public class BootCompleteReceiver extends BroadcastReceiver {
         } else {
             // Show disabled notification if EnforceDoze is disabled on startup
             Utils.stopForceDozeService(context);
+            if (BootRestore.hasPending(context)) {
+                PendingResult pending = goAsync();
+                MyApplication.getDozeRuntime(context).requestRestoreOnly(pending::finish);
+            }
         }
         Utils.scheduleNextCustomDozePeriodBoundary(context);
     }

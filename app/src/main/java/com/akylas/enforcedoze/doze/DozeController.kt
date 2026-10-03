@@ -30,6 +30,7 @@ class DozeController @JvmOverloads constructor(
     private var apiLevel: Int,
     private var grants: Grants,
     private val diagnosticLogger: (String, Throwable) -> Unit = { _, _ -> },
+    private val accessResolved: () -> Boolean = { true },
 ) {
     private val generation = AtomicLong()
     val currentGeneration: Long get() = generation.get()
@@ -67,7 +68,7 @@ class DozeController @JvmOverloads constructor(
         apiLevel = config.apiLevel
         grants = config.grants
         val steps = mutableListOf<StepResult>()
-        if (generation != currentGeneration || !admission()) return EnterResult(EnterStatus.CANCELLED, steps)
+        if (!accessResolved() || generation != currentGeneration || !admission()) return EnterResult(EnterStatus.CANCELLED, steps)
         var groupsAdmitted = !core && DozeStateParser.parseDeep(read(Feature.FORCE_DOZE, null, false)) == DeepState.IDLE
         val requests = buildList {
             if (core) {
@@ -79,7 +80,7 @@ class DozeController @JvmOverloads constructor(
             config.appsToSuspend.sorted().forEach { add((if (apiLevel >= 24) Feature.APP_SUSPEND else Feature.PM_DISABLE) to it) }
             config.packagesToBlockNotifications.sorted().forEach { add(Feature.NOTIFICATION_BLOCK to it) }
         }
-        fun admitted(): Boolean = generation == currentGeneration && admission()
+        fun admitted(): Boolean = accessResolved() && generation == currentGeneration && admission()
         requestsLoop@ for ((feature, target) in requests) {
             if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps.toList())
             emit(EventType.ENTER_STEP, feature, target)
@@ -183,7 +184,8 @@ class DozeController @JvmOverloads constructor(
         }
 
     private fun restoreLedger(apiLevel: Int, grants: Grants, selected: (LedgerEntry) -> Boolean,
-                              admitted: () -> Boolean): ExitResult {
+                              admission: () -> Boolean): ExitResult {
+        fun admitted() = accessResolved() && admission()
         return synchronized(this) {
             this.apiLevel = apiLevel
             this.grants = grants
@@ -281,7 +283,7 @@ class DozeController @JvmOverloads constructor(
     @Synchronized
     fun maintenance(restore: Boolean, generation: Long, admission: () -> Boolean): EnterResult {
         val steps = mutableListOf<StepResult>()
-        fun admitted() = generation == currentGeneration && admission()
+        fun admitted() = accessResolved() && generation == currentGeneration && admission()
         if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps)
         val ledger = try { store.load() } catch (_: Exception) {
             emit(EventType.ERROR, reason = Reason.UNVERIFIED)
