@@ -140,6 +140,9 @@ class SelfTest(
         if (!admission()) return SelfTestResult(kind, SelfTestOutcome.CANCELLED)
         // Never race the real session: a pending enter or an admitted screen-off session owns the system.
         if (sessionActive()) return SelfTestResult(kind, SelfTestOutcome.BUSY)
+        if (!SessionAccess.canRunSessions(config.level)) {
+            return SelfTestResult(kind, SelfTestOutcome.UNAVAILABLE, Reason.NO_ACCESS)
+        }
         val feature = if (kind == SelfTestKind.DOZE) Feature.FORCE_DOZE else Feature.MOTION_SENSORS
         val status = resolver.status(feature, config.level, config.apiLevel, config.grants)
         if (status is FeatureStatus.Unavailable) return SelfTestResult(kind, SelfTestOutcome.UNAVAILABLE, status.reason)
