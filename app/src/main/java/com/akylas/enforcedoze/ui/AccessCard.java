@@ -138,6 +138,7 @@ public final class AccessCard {
                 restoring = false;
                 // Event-raised debt (e.g. SafetyNet RAISE_DEBT) is not ledger-backed; only Restore clears it.
                 if (!result && debtDetail == null) NoticeSink.cancelDebt(app);
+                else NoticeSink.ledgerChecked(app, result);
                 renderDebt();
             });
         });

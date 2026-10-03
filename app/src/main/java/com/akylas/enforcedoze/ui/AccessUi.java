@@ -66,6 +66,53 @@ public final class AccessUi {
         return reason;
     }
 
+    /** Doze sessions are admitted only with Shizuku or root (ForceDozeService.admitted()). */
+    public static boolean sessionsAvailable(AccessState state) {
+        return state.getLevel().compareTo(AccessLevel.SHELL) >= 0;
+    }
+
+    /** Features that only act inside an admitted Doze session (force Doze and every in-Doze change). */
+    public static boolean isSessionFeature(Feature feature) {
+        switch (feature) {
+            case FORCE_DOZE:
+            case MOTION_SENSORS:
+            case BIOMETRICS:
+            case BATTERY_SAVER:
+            case WIFI:
+            case MOBILE_DATA:
+            case BLUETOOTH:
+            case AIRPLANE:
+            case LOCATION:
+            case APP_SUSPEND:
+            case PM_DISABLE:
+            case NOTIFICATION_BLOCK:
+            case SENSOR_PRIVACY_ALL:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * True when the session rule is why a feature can't be offered. The resolver may still call it
+     * available below SHELL (motion sensors with DUMP, biometrics with WRITE_SECURE_SETTINGS: the restore
+     * path needs that), but no session runs there. The feature's own platform limit, when it has one,
+     * stays the more precise reason.
+     */
+    public static boolean sessionBlocked(Feature feature, AccessState state, Reason resolverReason) {
+        return isSessionFeature(feature) && !sessionsAvailable(state)
+                && resolverReason != Reason.REQUIRES_ROOT
+                && resolverReason != Reason.API_TOO_OLD
+                && resolverReason != Reason.NOT_EFFECTIVE_ON_THIS_VERSION;
+    }
+
+    /** Why the UI can't offer the feature as working, or null when it can. */
+    public static String unavailableText(Context context, Feature feature, AccessState state, boolean shizukuMode) {
+        Reason reason = unavailableReason(feature, state, shizukuMode);
+        if (sessionBlocked(feature, state, reason)) return context.getString(R.string.reason_sessions_need_access);
+        return reason == null ? null : reasonText(context, reason, shizukuMode);
+    }
+
     /** Root-only by the resolver's own matrix: unavailable to a shell (Shizuku) uid for REQUIRES_ROOT. */
     public static boolean isRootOnly(Feature feature, AccessState state) {
         FeatureStatus status = CapabilityResolver.status(feature, AccessLevel.SHELL, Build.VERSION.SDK_INT, state.getGrants());
@@ -120,8 +167,13 @@ public final class AccessUi {
     /** Problems the user can act on; empty when everything core is available. */
     public static List<String> problems(Context context, AccessState state, boolean shizukuMode, boolean musicWhitelist) {
         List<String> problems = new ArrayList<>();
-        addFeatureProblem(problems, context, state, shizukuMode, Feature.FORCE_DOZE, R.string.access_feature_force_doze);
-        addFeatureProblem(problems, context, state, shizukuMode, Feature.MOTION_SENSORS, R.string.access_feature_motion_sensors);
+        if (sessionsAvailable(state)) {
+            addFeatureProblem(problems, context, state, shizukuMode, Feature.FORCE_DOZE, R.string.access_feature_force_doze);
+            addFeatureProblem(problems, context, state, shizukuMode, Feature.MOTION_SENSORS, R.string.access_feature_motion_sensors);
+        } else {
+            // One reason for every session feature; the status line above names the transport problem.
+            problems.add(context.getString(R.string.access_problem_plain, context.getString(R.string.access_problem_sessions)));
+        }
         addFeatureProblem(problems, context, state, shizukuMode, Feature.DOZE_STATE_READ, R.string.access_feature_doze_state);
         if (isPrivileged(state)) {
             List<String> missing = new ArrayList<>();

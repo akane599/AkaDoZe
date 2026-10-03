@@ -791,15 +791,16 @@ public class SettingsActivity extends AppCompatActivity {
                 Preference pref = findPreference(key);
                 if (pref == null) continue;
                 Feature feature = featureFor(key);
-                Reason reason = AccessUi.unavailableReason(feature, state, shizukuMode);
+                // Session features also need Shizuku or root, whatever the resolver allows below SHELL.
+                String unavailable = AccessUi.unavailableText(context, feature, state, shizukuMode);
                 CharSequence base = baseSummaries.get(key);
-                if (reason == null) {
+                if (unavailable == null) {
                     pref.setEnabled(true);
                     pref.setSummary(shizukuMode && base != null && AccessUi.isRootOnly(feature, state)
                             ? getString(R.string.root_tag_summary, base) : base);
                 } else {
                     pref.setEnabled(false);
-                    pref.setSummary(AccessUi.reasonText(context, reason, shizukuMode));
+                    pref.setSummary(unavailable);
                 }
             }
             Preference music = findPreference(MUSIC_WHITELIST);

@@ -1,9 +1,12 @@
 package com.akylas.enforcedoze.ui;
 
+import com.akylas.enforcedoze.access.Feature;
 import com.akylas.enforcedoze.doze.LedgerEntry;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
@@ -70,5 +73,40 @@ public final class DebtRules {
         public void clearAll() {
             if (!store.load().isEmpty()) store.save(Collections.emptySet());
         }
+
+        /**
+         * A ledger check found no debt: the items that check disproves are settled, so their next
+         * occurrence is announced again even if the user swiped the earlier notice away. Event-raised
+         * debt the ledger can't see (ACCESS_LOST, SafetyNet's readback debts) keeps its own clearing.
+         */
+        public void ledgerChecked(boolean debt) {
+            if (debt) return;
+            Set<String> notified = new HashSet<>(store.load());
+            boolean changed = false;
+            // No Collection.removeIf: minSdk 23.
+            for (Iterator<String> keys = notified.iterator(); keys.hasNext(); ) {
+                if (settledByCleanLedger(keys.next())) {
+                    keys.remove();
+                    changed = true;
+                }
+            }
+            if (changed) store.save(notified);
+        }
     }
+
+    /** Runtime debt about the ledger itself, plus every per-entry item (key(feature, target)). */
+    static boolean settledByCleanLedger(String key) {
+        int bar = key.indexOf('|');
+        String detail = bar < 0 ? key : key.substring(0, bar);
+        if (LEDGER_KEYS.contains(detail)) return true;
+        for (Feature feature : Feature.values()) {
+            if (feature.name().equals(detail)) return true;
+        }
+        return false;
+    }
+
+    /** Runtime debts a clean ledger read disproves (MonitorData.hasDebt fails closed on load errors). */
+    private static final Set<String> LEDGER_KEYS = new HashSet<>(Arrays.asList(
+            "TEARDOWN_TIMEOUT", "LEDGER_DAMAGED", "SAFETY_READ_UNAVAILABLE",
+            "LEDGER_LOAD_FAILED", "LEDGER_RECOVERY_COMMIT_FAILED"));
 }

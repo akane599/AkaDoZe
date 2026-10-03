@@ -256,7 +256,7 @@ final class MonitorFormat {
         }
     }
 
-    static String resultText(Context context, SelfTestResult result, boolean shizukuMode) {
+    static String resultText(Context context, SelfTestResult result, boolean shizukuMode, boolean sessionsAvailable) {
         boolean doze = result.getKind() == SelfTestKind.DOZE;
         String reading = doze ? deep(context, result.getDeep()) : sensor(context, result.getSensor());
         switch (result.getOutcome()) {
@@ -267,8 +267,13 @@ final class MonitorFormat {
             case RESTORE_INCOMPLETE:
                 return context.getString(R.string.monitor_result_restore_incomplete);
             case UNAVAILABLE: {
-                Reason reason = result.getReason() == null ? Reason.UNVERIFIED : result.getReason();
-                return AccessUi.reasonText(context, reason, shizukuMode);
+                // The session gate refuses a test below SHELL (no reason, or a generic no-access one):
+                // say that sessions need Shizuku or root rather than a transport guess.
+                Reason reason = result.getReason();
+                if (reason == Reason.NO_ACCESS || reason == null && !sessionsAvailable) {
+                    return context.getString(R.string.reason_sessions_need_access);
+                }
+                return AccessUi.reasonText(context, reason == null ? Reason.UNVERIFIED : reason, shizukuMode);
             }
             case CANCELLED:
                 return context.getString(R.string.monitor_result_cancelled);

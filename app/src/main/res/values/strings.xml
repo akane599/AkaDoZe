@@ -257,6 +257,7 @@
     <string name="access_problem_helpers_missing">Helper permissions not granted: %1$s</string>
     <string name="access_problem_notifications_off">Notifications are off, so AkaDoZe can\'t warn you about problems</string>
     <string name="access_problem_music_listener">Music detection needs notification access</string>
+    <string name="access_problem_sessions">Doze sessions need Shizuku or root. Until then AkaDoZe doesn\'t force Doze or change anything at screen-off</string>
     <string name="access_action_grant_helpers">Grant helper permissions</string>
     <string name="access_action_request_shizuku">Grant Shizuku permission</string>
     <string name="access_action_open_shizuku">Open Shizuku</string>
@@ -289,6 +290,7 @@
     <string name="reason_unverified">Unverified on this device</string>
     <string name="reason_no_access_root">Root access not available</string>
     <string name="reason_no_access_shizuku">Needs Shizuku access</string>
+    <string name="reason_sessions_need_access">Doze sessions need Shizuku or root</string>
     <string name="root_tag_summary">Root · %1$s</string>
     <string name="rotate_brightness_fix_retired_summary">No longer used. AkaDoZe now restores sensors from its own records, so this workaround isn\'t needed. Your saved choice is kept.</string>
     <string name="whitelist_music_needs_listener_summary">%1$s. Needs notification access: without it, music is treated as not playing.</string>

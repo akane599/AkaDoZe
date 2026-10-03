@@ -199,6 +199,17 @@ public final class NoticeSink implements DozeEventSink {
         }
     }
 
+    /**
+     * Called by the UI after every ledger check (DebtRules.isDebt). No debt re-arms the ledger-backed
+     * items, even while event-raised debt is still shown, so a recurrence is announced again.
+     */
+    public static void ledgerChecked(Context context, boolean debt) {
+        NoticeSink sink = get(context);
+        synchronized (sink) {
+            sink.debtGate.ledgerChecked(debt);
+        }
+    }
+
     private void onExternalCall(String detail) {
         if (detail == null) return;
         if (detail.contains("reason=FOREGROUND_START_DENIED")) {
