@@ -20,12 +20,16 @@ _Work items, stories and blockers live on the Sidequest board. This file keeps w
 - 2026-10-03: The auto-rotate/brightness workaround is retired (key kept): it made setting changes the ledger couldn't restore. (US-1 #9)
 - 2026-10-03: User-visible strings say "EnforceDoze" (matches `app_name` and the translations); the repo and branch keep the AkaDoZe name. A full rebrand is the user's call.
 - 2026-10-03: Parallel dispatch on the 22 GB machine: up to 4 Gradle tickets and at most 3 concurrent Opus agents (user direction). (US-1 #10, #11)
+- 2026-10-04: US-2 (six-reviewer pre-merge review) fixed on `akadoze-2.0` (61f061a..f9d9562), Base untouched. Focused-app read failure means unknown, which skips suspend/notification block (SQ-46); only FORCE_DOZE/MOTION_SENSORS corrupt lines auto-clear, the rest stay dismissible debt (SQ-47); journal/CommandLane robustness (SQ-49).
+- 2026-10-04: External REAPPLY_DOZE needs only basic-control consent (not KEEP_DOZE_ENFORCED). It shares the watchdog's 60 s spacing and 5-per-session budget via a separate lastEnter, never cuts maintenance, and rejects an unknown light state on API 24+. Admission runs before reads, and a generation bump clears a stale deferred reforce. SQ-48's first candidate was rejected for delaying the first automatic reforce. (US-2 #4, #10; SQ-55, SQ-60)
+- 2026-10-04: Reset `OK` means readback-confirmed, never transport success; "Reset complete" only when restore is COMPLETE and every step is OK. Restore-intent prefs are kept while debt remains. (US-2 #7; SQ-50, SQ-51)
+- 2026-10-04: Restore after boot, update and cold start runs even when the service is disabled. "Unresolved access" is bounded to cold-start discovery (10 s Shizuku window, root 1+3 probes; a binder death after the binder was seen means no access at once). A 9 s restore-only window holds the 30 s restore wakelock, and DozeRuntime owns ONE process-level continuation that fires one restore when access arrives later. Two GPT candidates were rejected (SQ-45 unbounded unresolved, SQ-59 per-window listeners); the Opus escalation SQ-65 passed. (US-2 #11-#14)
 
 ## Audit status
 | Area | Last run | Result | How |
 |---|---|---|---|
 | Plan audit | 2026-10-03 | REWORK → plan reworked (AkaDoZe 2.0; SQ-3, SQ-4) | `/plan-audit` |
-| Story review | 2026-10-03 | US-1 whole-story review SQ-19: 1 BLOCKER, 1 FIX, 6 NIT → fixed in SQ-39/SQ-40, rest deferred to SQ-41; per-ticket reviews SQ-25, SQ-30, SQ-31, SQ-36, SQ-42 | `review-audit` (Opus) |
+| Story review | 2026-10-03 | US-1 whole-story review SQ-19: 1 BLOCKER, 1 FIX, 6 NIT → fixed in SQ-39/SQ-40, rest deferred to SQ-41; per-ticket reviews SQ-25, SQ-30, SQ-31, SQ-36, SQ-42; 2026-10-04 US-2 (external six-reviewer pass) bound reviews SQ-54 FAIL, SQ-56 FAIL, SQ-57 PASS, SQ-63 FAIL, SQ-66 PASS; suggestions held in SQ-53 | `review-audit` (Opus) |
 | Bug hunt | — | — | `/bug-hunt` |
 | Security | — | — | `/claude-security` |
 | UI / design | — | — | `/ui-overhaul` phase review |
