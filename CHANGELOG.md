@@ -61,6 +61,8 @@
 - **While motion sensors are restricted, other apps get no motion data:** step counters and pocket
   detection pause until the screen comes back on.
 - Self-tests in the Doze Monitor run only while the EnforceDoze service is running.
+- On Android 14+ the system may freeze the app before a background follow-up restore finishes. Anything
+  unfinished stays in the restore ledger and is restored when the service next starts, or with "Restore now".
 - Several behaviours can only be confirmed on a real device: OEM `dumpsys` formats, radio/biometric
   restores, legacy notification blocking on Android 6–12, and sensor-privacy transactions. EnforceDoze
   reports these as UNVERIFIED rather than claiming success.
