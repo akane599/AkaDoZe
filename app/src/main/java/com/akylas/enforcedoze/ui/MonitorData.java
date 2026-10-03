@@ -102,16 +102,20 @@ final class MonitorData {
         }
     }
 
-    /** Same rule as the access card: anything left on record outside a session is debt; unreadable fails closed. */
+    /**
+     * Shared by the access card and the monitor (DebtRules.isDebt; unreadable fails closed). Blocking: the
+     * controller lock waits out an exit/reconcile walk that is already running, so its saves are seen.
+     */
     static boolean hasDebt(DozeRuntime runtime) {
-        boolean debt;
-        try {
-            RestoreLedger ledger = runtime.getStore().load();
-            debt = !ledger.getEntries().isEmpty() || !runtime.getStore().getCorruptLines().isEmpty();
-        } catch (Exception unreadable) {
-            debt = true;
+        synchronized (runtime.getController()) {
+            boolean sessionActive = runtime.getSessionActive();
+            try {
+                RestoreLedger ledger = runtime.getStore().load();
+                return DebtRules.isDebt(ledger.getEntries(), !runtime.getStore().getCorruptLines().isEmpty(), sessionActive);
+            } catch (Exception unreadable) {
+                return DebtRules.isDebt(Collections.emptyList(), true, sessionActive);
+            }
         }
-        return debt && !runtime.getSessionActive();
     }
 
     /** Newest first. */
@@ -165,6 +169,25 @@ final class MonitorData {
             segment.add(event);
         }
         return segment;
+    }
+
+    /**
+     * True once an enforcement step was carried out: an ENTER_STEP answered by its VERIFY. ENTER_STEP alone
+     * is emitted before the capability check, so a session whose every step was SKIPPED does not count.
+     */
+    static boolean hasAppliedStep(List<JournalEvent> segment) {
+        String step = null;
+        for (JournalEvent event : segment) {
+            EventType type = event.getType();
+            String detail = event.getDetail();
+            if (type == EventType.ENTER_STEP) {
+                step = detail;
+            } else if (step != null && detail != null && (detail.equals(step) || detail.startsWith(step + ":"))) {
+                if (type == EventType.VERIFY) return true;
+                if (type == EventType.SKIPPED) step = null;
+            }
+        }
+        return false;
     }
 
     private static boolean hasScreenOff(List<JournalEvent> events) {

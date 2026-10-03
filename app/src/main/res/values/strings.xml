@@ -308,6 +308,13 @@
     <string name="mode_switch_denied_title">Shizuku permission denied</string>
     <string name="mode_switch_denied_text">AkaDoZe went back to %1$s mode. To use Shizuku, choose it again and allow the permission in the Shizuku prompt.</string>
     <string name="mode_switch_not_running_text">Shizuku mode is selected, but Shizuku isn\'t running. Start Shizuku and AkaDoZe will connect automatically.</string>
+    <string name="mode_switch_stopped_title">Shizuku stopped</string>
+    <string name="mode_switch_stopped_text">Shizuku stopped before it answered the permission request. AkaDoZe went back to %1$s mode. Start Shizuku, then choose it again.</string>
+    <string name="mode_switch_waiting_root">Checking root access…</string>
+    <string name="mode_switch_root_failed_title">Root access not granted</string>
+    <string name="mode_switch_root_failed_text">AkaDoZe couldn\'t get root access and went back to %1$s mode. Allow AkaDoZe in your root manager, then choose Root again.</string>
+    <string name="screen_on_summary_permission_blocked">Notifications for AkaDoZe are turned off, so the summary can\'t be shown. Turn them on in AkaDoZe\'s notification settings.</string>
+    <string name="open_notification_settings_button">Notification settings</string>
     <string name="cancel_button_text">Cancel</string>
 
     <string name="notice_paused_title">Doze enforcement paused</string>
@@ -412,6 +419,11 @@
     <string name="monitor_test_raw_empty">No commands were run.</string>
     <string name="monitor_raw_exit">exit %1$d</string>
     <string name="monitor_raw_timeout">timed out</string>
+    <plurals name="monitor_raw_more_lines">
+        <item quantity="one">… %d more line not shown</item>
+        <item quantity="other">… %d more lines not shown</item>
+    </plurals>
+    <string name="monitor_test_needs_service">Turn on AkaDoZe to run self-tests. If the app stops during a test, the running service is what undoes it.</string>
 
     <string name="monitor_sessions_title">Screen-off sessions</string>
     <string name="monitor_sessions_loading">Loading sessions…</string>

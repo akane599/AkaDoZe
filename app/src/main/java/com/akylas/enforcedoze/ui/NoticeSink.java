@@ -34,8 +34,12 @@ import android.os.AsyncTask;
 
 import androidx.preference.PreferenceManager;
 
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * App-lifetime presentation of service events as notifications on the existing tips channel.
@@ -50,15 +54,45 @@ public final class NoticeSink implements DozeEventSink {
     private static final String NOTICES = "notices";
     private static final String SHOWN_BASIC = "externalBasicRejectedShown";
     private static final String SHOWN_PRIVILEGED = "externalPrivilegedRejectedShown";
+    private static final String ACCESS_LOST = "ACCESS_LOST";
+
+    private static final String DEBT_NOTIFIED = "debtNotified";
 
     private static volatile NoticeSink instance;
+    /** Screens that show recovery debt themselves (access card, monitor) while they are in front. */
+    private static final AtomicInteger debtViews = new AtomicInteger();
 
     private final Context app;
+    private final DebtRules.NoticeGate debtGate;
     private Boolean lastPrivileged;
     private boolean pausedShown;
 
     private NoticeSink(Context context) {
         app = context.getApplicationContext();
+        SharedPreferences notices = app.getSharedPreferences(NOTICES, Context.MODE_PRIVATE);
+        debtGate = new DebtRules.NoticeGate(new DebtRules.NoticeGate.Store() {
+            @Override
+            public Set<String> load() {
+                return notices.getStringSet(DEBT_NOTIFIED, Collections.emptySet());
+            }
+
+            @Override
+            public void save(Set<String> keys) {
+                notices.edit().putStringSet(DEBT_NOTIFIED, new HashSet<>(keys)).apply();
+            }
+        });
+    }
+
+    /** While a screen showing the debt is in front, a new debt is recorded without a notification. */
+    public static void setDebtShownInApp(boolean shown) {
+        if (shown) {
+            debtViews.incrementAndGet();
+            return;
+        }
+        int count;
+        do {
+            count = debtViews.get();
+        } while (count > 0 && !debtViews.compareAndSet(count, count - 1));
     }
 
     public static NoticeSink get(Context context) {
@@ -78,7 +112,14 @@ public final class NoticeSink implements DozeEventSink {
                 onAccessChanged(detail);
                 break;
             case RECOVERY_DEBT:
-                notifyDebt(detail);
+                notifyDebt(detail, event.getTarget());
+                break;
+            case VERIFY:
+                // A verified restore (or a verified re-apply) settles that item; a failed readback does not.
+                if (event.getReason() == null) debtGate.clear(DebtRules.key(detail, event.getTarget()));
+                break;
+            case SENSORS_RESTORED:
+                debtGate.clear(DebtRules.key(detail, event.getTarget()));
                 break;
             case EXTERNAL_CALL:
                 onExternalCall(detail);
@@ -103,6 +144,8 @@ public final class NoticeSink implements DozeEventSink {
         boolean privileged = level == AccessLevel.SHELL || level == AccessLevel.ROOT;
         Boolean previous = lastPrivileged;
         lastPrivileged = privileged;
+        // Losing access again later is a new ACCESS_LOST debt worth announcing.
+        if (privileged) debtGate.clear(ACCESS_LOST);
         if (previous == null) return;
         if (previous && !privileged && MyApplication.getDozeRuntime(app).getSessionActive()) {
             boolean shizuku = Utils.isShizukuMode(app);
@@ -135,19 +178,25 @@ public final class NoticeSink implements DozeEventSink {
         }
     }
 
-    private void notifyDebt(String detail) {
-        boolean accessLost = "ACCESS_LOST".equals(detail);
-        post(ID_DEBT, builder(R.string.notice_debt_title,
-                accessLost ? R.string.notice_debt_access_lost_text : R.string.notice_debt_generic_text)
-                .setContentIntent(openMain(2, null))
-                .addAction(0, app.getString(R.string.access_restore_now), openMain(3, MainActivity.ACTION_RESTORE_NOW))
-                .build());
+    /** Every safety check re-emits outstanding debt; only a debt item not yet announced posts. */
+    private void notifyDebt(String detail, String target) {
+        boolean accessLost = ACCESS_LOST.equals(detail);
+        debtGate.offer(DebtRules.key(detail, target), debtViews.get() > 0, () -> post(ID_DEBT,
+                builder(R.string.notice_debt_title,
+                        accessLost ? R.string.notice_debt_access_lost_text : R.string.notice_debt_generic_text)
+                        .setContentIntent(openMain(2, null))
+                        .addAction(0, app.getString(R.string.access_restore_now), openMain(3, MainActivity.ACTION_RESTORE_NOW))
+                        .build()));
     }
 
-    /** Called by the UI once a ledger check shows nothing left to restore. */
+    /** Called by the UI once a ledger check shows nothing left to restore; later debt is announced again. */
     public static void cancelDebt(Context context) {
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         if (manager != null) manager.cancel(ID_DEBT);
+        NoticeSink sink = get(context);
+        synchronized (sink) {
+            sink.debtGate.clearAll();
+        }
     }
 
     private void onExternalCall(String detail) {
@@ -210,6 +259,8 @@ public final class NoticeSink implements DozeEventSink {
         NotificationManager manager = app.getSystemService(NotificationManager.class);
         if (manager == null) return false;
         ensureChannel(manager);
+        // A blocked tips channel drops notify() silently: report it as not shown.
+        if (!tipsChannelEnabled()) return false;
         try {
             manager.notify(id, notification);
             return true;
@@ -246,12 +297,10 @@ public final class NoticeSink implements DozeEventSink {
         try {
             List<JournalEvent> segment = MonitorData.lastSegment(
                     journal.querySession(sessionId, bootId).get(2, TimeUnit.SECONDS));
-            // Enforcement never ran (e.g. a short screen-off): nothing worth summarizing.
-            boolean enforced = false;
-            for (JournalEvent event : segment) if (event.getType() == EventType.ENTER_STEP) enforced = true;
-            if (!enforced) return;
+            // Nothing was enforced (a short screen-off, or every step SKIPPED): nothing worth summarizing.
+            if (!MonitorData.hasAppliedStep(segment)) return;
             List<SessionSummary> summaries = SessionAggregator.summarize(segment);
-            if (summaries.isEmpty() || !summaryEnabled() || !tipsChannelEnabled()) return;
+            if (summaries.isEmpty() || !summaryEnabled()) return; // post() re-checks every notification gate.
             SessionSummary summary = summaries.get(summaries.size() - 1);
             String line = MonitorFormat.summaryLine(app, summary);
             Intent open = DozeMonitorActivity.sessionIntent(app, summary.getBootId(), summary.getSessionId(),

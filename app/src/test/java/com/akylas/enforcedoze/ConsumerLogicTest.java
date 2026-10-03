@@ -1,6 +1,7 @@
 package com.akylas.enforcedoze;
 
 import com.akylas.enforcedoze.access.AccessLevel;
+import com.akylas.enforcedoze.ui.ModeSwitchRules;
 import com.akylas.enforcedoze.access.CommandResult;
 import com.akylas.enforcedoze.access.CommandRunner;
 import com.akylas.enforcedoze.access.Grants;
@@ -133,16 +134,16 @@ public class ConsumerLogicTest {
     @Test public void modeSwitchWaitsForPermissionAndDoesNotTreatShellAsRoot() {
         SettingsActivity.SettingsFragment.ModeSwitch change = new SettingsActivity.SettingsFragment.ModeSwitch();
         change.select("shizuku");
-        assertFalse(change.ready("shizuku", AccessLevel.APP));
-        assertFalse(change.ready("root", AccessLevel.ROOT));
-        assertTrue(change.ready("shizuku", AccessLevel.SHELL));
+        // Shizuku is judged by its own transport level (last argument), root by the published level.
+        assertFalse(ModeSwitchRules.switchReady(change.pending, "shizuku", AccessLevel.APP, AccessLevel.NONE));
+        assertFalse(ModeSwitchRules.switchReady(change.pending, "root", AccessLevel.ROOT, AccessLevel.NONE));
+        assertTrue(ModeSwitchRules.switchReady(change.pending, "shizuku", AccessLevel.SHELL, AccessLevel.SHELL));
         int token = change.consume();
-        assertFalse(change.ready("shizuku", AccessLevel.SHELL));
+        assertFalse(ModeSwitchRules.switchReady(change.pending, "shizuku", AccessLevel.SHELL, AccessLevel.SHELL));
         change.select("root");
         assertFalse(change.current(token));
-        assertTrue(change.waitingForRoot());
-        assertFalse(change.ready("root", AccessLevel.SHELL));
-        assertTrue(change.ready("root", AccessLevel.ROOT));
+        assertFalse(ModeSwitchRules.switchReady(change.pending, "root", AccessLevel.SHELL, AccessLevel.NONE));
+        assertTrue(ModeSwitchRules.switchReady(change.pending, "root", AccessLevel.ROOT, AccessLevel.NONE));
     }
 
     @Test public void prefsRepairMakesExistingXmlAndBackupOwnerOnly() throws Exception {

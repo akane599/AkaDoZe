@@ -14,10 +14,12 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.TextView;
 
+import androidx.annotation.NonNull;
 import androidx.core.app.NotificationManagerCompat;
+import androidx.lifecycle.DefaultLifecycleObserver;
+import androidx.lifecycle.LifecycleOwner;
 
 import com.afollestad.materialdialogs.MaterialDialog;
-import com.akylas.enforcedoze.NotificationService;
 import com.akylas.enforcedoze.R;
 import com.akylas.enforcedoze.Utils;
 import com.akylas.enforcedoze.access.AccessLevel;
@@ -30,6 +32,7 @@ import com.akylas.enforcedoze.access.FeatureStatus;
 import com.akylas.enforcedoze.access.Reason;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -132,7 +135,7 @@ public final class AccessUi {
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
             problems.add(context.getString(R.string.access_problem_plain, context.getString(R.string.access_problem_notifications_off)));
         }
-        if (musicWhitelist && NotificationService.Companion.getInstance() == null) {
+        if (musicWhitelist && !hasListenerAccess(context)) {
             problems.add(context.getString(R.string.access_problem_plain, context.getString(R.string.access_problem_music_listener)));
         }
         return problems;
@@ -205,6 +208,17 @@ public final class AccessUi {
                 .progress(true, 0)
                 .cancelable(false)
                 .show();
+        // The dialog goes with its Activity (no WindowLeaked); the worker holds neither of them.
+        DefaultLifecycleObserver dismissOnDestroy = new DefaultLifecycleObserver() {
+            @Override
+            public void onDestroy(@NonNull LifecycleOwner owner) {
+                if (progress.isShowing()) progress.dismiss();
+            }
+        };
+        if (activity instanceof LifecycleOwner) ((LifecycleOwner) activity).getLifecycle().addObserver(dismissOnDestroy);
+        WeakReference<Activity> owner = new WeakReference<>(activity);
+        WeakReference<MaterialDialog> dialog = new WeakReference<>(progress);
+        WeakReference<DefaultLifecycleObserver> observer = new WeakReference<>(dismissOnDestroy);
         Context app = activity.getApplicationContext();
         Handler main = new Handler(Looper.getMainLooper());
         AsyncTask.execute(() -> {
@@ -216,9 +230,15 @@ public final class AccessUi {
             }
             String message = results == null ? app.getString(R.string.grant_helpers_failed) : describe(app, results);
             main.post(() -> {
-                if (activity.isFinishing() || activity.isDestroyed()) return;
-                progress.dismiss();
-                new MaterialAlertDialogBuilder(activity)
+                Activity current = owner.get();
+                MaterialDialog shown = dialog.get();
+                DefaultLifecycleObserver registered = observer.get();
+                if (current instanceof LifecycleOwner && registered != null) {
+                    ((LifecycleOwner) current).getLifecycle().removeObserver(registered);
+                }
+                if (shown != null && shown.isShowing()) shown.dismiss();
+                if (current == null || current.isFinishing() || current.isDestroyed()) return;
+                new MaterialAlertDialogBuilder(current)
                         .setTitle(R.string.grant_helpers_result_title)
                         .setMessage(message)
                         .setPositiveButton(R.string.okay_button_text, null)
@@ -282,5 +302,10 @@ public final class AccessUi {
 
     public static boolean isShizukuMode(Context context) {
         return Utils.isShizukuMode(context);
+    }
+
+    /** The user's grant, not whether the listener is bound right now (it can still be rebinding). */
+    public static boolean hasListenerAccess(Context context) {
+        return NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.getPackageName());
     }
 }

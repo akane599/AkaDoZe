@@ -54,8 +54,11 @@ import com.akylas.enforcedoze.access.CapabilityResolver;
 import com.akylas.enforcedoze.access.Feature;
 import com.akylas.enforcedoze.access.FeatureStatus;
 import com.akylas.enforcedoze.access.Reason;
+import com.akylas.enforcedoze.access.CommandRunner;
 import com.akylas.enforcedoze.access.Prefs;
+import com.akylas.enforcedoze.access.ShizukuState;
 import com.akylas.enforcedoze.ui.AccessUi;
+import com.akylas.enforcedoze.ui.ModeSwitchRules;
 
 import android.Manifest;
 import android.os.Handler;
@@ -137,9 +140,21 @@ public class SettingsActivity extends AppCompatActivity {
         private static final String ACCESS_STATUS = "accessStatus";
         private static final String MUSIC_WHITELIST = "whitelistMusicAppNetwork";
         private final Map<String, CharSequence> baseSummaries = new HashMap<>();
+        // A pending mode switch survives recreation (rotation while the Shizuku prompt is up).
+        private static final String STATE_PENDING_MODE = "modeSwitchPending";
+        private static final String STATE_MODE_BEFORE = "modeBeforeSwitch";
+        private static final String STATE_AWAITING_SHIZUKU = "awaitingShizukuResult";
+        private static final String STATE_AWAITING_ROOT = "awaitingRootProbe";
+        /** The su probe is one bounded lane command; allow one probe already queued ahead of it. */
+        private static final long ROOT_PROBE_WAIT_MS = 2 * CommandRunner.DEFAULT_TIMEOUT_MS + 1_000;
         private MaterialDialog modeProgress;
         private String modeBeforeSwitch;
         private boolean awaitingShizukuResult;
+        /** The Activity was covered after the Shizuku request, so no prompt is in flight once it resumes. */
+        private boolean shizukuPromptSettled;
+        private boolean awaitingRoot;
+        private final Runnable rootProbeTimeout = () -> finishRootWait(
+                accessManager.getLevel() == AccessLevel.ROOT && Prefs.MODE_ROOT.equals(selectedMode()));
         private final Shizuku.OnRequestPermissionResultListener shizukuResult = (requestCode, grantResult) ->
                 mainHandler.post(() -> onShizukuPermissionResult(grantResult == PackageManager.PERMISSION_GRANTED));
         private final ActivityResultLauncher<String> summaryPermission = registerForActivityResult(
@@ -166,18 +181,13 @@ public class SettingsActivity extends AppCompatActivity {
             }
         }
 
-        // The switch is consumed once, only after the selected transport is usable.
+        // The switch is consumed once, only after the selected transport is usable (ModeSwitchRules).
         static final class ModeSwitch {
-            private String pending;
+            String pending;
             private int generation;
             int select(String mode) { pending = mode; return ++generation; }
-            boolean ready(String selected, AccessLevel level) {
-                return pending != null && pending.equals(selected)
-                        && (level == AccessLevel.ROOT || ("shizuku".equals(selected) && level == AccessLevel.SHELL));
-            }
             int consume() { pending = null; return generation; }
             boolean current(int token) { return token == generation; }
-            boolean waitingForRoot() { return "root".equals(pending); }
         }
 
         @Override
@@ -185,12 +195,43 @@ public class SettingsActivity extends AppCompatActivity {
             super.onStart();
             accessManager.addListener(accessListener);
             accessManager.refresh();
+            // A recreated fragment shows its restored wait again (the old dialog went with the old window).
+            if (modeProgress == null && awaitingShizukuResult) {
+                showModeProgress(R.string.mode_switch_waiting_shizuku, () -> onShizukuPermissionResult(false));
+            } else if (modeProgress == null && awaitingRoot) {
+                showModeProgress(R.string.mode_switch_waiting_root, () -> finishRootWait(false));
+            }
+        }
+
+        @Override
+        public void onResume() {
+            super.onResume();
+            // Back in front: a prompt that covered us is gone, so re-check the transport itself.
+            if (awaitingShizukuResult) {
+                accessManager.refreshShizuku();
+                resolveShizukuWait(shizukuPromptSettled);
+            }
+        }
+
+        @Override
+        public void onPause() {
+            if (awaitingShizukuResult) shizukuPromptSettled = true;
+            super.onPause();
         }
 
         @Override
         public void onStop() {
             accessManager.removeListener(accessListener);
             super.onStop();
+        }
+
+        @Override
+        public void onSaveInstanceState(@NonNull Bundle outState) {
+            super.onSaveInstanceState(outState);
+            outState.putString(STATE_PENDING_MODE, modeSwitch.pending);
+            outState.putString(STATE_MODE_BEFORE, modeBeforeSwitch);
+            outState.putBoolean(STATE_AWAITING_SHIZUKU, awaitingShizukuResult);
+            outState.putBoolean(STATE_AWAITING_ROOT, awaitingRoot);
         }
 
         @Override
@@ -203,17 +244,25 @@ public class SettingsActivity extends AppCompatActivity {
             super.onDestroy();
         }
 
+        private String selectedMode() {
+            return PreferenceManager.getDefaultSharedPreferences(requireContext())
+                    .getString(Prefs.EXECUTION_MODE, Prefs.DEFAULT_EXECUTION_MODE);
+        }
+
         private void onAccessChanged(AccessState state) {
             if (!isAdded()) return;
+            AccessLevel shizukuLevel = accessManager.getShizukuState().getLevel();
             isSuAvailable = state.getLevel() == AccessLevel.ROOT;
-            isShizukuAvailable = Utils.isShizukuMode(requireContext())
-                    && (isSuAvailable || state.getLevel() == AccessLevel.SHELL);
+            isShizukuAvailable = Utils.isShizukuMode(requireContext()) && shizukuLevel != AccessLevel.NONE;
             applyCapabilities(state);
-            // Access can arrive without a prompt result (already granted, or granted from the Shizuku app).
-            if (awaitingShizukuResult && isShizukuAvailable) onShizukuPermissionResult(true);
-            String selected = PreferenceManager.getDefaultSharedPreferences(requireContext())
-                    .getString("executionMode", "root");
-            if (!modeSwitch.ready(selected, state.getLevel())) return;
+            // Access can arrive without a prompt result (already granted, or granted from the Shizuku app),
+            // and Shizuku can stop mid-wait; both are read from the transport, never a stale published level.
+            if (awaitingShizukuResult) resolveShizukuWait(shizukuPromptSettled && isResumed());
+            String selected = selectedMode();
+            if (awaitingRoot && Prefs.MODE_ROOT.equals(selected) && state.getLevel() == AccessLevel.ROOT) {
+                finishRootWait(true);
+            }
+            if (!ModeSwitchRules.switchReady(modeSwitch.pending, selected, state.getLevel(), shizukuLevel)) return;
             int token = modeSwitch.consume();
             Context context = requireContext().getApplicationContext();
             AsyncTask.execute(() -> {
@@ -286,6 +335,18 @@ public class SettingsActivity extends AppCompatActivity {
         @Override
         public void onCreate(Bundle savedInstanceState) {
             super.onCreate(savedInstanceState);
+            if (savedInstanceState == null) return;
+            String pending = savedInstanceState.getString(STATE_PENDING_MODE);
+            if (pending != null) modeSwitch.select(pending);
+            modeBeforeSwitch = savedInstanceState.getString(STATE_MODE_BEFORE);
+            awaitingShizukuResult = savedInstanceState.getBoolean(STATE_AWAITING_SHIZUKU);
+            awaitingRoot = savedInstanceState.getBoolean(STATE_AWAITING_ROOT);
+            if (awaitingShizukuResult) {
+                // Recreated meanwhile: the prompt was up or has been answered; onResume re-checks Shizuku.
+                shizukuPromptSettled = true;
+                Shizuku.addRequestPermissionResultListener(shizukuResult);
+            }
+            if (awaitingRoot) mainHandler.postDelayed(rootProbeTimeout, ROOT_PROBE_WAIT_MS);
         }
 
         @Override
@@ -361,6 +422,8 @@ public class SettingsActivity extends AppCompatActivity {
                                 .setPositiveButton(R.string.okay_button_text, null)
                                 .show();
                     }
+                } else if (Prefs.MODE_ROOT.equals(value) && !value.equals(previous)) {
+                    awaitRoot(previous);
                 }
                 // SharedPreferences and AccessManager publish the selected mode before we consume it.
                 return true;
@@ -484,7 +547,7 @@ public class SettingsActivity extends AppCompatActivity {
                 final boolean newValue = (boolean) o;
                 if (newValue) {
                     // we need to check if we have notifications permissions
-                    Boolean hasPermission = NotificationService.Companion.getInstance() != null;
+                    Boolean hasPermission = AccessUi.hasListenerAccess(requireContext());
                     if (!hasPermission) {
                         MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(getActivity());
                         builder.setTitle(getString(R.string.notifications_permission));
@@ -743,7 +806,7 @@ public class SettingsActivity extends AppCompatActivity {
             CharSequence musicBase = baseSummaries.get(MUSIC_WHITELIST);
             if (music != null && musicBase != null) {
                 // Without the listener the service treats music as not playing (MUSIC_SELECTION_UNAVAILABLE).
-                music.setSummary(NotificationService.Companion.getInstance() == null
+                music.setSummary(!AccessUi.hasListenerAccess(context)
                         ? getString(R.string.whitelist_music_needs_listener_summary, musicBase) : musicBase);
             }
             Preference access = findPreference(ACCESS_STATUS);
@@ -757,25 +820,65 @@ public class SettingsActivity extends AppCompatActivity {
         private void awaitForShizukuPermission(String previousMode) {
             modeBeforeSwitch = previousMode;
             awaitingShizukuResult = true;
+            shizukuPromptSettled = false;
             Shizuku.addRequestPermissionResultListener(shizukuResult);
-            dismissModeProgress();
-            modeProgress = new MaterialDialog.Builder(requireActivity())
-                    .title(R.string.execution_mode_setting_title)
-                    .content(R.string.mode_switch_waiting_shizuku)
-                    .progress(true, 0)
-                    .cancelable(false)
-                    .negativeText(R.string.cancel_button_text)
-                    .onNegative((dialog, which) -> onShizukuPermissionResult(false))
-                    .show();
+            showModeProgress(R.string.mode_switch_waiting_shizuku, () -> onShizukuPermissionResult(false));
             accessManager.requestShizukuPermission();
+        }
+
+        /** Applies ModeSwitchRules to the Shizuku transport state; KEEP leaves the wait running. */
+        private void resolveShizukuWait(boolean promptSettled) {
+            ShizukuState shizuku = accessManager.getShizukuState();
+            switch (ModeSwitchRules.shizukuWait(awaitingShizukuResult, shizuku.getLevel(), shizuku.getReason(), promptSettled)) {
+                case GRANTED:
+                    onShizukuPermissionResult(true);
+                    break;
+                case REVERT_DENIED:
+                    onShizukuPermissionResult(false);
+                    break;
+                case REVERT_NOT_RUNNING:
+                    endShizukuWait();
+                    revertMode(R.string.mode_switch_stopped_title, R.string.mode_switch_stopped_text);
+                    break;
+                default:
+                    break;
+            }
         }
 
         private void onShizukuPermissionResult(boolean granted) {
             if (!awaitingShizukuResult) return;
+            endShizukuWait();
+            // Granted: the access listener completes the switch.
+            if (!granted) revertMode(R.string.mode_switch_denied_title, R.string.mode_switch_denied_text);
+        }
+
+        private void endShizukuWait() {
             awaitingShizukuResult = false;
+            shizukuPromptSettled = false;
             Shizuku.removeRequestPermissionResultListener(shizukuResult);
             dismissModeProgress();
-            if (granted || !isAdded()) return; // Granted: the access listener completes the switch.
+        }
+
+        /** Root has no prompt result to wait for: the su probe either publishes ROOT or the wait times out. */
+        private void awaitRoot(String previousMode) {
+            modeBeforeSwitch = previousMode;
+            awaitingRoot = true;
+            showModeProgress(R.string.mode_switch_waiting_root, () -> finishRootWait(false));
+            mainHandler.removeCallbacks(rootProbeTimeout);
+            mainHandler.postDelayed(rootProbeTimeout, ROOT_PROBE_WAIT_MS);
+        }
+
+        private void finishRootWait(boolean granted) {
+            if (!awaitingRoot) return;
+            awaitingRoot = false;
+            mainHandler.removeCallbacks(rootProbeTimeout);
+            dismissModeProgress();
+            if (!granted) revertMode(R.string.mode_switch_root_failed_title, R.string.mode_switch_root_failed_text);
+        }
+
+        /** Puts the previous mode back (setValue skips the change listener) and says why. */
+        private void revertMode(int title, int text) {
+            if (!isAdded()) return;
             modeSwitch.consume();
             String previous = modeBeforeSwitch == null ? Prefs.DEFAULT_EXECUTION_MODE : modeBeforeSwitch;
             ListPreference executionMode = findPreference(Prefs.EXECUTION_MODE);
@@ -783,9 +886,21 @@ public class SettingsActivity extends AppCompatActivity {
             String label = Prefs.MODE_SHIZUKU.equals(previous)
                     ? getString(R.string.execution_mode_shizuku) : getString(R.string.execution_mode_root);
             new MaterialAlertDialogBuilder(requireActivity())
-                    .setTitle(R.string.mode_switch_denied_title)
-                    .setMessage(getString(R.string.mode_switch_denied_text, label))
+                    .setTitle(title)
+                    .setMessage(getString(text, label))
                     .setPositiveButton(R.string.okay_button_text, null)
+                    .show();
+        }
+
+        private void showModeProgress(int content, Runnable onCancel) {
+            dismissModeProgress();
+            modeProgress = new MaterialDialog.Builder(requireActivity())
+                    .title(R.string.execution_mode_setting_title)
+                    .content(content)
+                    .progress(true, 0)
+                    .cancelable(false)
+                    .negativeText(R.string.cancel_button_text)
+                    .onNegative((dialog, which) -> onCancel.run())
                     .show();
         }
 
@@ -801,6 +916,23 @@ public class SettingsActivity extends AppCompatActivity {
             if (granted) {
                 SwitchPreferenceCompat summary = findPreference(Prefs.SCREEN_ON_SUMMARY);
                 if (summary != null) summary.setChecked(true);
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                    && !shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
+                // Denied for good: Android won't ask again, so only the app's notification settings can fix it.
+                new MaterialAlertDialogBuilder(requireActivity())
+                        .setTitle(R.string.notifications_permission)
+                        .setMessage(R.string.screen_on_summary_permission_blocked)
+                        .setPositiveButton(R.string.open_notification_settings_button, (dialog, which) -> {
+                            try {
+                                startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                        .putExtra(Settings.EXTRA_APP_PACKAGE, requireContext().getPackageName()));
+                            } catch (android.content.ActivityNotFoundException missing) {
+                                startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                        Uri.fromParts("package", requireContext().getPackageName(), null)));
+                            }
+                        })
+                        .setNegativeButton(R.string.cancel_button_text, null)
+                        .show();
             } else {
                 Toast.makeText(requireContext(), R.string.screen_on_summary_permission_denied, Toast.LENGTH_LONG).show();
             }
@@ -809,7 +941,9 @@ public class SettingsActivity extends AppCompatActivity {
         @Override
         public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, @Nullable String key) {
             if ("executionMode".equals(key)) {
-                onAccessChanged(accessManager.getState());
+                // After every listener of this change ran: AccessManager's own listener publishes the new
+                // mode first, so the state read here is never the previous mode's (e.g. a stale ROOT).
+                mainHandler.post(() -> { if (isAdded()) onAccessChanged(accessManager.getState()); });
                 return;
             }
             if ("customDozePeriods".equals(key)) {

@@ -50,15 +50,30 @@ final class MonitorFormat {
         return rest == 0 ? h : h + " " + m;
     }
 
-    static String percent(double value) {
+    /** wholePercent's value for "more than 0 but less than 1%". */
+    static final int BELOW_ONE_PERCENT = -1;
+
+    /**
+     * Whole percent that never claims more coverage than measured: Doze/active states round down,
+     * UNKNOWN rounds up (missing evidence is never hidden) and shows a nonzero sliver as "&lt;1%".
+     */
+    static int wholePercent(Coverage coverage, double value) {
+        if (coverage != Coverage.UNKNOWN) return (int) Math.floor(Math.max(0.0, value));
+        if (value <= 0.0) return 0;
+        if (value < 1.0) return BELOW_ONE_PERCENT;
+        return (int) Math.ceil(Math.min(100.0, value));
+    }
+
+    static String percent(Coverage coverage, double value) {
         NumberFormat format = NumberFormat.getPercentInstance();
         format.setMaximumFractionDigits(0);
-        return format.format(value / 100.0);
+        int whole = wholePercent(coverage, value);
+        return whole == BELOW_ONE_PERCENT ? "<" + format.format(0.01) : format.format(whole / 100.0);
     }
 
     static String percent(SessionSummary summary, Coverage coverage) {
         Double value = summary.getCoveragePercent().get(coverage);
-        return percent(value == null ? 0.0 : value);
+        return percent(coverage, value == null ? 0.0 : value);
     }
 
     static String batteryRate(Context context, Double perHour) {
@@ -208,8 +223,10 @@ final class MonitorFormat {
         parts.add(context.getString(R.string.notice_summary_deep, percent(summary, Coverage.DEEP_IDLE),
                 duration(context, summary.getDurationMs())));
         Double unknown = summary.getCoveragePercent().get(Coverage.UNKNOWN);
-        // Missing evidence is never folded into a state: show it whenever it rounds to at least 1%.
-        if (unknown != null && unknown >= 0.5) parts.add(context.getString(R.string.notice_summary_unknown, percent(unknown)));
+        // Missing evidence is never folded into a state: show any of it, "<1%" included.
+        if (unknown != null && unknown > 0) {
+            parts.add(context.getString(R.string.notice_summary_unknown, percent(Coverage.UNKNOWN, unknown)));
+        }
         parts.add(context.getResources().getQuantityString(R.plurals.monitor_maintenance_count,
                 summary.getMaintenanceCount(), summary.getMaintenanceCount()));
         switch (summary.getSensorsRestricted()) {
@@ -262,7 +279,24 @@ final class MonitorFormat {
         }
     }
 
-    /** Raw commands and outputs exactly as returned, for the expandable section. */
+    /** A full dumpsys runs to thousands of lines; the expandable section shows each command's head. */
+    static final int RAW_LINES_PER_COMMAND = 200;
+
+    /** The first {@code max} output lines as returned: stdout, then stderr marked "! ". */
+    static List<String> cappedOutput(SelfTestCommand command, int max) {
+        List<String> lines = new ArrayList<>(Math.min(max, command.getStdout().size() + command.getStderr().size()));
+        for (String line : command.getStdout()) {
+            if (lines.size() >= max) return lines;
+            lines.add(line);
+        }
+        for (String line : command.getStderr()) {
+            if (lines.size() >= max) return lines;
+            lines.add("! " + line);
+        }
+        return lines;
+    }
+
+    /** Raw commands and the head of their outputs, for the expandable section. Off main: can be long. */
     static String raw(Context context, List<SelfTestCommand> commands) {
         if (commands.isEmpty()) return context.getString(R.string.monitor_test_raw_empty);
         StringBuilder out = new StringBuilder();
@@ -271,8 +305,12 @@ final class MonitorFormat {
             out.append("$ ").append(command.getCommand()).append('\n');
             out.append(command.getTimedOut() ? context.getString(R.string.monitor_raw_timeout)
                     : context.getString(R.string.monitor_raw_exit, command.getExitCode()));
-            for (String line : command.getStdout()) out.append('\n').append(line);
-            for (String line : command.getStderr()) out.append("\n! ").append(line);
+            List<String> shown = cappedOutput(command, RAW_LINES_PER_COMMAND);
+            for (String line : shown) out.append('\n').append(line);
+            int hidden = command.getStdout().size() + command.getStderr().size() - shown.size();
+            if (hidden > 0) {
+                out.append('\n').append(context.getResources().getQuantityString(R.plurals.monitor_raw_more_lines, hidden, hidden));
+            }
         }
         return out.toString();
     }
