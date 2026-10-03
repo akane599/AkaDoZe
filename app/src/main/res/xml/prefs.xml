@@ -7,6 +7,10 @@
             android:icon="@drawable/ic_heart" />
     </PreferenceCategory>
     <PreferenceCategory android:title="Main" android:key="mainSettings">
+        <Preference
+            android:key="accessStatus"
+            android:persistent="false"
+            android:title="@string/access_settings_title" />
         <ListPreference
             android:defaultValue="root"
             android:entries="@array/execution_mode_entries"
@@ -14,6 +18,11 @@
             android:key="executionMode"
             android:summary="@string/execution_mode_setting_summary"
             android:title="@string/execution_mode_setting_title" />
+        <SwitchPreferenceCompat
+            android:defaultValue="true"
+            android:key="keepDozeEnforced"
+            android:summary="@string/keep_doze_enforced_setting_summary"
+            android:title="@string/keep_doze_enforced_setting_title" />
         <SwitchPreferenceCompat
             android:defaultValue="true"
             android:key="disableWhenCharging"
@@ -29,6 +38,11 @@
             android:key="showPersistentNotif"
             android:summary="@string/persistent_notification_setting_summary"
             android:title="@string/persistent_notification_setting_title" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="screenOnSummary"
+            android:summary="@string/screen_on_summary_setting_summary"
+            android:title="@string/screen_on_summary_setting_title" />
         <SwitchPreferenceCompat
             android:defaultValue="false"
             android:key="showDisabledNotification"
@@ -147,6 +161,27 @@
                 android:targetPackage="com.akylas.enforcedoze" />
         </Preference>
     </PreferenceCategory>
+    <PreferenceCategory android:title="@string/external_control_category_title" android:key="externalControl">
+        <SwitchPreferenceCompat
+            android:defaultValue="true"
+            android:key="allowExternalBasicControl"
+            android:summary="@string/allow_external_basic_setting_summary"
+            android:title="@string/allow_external_basic_setting_title" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="allowExternalPrivilegedControl"
+            android:summary="@string/allow_external_privileged_setting_summary"
+            android:title="@string/allow_external_privileged_setting_title" />
+        <Preference
+            android:key="taskerBroadcasts"
+            android:summary="@string/tasker_broadcast_setting_summary"
+            android:title="@string/tasker_broadcast_setting_title">
+            <intent
+                android:action="android.intent.action.VIEW"
+                android:targetClass="com.akylas.enforcedoze.TaskerBroadcastsActivity"
+                android:targetPackage="com.akylas.enforcedoze" />
+        </Preference>
+    </PreferenceCategory>
     <PreferenceCategory android:title="Other">
         <SwitchPreferenceCompat
             android:defaultValue="false"
@@ -173,15 +208,6 @@
             <intent
                 android:action="android.intent.action.VIEW"
                 android:targetClass="com.akylas.enforcedoze.LogActivity"
-                android:targetPackage="com.akylas.enforcedoze" />
-        </Preference>
-        <Preference
-            android:key="taskerBroadcasts"
-            android:summary="@string/tasker_broadcast_setting_summary"
-            android:title="@string/tasker_broadcast_setting_title">
-            <intent
-                android:action="android.intent.action.VIEW"
-                android:targetClass="com.akylas.enforcedoze.TaskerBroadcastsActivity"
                 android:targetPackage="com.akylas.enforcedoze" />
         </Preference>
         <Preference

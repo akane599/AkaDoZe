@@ -51,10 +51,16 @@ import com.akylas.enforcedoze.access.AccessManager;
 import com.akylas.enforcedoze.access.AccessLevel;
 import com.akylas.enforcedoze.access.AccessState;
 import com.akylas.enforcedoze.access.Reason;
+import com.akylas.enforcedoze.ui.AccessCard;
+import com.akylas.enforcedoze.ui.AccessUi;
 
 public class MainActivity extends AppCompatActivity implements CompoundButton.OnCheckedChangeListener,  SharedPreferences.OnSharedPreferenceChangeListener {
 
+    /** Notification "Restore now" action: reconciles the restore ledger through the service runtime. */
+    public static final String ACTION_RESTORE_NOW = "com.akylas.enforcedoze.action.RESTORE_NOW";
+
     private AccessManager accessManager;
+    private AccessCard accessCard;
     private boolean helpersRequested;
     private final AccessManager.Listener accessListener = this::onAccessChanged;
     private UpdateForceDozeEnabledState updateStateFromTile;
@@ -128,6 +134,8 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
 //        showDonateDevDialog = settings.getBoolean("showDonateDevDialog2", true);
         isDozeDisabled = settings.getBoolean("isDozeDisabled", false);
         accessManager = AccessManager.getInstance(this);
+        accessCard = new AccessCard(this, accessManager);
+        if (savedInstanceState == null) handleIntent(getIntent());
         AsyncTask.execute(() -> Utils.repairPreferencesPermissions(getApplicationContext()));
         ignoreLockscreenTimeout = settings.getBoolean("ignoreLockscreenTimeout", true);
         toggleForceDozeSwitch = (SwitchCompat) findViewById(R.id.switch1);
@@ -177,6 +185,7 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
             settings.registerOnSharedPreferenceChangeListener(this);
         }
         accessManager.addListener(accessListener);
+        accessCard.start();
         accessManager.refresh();
         ForceDozeService.requestSafetyCheck(this);
         updateToggleState();
@@ -190,8 +199,22 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
     protected void onPause() {
         super.onPause();
         accessManager.removeListener(accessListener);
+        accessCard.stop();
         if (settings != null) {
             settings.unregisterOnSharedPreferenceChangeListener(this);
+        }
+    }
+
+    @Override
+    protected void onNewIntent(@NonNull Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleIntent(intent);
+    }
+
+    private void handleIntent(Intent intent) {
+        if (intent != null && ACTION_RESTORE_NOW.equals(intent.getAction())) {
+            accessCard.restoreNow();
         }
     }
 
@@ -412,77 +435,7 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
     }
 
     public void showRootWorkaroundInstructions() {
-        View customAlertDialogView = LayoutInflater.from(this)
-                .inflate(R.layout.non_root_workaround, null, false);
-
-        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this);
-        builder.setTitle(getString(R.string.no_root_workaround_dialog_title));
-        builder.setView(customAlertDialogView);
-        builder.setMessage(getString(R.string.no_root_workaround_dialog_text));
-        builder.setPositiveButton(getString(R.string.okay_button_text), null);
-        customAlertDialogView.findViewById(R.id.copyBtn1).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                SpannableString command = (SpannableString) ((TextView)customAlertDialogView.findViewById(R.id.commandTxt1)).getText();
-                ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                ClipData clip = ClipData.newPlainText("Copied text", command);
-                clipboard.setPrimaryClip(clip);
-            }
-        });
-        customAlertDialogView.findViewById(R.id.copyBtn2).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                SpannableString command = (SpannableString) ((TextView)customAlertDialogView.findViewById(R.id.commandTxt2)).getText();
-                ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                ClipData clip = ClipData.newPlainText("Copied text", command);
-                clipboard.setPrimaryClip(clip);
-            }
-        });
-        customAlertDialogView.findViewById(R.id.shareBtn1).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                SpannableString command = (SpannableString) ((TextView)customAlertDialogView.findViewById(R.id.commandTxt1)).getText();
-                Intent sendIntent = new Intent();
-                sendIntent.setAction(Intent.ACTION_SEND);
-                sendIntent.putExtra(Intent.EXTRA_TEXT, command);
-                sendIntent.setType("text/plain");
-                startActivity(sendIntent);
-            }
-        });
-        customAlertDialogView.findViewById(R.id.shareBtn2).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                SpannableString command = (SpannableString) ((TextView)customAlertDialogView.findViewById(R.id.commandTxt2)).getText();
-                Intent sendIntent = new Intent();
-                sendIntent.setAction(Intent.ACTION_SEND);
-                sendIntent.putExtra(Intent.EXTRA_TEXT, command);
-                sendIntent.setType("text/plain");
-                startActivity(sendIntent);
-            }
-        });
-//        builder.setNeutralButton(getString(R.string.copy_command_button_text), new DialogInterface.OnClickListener() {
-//            @Override
-//            public void onClick(DialogInterface dialogInterface, int i) {
-//                dialogInterface.dismiss();
-//                ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-//                ClipData clip = ClipData.newPlainText("Copied text", command);
-//                clipboard.setPrimaryClip(clip);
-//
-//            }
-//        });
-//        builder.setNegativeButton(getString(R.string.share_command_button_text), new DialogInterface.OnClickListener() {
-//            @Override
-//            public void onClick(DialogInterface dialogInterface, int i) {
-//                dialogInterface.dismiss();
-//                Intent sendIntent = new Intent();
-//                sendIntent.setAction(Intent.ACTION_SEND);
-//                sendIntent.putExtra(Intent.EXTRA_TEXT, command);
-//                sendIntent.setType("text/plain");
-//                startActivity(sendIntent);
-//
-//            }
-//        });
-        builder.show();
+        AccessUi.showAdbInstructions(this);
     }
 
     public void showLockScreenTimeoutInfoDialog() {

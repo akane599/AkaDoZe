@@ -17,6 +17,8 @@ public class MyApplication extends android.app.Application {
     public void onCreate() {
         super.onCreate();
         MyApplication.context = getApplicationContext();
+        // App-lifetime notices: events can arrive from receivers while the service is not running.
+        ForceDozeService.addSink(this, com.akylas.enforcedoze.ui.NoticeSink.get(this));
     }
 
     public static Context getAppContext() {

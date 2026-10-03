@@ -70,7 +70,7 @@ public class ForceDozeService extends Service {
     public static final String EXTRA_REAPPLY_DEADLINE = "reapplyDeadlineElapsed";
 
     private static final String CHANNEL_STATS = "CHANNEL_STATS";
-    private static final String CHANNEL_TIPS = "CHANNEL_TIPS";
+    public static final String CHANNEL_TIPS = "CHANNEL_TIPS";
     private static final String CHANNEL_SILENT = "CHANNEL_SILENT";
     private static final int PERSISTENT_NOTIF_ID = 1234;
 
