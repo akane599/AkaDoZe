@@ -104,7 +104,7 @@ class DozeController(
             if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps.toList())
             // Already-on features belong to their existing owner; do not later undo their state.
             if (prior == null && original != null && (if (legacyNotification) original.startsWith("0,") else original == FeatureReadback.appliedValue(feature))) {
-                steps.add(verifyEnter(feature, target))
+                steps.add(verifyEnter(feature, target).copy(alreadyOn = true))
                 if (feature == Feature.FORCE_DOZE) groupsAdmitted = lastDeep == DeepState.IDLE
                 if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps.toList())
                 continue

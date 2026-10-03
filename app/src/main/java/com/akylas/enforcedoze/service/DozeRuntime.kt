@@ -58,21 +58,35 @@ class DozeRuntime(context: Context) {
     val session = SessionLifecycle()
     var sessionActive: Boolean
         get() = session.active
-        set(value) { session.active = value }
+        set(value) {
+            session.active = value
+            screenOffPending = false
+        }
+    @Volatile private var screenOffPending = false
+
+    fun screenOffReceived() {
+        screenOffPending = true
+        bumpGeneration()
+    }
     @Volatile var allowToken: String = app.packageName
     private var thread: HandlerThread? = null
     private var handler: Handler? = null
-    private var serviceAttached = false
+    private val selfTests = SelfTestQueue()
+    private var shutdownQueued = false
     private var deferred: Runnable? = null
 
     @Synchronized
     fun attachService(): Handler {
-        serviceAttached = true
+        selfTests.attach()
         return worker()
     }
 
     @Synchronized
-    fun detachService() { serviceAttached = false }
+    fun detachService(teardown: Runnable) {
+        selfTests.detach()
+        // Enqueue atomically with detach, before an idle shutdown can retire this worker.
+        worker().post(teardown)
+    }
 
     @Synchronized
     fun worker(): Handler {
@@ -86,12 +100,24 @@ class DozeRuntime(context: Context) {
     /** Called at the end of queued teardown; a newly attached service can retain the same worker. */
     @Synchronized
     fun quitIfDetached() {
-        if (!serviceAttached) {
-            // Cleanup has finished. Drop redundant queued safety requests instead of draining them
-            // concurrently with a replacement worker after the handler is detached.
-            thread?.quit()
-            thread = null
-            handler = null
+        if (selfTests.attached || shutdownQueued) return
+        shutdownQueued = true
+        worker().looper.queue.addIdleHandler {
+            synchronized(this) {
+                if (selfTests.attached) {
+                    shutdownQueued = false
+                    false
+                } else if (handler?.hasMessages(0) == true) {
+                    // Also drain delayed callbacks; never overlap a draining and replacement worker.
+                    true
+                } else {
+                    thread?.quitSafely()
+                    thread = null
+                    handler = null
+                    shutdownQueued = false
+                    false
+                }
+            }
         }
     }
 
@@ -134,26 +160,32 @@ class DozeRuntime(context: Context) {
 
     /** doze-worker only. Raw outputs are recorded for this run alone; BUSY while a session is active. */
     fun runSelfTest(kind: SelfTestKind): SelfTestResult {
+        if (!selfTests.attached) return SelfTestResult(kind, SelfTestOutcome.CANCELLED)
         val commands = mutableListOf<SelfTestCommand>()
+        val feature = if (kind == SelfTestKind.DOZE) Feature.FORCE_DOZE else Feature.MOTION_SENSORS
+        journal.beginSelfTest(feature)
         selfTestRecorder = commands
         val result = try {
-            SelfTest(controller, CapabilityResolver, journal::addSink, journal::removeSink, { sessionActive }, ::checkSafety)
+            SelfTest(
+                controller, CapabilityResolver, journal::addSink, journal::removeSink,
+                { sessionActive }, ::checkSafety, { selfTests.attached && !screenOffPending },
+            )
                 .run(kind, DozeConfig(Build.VERSION.SDK_INT, access.level, grants(), allowToken = allowToken))
         } finally {
             selfTestRecorder = null
+            journal.endSelfTest()
         }
         return result.copy(commands = commands.toList())
     }
 
-    /** The callback runs on doze-worker; presentation must post to its own thread. */
+    /** Queued callbacks run on doze-worker; immediate rejection may run on the caller thread. */
     @Synchronized
     fun requestSelfTest(kind: SelfTestKind, callback: SelfTestCallback) {
-        worker().post {
-            try {
-                val result = try { runSelfTest(kind) } catch (_: Exception) { SelfTestResult(kind, SelfTestOutcome.FAILED) }
-                callback.onResult(result)
-            } finally { quitIfDetached() }
-        }
+        selfTests.request(kind, callback, { job ->
+            worker().post {
+                try { job.run() } finally { quitIfDetached() }
+            }
+        }, { runSelfTest(kind) })
     }
 
     fun recordAccessDebt() {
@@ -252,9 +284,9 @@ class DozeRuntime(context: Context) {
                     journal.emit(DozeEvent(
                         if (!verified) EventType.RESTORE_FAILED else if (action == Action.RESTORE_SENSORS)
                             EventType.SENSORS_RESTORED else EventType.VERIFY,
-                        action.name,
+                        action.name, feature = feature,
                     ))
-                    if (!verified) journal.emit(DozeEvent(EventType.RECOVERY_DEBT, action.name))
+                    if (!verified) journal.emit(DozeEvent(EventType.RECOVERY_DEBT, action.name, feature = feature))
                 }
             }
         }

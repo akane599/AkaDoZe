@@ -27,6 +27,49 @@ class SessionAggregatorTest {
         JournalEvent(1, time, 1_700_000_000_000 + time, 10, Source.OS_HISTORY, null,
             detail = reason, historyKind = kind)
 
+
+    @Test fun selfTestsHaveDistinctExcludedIdentitiesInFreshProcessAndAfterRealSession() {
+        val identity = JournalIdentity()
+        identity.beginSelfTest(com.akylas.enforcedoze.access.Feature.FORCE_DOZE, 100)
+        val firstId = identity.forEvent(com.akylas.enforcedoze.access.Feature.FORCE_DOZE)
+        val first = event(1, deep = DeepState.IDLE, session = firstId)
+        assertTrue(firstId < 0)
+        assertTrue(SessionAggregator.summarize(listOf(first)).isEmpty())
+        identity.endSelfTest()
+        identity.beginSession(200)
+        val realId = identity.sessionId
+        val real = listOf(event(10, EventType.SCREEN_OFF, session = realId),
+            event(20, EventType.SCREEN_ON, session = realId))
+        val expected = SessionAggregator.summarize(real)
+        identity.beginSelfTest(com.akylas.enforcedoze.access.Feature.MOTION_SENSORS, 100)
+        val secondId = identity.forEvent(com.akylas.enforcedoze.access.Feature.MOTION_SENSORS)
+        assertTrue(secondId < firstId)
+        assertEquals(realId, identity.forEvent(com.akylas.enforcedoze.access.Feature.WIFI))
+        val testEvents = listOf(event(21, EventType.VERIFY, deep = DeepState.IDLE, session = secondId),
+            event(22, EventType.RESTORE_FAILED, session = secondId),
+            event(23, EventType.RECOVERY_DEBT, session = secondId))
+        assertEquals(expected, SessionAggregator.summarize(real + first + testEvents))
+        identity.endSelfTest()
+        assertEquals(realId, identity.forEvent(null))
+        // Unrelated restoration is still part of the normal journal and surfaces real debt.
+        val unrelated = event(24, EventType.RESTORE_FAILED, session = identity.forEvent(com.akylas.enforcedoze.access.Feature.WIFI))
+        assertTrue(Problem.RESTORE_FAILED in SessionAggregator.summarize(real + unrelated).single().problems)
+    }
+
+    @Test fun receiverTimestampKeepsWorkerQueueDelayAsUnknownCoverage() {
+        val off = JournalEvent.fromDozeEvent(
+            com.akylas.enforcedoze.doze.DozeEvent(EventType.SCREEN_OFF, "SCREEN_OFF"),
+            1, 1_000, 100_000, 10,
+        )
+        val summary = SessionAggregator.summarize(listOf(off,
+            event(9_000, deep = DeepState.IDLE), event(10_000, EventType.SCREEN_ON),
+        )).single()
+        assertEquals(1_000L, summary.startElapsed)
+        assertEquals(100_000L, summary.startWallTime)
+        assertEquals(9_000L, summary.durationMs)
+        assertEquals(8_000L, summary.coverageMs.getValue(Coverage.UNKNOWN))
+    }
+
     @Test fun cleanNightHasVerifiedDeep95PercentAndElapsedDuration() {
         val summary = SessionAggregator.summarize(listOf(
             event(0, EventType.SCREEN_OFF, DeepState.ACTIVE, LightState.ACTIVE, battery = 80, charging = false),
