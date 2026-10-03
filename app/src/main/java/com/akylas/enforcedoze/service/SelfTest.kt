@@ -48,9 +48,19 @@ data class SelfTestCommand(
     val timedOut: Boolean,
 ) {
     companion object {
+        const val MAX_LINES = 200
+        const val MAX_LINE_CHARS = 1_000
+
         @JvmStatic
-        fun of(command: String, result: CommandResult) =
-            SelfTestCommand(command, result.exitCode, result.stdout, result.stderr, result.timedOut)
+        fun of(command: String, result: CommandResult): SelfTestCommand {
+            fun bounded(lines: List<String>): List<String> {
+                val kept = lines.take(MAX_LINES).map {
+                    if (it.length > MAX_LINE_CHARS) it.take(MAX_LINE_CHARS) + "…" else it
+                }
+                return if (lines.size > MAX_LINES) kept + "[truncated ${lines.size - MAX_LINES} lines]" else kept
+            }
+            return SelfTestCommand(command, result.exitCode, bounded(result.stdout), bounded(result.stderr), result.timedOut)
+        }
     }
 }
 
@@ -70,6 +80,49 @@ fun interface SelfTestCallback {
     fun onResult(result: SelfTestResult)
 }
 
+/** Admission and one-shot completion shared by the Android queue and JVM queue regressions. */
+internal class SelfTestQueue {
+    @Volatile var attached = false
+        private set
+    private val pending = mutableSetOf<Request>()
+
+    @Synchronized fun attach() { attached = true }
+    @Synchronized fun detach() {
+        attached = false
+        pending.forEach { it.cancelled = true }
+    }
+
+    @Synchronized
+    fun request(kind: SelfTestKind, callback: SelfTestCallback, post: (Runnable) -> Boolean, run: () -> SelfTestResult) {
+        val request = Request(kind, callback)
+        if (!attached) {
+            request.complete(SelfTestResult(kind, SelfTestOutcome.CANCELLED))
+            return
+        }
+        pending += request
+        if (!post(Runnable {
+            val admitted = synchronized(this) { pending.remove(request); attached && !request.cancelled }
+            val result = if (!admitted) SelfTestResult(kind, SelfTestOutcome.CANCELLED) else {
+                try { run() } catch (_: Exception) { SelfTestResult(kind, SelfTestOutcome.FAILED) }
+            }
+            request.complete(result)
+        })) {
+            pending.remove(request)
+            request.complete(SelfTestResult(kind, SelfTestOutcome.CANCELLED))
+        }
+    }
+
+    private class Request(val kind: SelfTestKind, val callback: SelfTestCallback) {
+        var cancelled = false
+        private var completed = false
+        @Synchronized fun complete(result: SelfTestResult) {
+            if (completed) return
+            completed = true
+            try { callback.onResult(result) } catch (_: Exception) { /* Presentation only. */ }
+        }
+    }
+}
+
 /**
  * Pure self-test core: the single controller applies one step through the ledger, the ledger exit
  * restores it in finally, then the SafetyNet check runs. Callers run it only on doze-worker.
@@ -81,8 +134,10 @@ class SelfTest(
     private val removeSink: (DozeEventSink) -> Unit,
     private val sessionActive: () -> Boolean,
     private val safetyCheck: () -> Unit,
+    private val admission: () -> Boolean = { true },
 ) {
     fun run(kind: SelfTestKind, config: DozeConfig): SelfTestResult {
+        if (!admission()) return SelfTestResult(kind, SelfTestOutcome.CANCELLED)
         // Never race the real session: a pending enter or an admitted screen-off session owns the system.
         if (sessionActive()) return SelfTestResult(kind, SelfTestOutcome.BUSY)
         val feature = if (kind == SelfTestKind.DOZE) Feature.FORCE_DOZE else Feature.MOTION_SENSORS
@@ -107,6 +162,7 @@ class SelfTest(
         addSink(sink)
         var step: StepResult? = null
         var failed = false
+        var cancelled = false
         var restoreComplete = false
         var restoreErrors = emptyList<ExitError>()
         try {
@@ -115,7 +171,8 @@ class SelfTest(
             val result = controller.enterCore(
                 config.copy(restrictSensors = kind == SelfTestKind.SENSORS, batterySaver = false),
                 generation,
-            ) { kind == SelfTestKind.DOZE || !concluded }
+            ) { admission() && (kind == SelfTestKind.DOZE || !concluded) }
+            cancelled = !admission() || generation != controller.currentGeneration
             step = result.steps.lastOrNull { it.feature == feature }
         } catch (_: Exception) {
             failed = true
@@ -123,7 +180,8 @@ class SelfTest(
             applying = false
             try {
                 val exit = controller.exit(config.apiLevel, config.grants)
-                restoreComplete = exit.complete
+                restoreComplete = ExitError.LEDGER_LOAD_FAILED !in exit.errors &&
+                    exit.remaining.entries.none { it.feature == feature }
                 restoreErrors = exit.errors
             } catch (_: Exception) {
                 restoreComplete = false
@@ -139,7 +197,8 @@ class SelfTest(
         val outcome = when {
             !restoreComplete -> SelfTestOutcome.RESTORE_INCOMPLETE
             failed -> SelfTestOutcome.FAILED
-            applied == null -> SelfTestOutcome.CANCELLED
+            cancelled || applied == null -> SelfTestOutcome.CANCELLED
+            applied.alreadyOn -> SelfTestOutcome.NOT_VERIFIED
             applied.status == StepStatus.SKIPPED -> SelfTestOutcome.UNAVAILABLE
             applied.status == StepStatus.UNVERIFIED -> SelfTestOutcome.NOT_VERIFIED
             else -> SelfTestOutcome.PASSED

@@ -353,11 +353,12 @@ public class ForceDozeService extends Service {
         broadcasts.unregisterReceiver(reloadNotificationBlocklistReceiver);
         broadcasts.unregisterReceiver(reloadAppsBlocklistReceiver);
         broadcasts.unregisterReceiver(ignoreBatteryResultReceiver);
-        worker.removeCallbacksAndMessages(null);
-        runtime.detachService();
+        // Cancel only service callbacks. Runtime self-tests must still deliver their result.
+        cancelEnter();
+        if (pendingNotification != null) worker.removeCallbacks(pendingNotification);
         CountDownLatch stopped = new CountDownLatch(1);
         long deadline = runtime.getClock().elapsedRealtime() + SessionLifecycle.TEARDOWN_COMMAND_MS;
-        worker.post(() -> {
+        runtime.detachService(() -> {
             try {
                 runtime.withDeadline(deadline, () -> {
                     runtime.recordExit(runtime.getController().exit(Build.VERSION.SDK_INT, runtime.grants()));
@@ -1122,6 +1123,8 @@ public class ForceDozeService extends Service {
     class DozeReceiver extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
+            long receivedElapsed = runtime.getClock().elapsedRealtime();
+            long receivedWall = runtime.getClock().wallTime();
             String action = intent.getAction();
             boolean exitTrigger = Intent.ACTION_USER_PRESENT.equals(action) && waitForUnlock
                     || Intent.ACTION_SCREEN_ON.equals(action) && !waitForUnlock
@@ -1133,13 +1136,16 @@ public class ForceDozeService extends Service {
                 runtime.setSessionActive(false);
                 runtime.bumpGeneration();
             }
+            // Cancel an in-flight self-test at its next admission boundary, before worker dispatch.
+            if (Intent.ACTION_SCREEN_OFF.equals(action)) runtime.screenOffReceived();
             long epoch = exitEpoch.get();
             long generation = runtime.getController().getCurrentGeneration();
-            postWork(() -> receiveOnWorker(action, exitTrigger, epoch, generation));
+            postWork(() -> receiveOnWorker(action, exitTrigger, epoch, generation, receivedElapsed, receivedWall));
         }
     }
 
-    private void receiveOnWorker(String action, boolean exitTrigger, long epoch, long generation) {
+    private void receiveOnWorker(String action, boolean exitTrigger, long epoch, long generation,
+                                 long receivedElapsed, long receivedWall) {
         if (Intent.ACTION_SCREEN_ON.equals(action)) {
             cancelEnter();
             // Keyguard biometrics must wake before USER_PRESENT; all other intent stays owned.
@@ -1152,8 +1158,9 @@ public class ForceDozeService extends Service {
             if (exitTrigger) handleScreenOn(this, 0, 0);
         } else if (Intent.ACTION_SCREEN_OFF.equals(action)) {
             runtime.getWatchdog().resetSession();
-            runtime.getJournal().beginSession();
-            runtime.getJournal().screen(EventType.SCREEN_OFF, Utils.getBatteryLevel(this), Utils.isConnectedToCharger(this));
+            runtime.getJournal().beginSession(receivedWall);
+            runtime.getJournal().screen(EventType.SCREEN_OFF, Utils.getBatteryLevel(this), Utils.isConnectedToCharger(this),
+                    receivedElapsed, receivedWall);
             if (!runtime.getSession().activate(epoch, exitEpoch::get, () -> Utils.isScreenOn(this))) return;
             runtime.bumpGeneration();
             maintenance = false;

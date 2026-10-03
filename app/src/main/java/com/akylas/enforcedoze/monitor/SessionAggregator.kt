@@ -44,7 +44,7 @@ object SessionAggregator {
     @JvmStatic
     fun summarize(events: List<JournalEvent>): List<SessionSummary> {
         val result = mutableListOf<SessionSummary>()
-        val groups = events.groupBy { it.bootId to it.sessionId }
+        val groups = events.filter { it.sessionId >= 0 }.groupBy { it.bootId to it.sessionId }
             .toSortedMap(compareBy<Pair<Int, Long>> { it.first }.thenBy { it.second })
         for ((_, group) in groups) {
             val sorted = group.sortedBy { it.elapsedRealtime }

@@ -59,6 +59,8 @@ data class StepResult(
     val target: String?,
     val status: StepStatus,
     val reason: Reason? = null,
+    /** Readback only: the state was already enabled by an existing owner. */
+    val alreadyOn: Boolean = false,
 )
 
 data class EnterResult(val status: EnterStatus, val steps: List<StepResult>)

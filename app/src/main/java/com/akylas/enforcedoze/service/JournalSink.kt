@@ -2,6 +2,8 @@ package com.akylas.enforcedoze.service
 
 import android.content.Context
 import android.util.Log
+import com.akylas.enforcedoze.access.Feature
+import com.akylas.enforcedoze.monitor.JournalIdentity
 import com.akylas.enforcedoze.doze.Clock
 import com.akylas.enforcedoze.doze.DozeEvent
 import com.akylas.enforcedoze.doze.DozeEventSink
@@ -20,22 +22,33 @@ class JournalSink(context: Context, private val clock: Clock) : DozeEventSink {
     private val sinks = EventSinks()
     fun addSink(sink: DozeEventSink) = sinks.addSink(sink)
     fun removeSink(sink: DozeEventSink) = sinks.removeSink(sink)
-    @Volatile var sessionId: Long = 0L
-        private set
+    private val identity = JournalIdentity()
+    val sessionId: Long get() = identity.sessionId
 
     /** Read-only journal access for the Monitor; futures complete on the journal worker, never block main. */
     @JvmOverloads
     fun queryRecent(limit: Int = JournalDb.MAX_ROWS): Future<List<JournalEvent>> = db.queryRecent(limit)
     fun querySession(sessionId: Long, bootId: Int): Future<List<JournalEvent>> = db.querySession(sessionId, bootId)
 
-    fun beginSession() {
-        sessionId = maxOf(sessionId + 1, clock.wallTime())
+    @JvmOverloads
+    fun beginSession(wallTime: Long = clock.wallTime()) {
+        identity.beginSession(wallTime)
     }
+
+    fun beginSelfTest(feature: Feature) = identity.beginSelfTest(feature, clock.wallTime())
+    fun endSelfTest() = identity.endSelfTest()
 
     override fun emit(event: DozeEvent) = record(event, null, null)
 
-    fun screen(type: EventType, battery: Int, charging: Boolean) {
-        record(DozeEvent(type, type.name), battery.takeIf { it in 0..100 }, charging)
+    @JvmOverloads
+    fun screen(
+        type: EventType,
+        battery: Int,
+        charging: Boolean,
+        elapsedRealtime: Long = clock.elapsedRealtime(),
+        wallTime: Long = clock.wallTime(),
+    ) {
+        record(DozeEvent(type, type.name), battery.takeIf { it in 0..100 }, charging, elapsedRealtime, wallTime)
     }
 
     /** Called only on doze-worker, after the ending session's exit events have been enqueued. */
@@ -56,10 +69,16 @@ class JournalSink(context: Context, private val clock: Clock) : DozeEventSink {
         }
     }
 
-    private fun record(event: DozeEvent, battery: Int?, charging: Boolean?) {
+    private fun record(
+        event: DozeEvent,
+        battery: Int?,
+        charging: Boolean?,
+        elapsedRealtime: Long = clock.elapsedRealtime(),
+        wallTime: Long = clock.wallTime(),
+    ) {
         try {
             db.insert(JournalEvent.fromDozeEvent(
-                event, bootId, clock.elapsedRealtime(), clock.wallTime(), sessionId, battery, charging,
+                event, bootId, elapsedRealtime, wallTime, identity.forEvent(event.feature), battery, charging,
             ))
         } catch (error: Exception) {
             Log.e("DozeJournal", "Journal enqueue failed", error)
