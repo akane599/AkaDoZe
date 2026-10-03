@@ -1,6 +1,6 @@
 # Privileged Commands, Transports and Events
 
-*Last Updated: 2026-10-03*
+*Last Updated: 2026-10-04*
 
 ## Transports (`access/`)
 
@@ -9,7 +9,8 @@
 - the Shizuku binder, its permission and its death;
 - su discovery, run off-main on `access-probe`.
 
-It publishes `AccessState(level, …, grants, …)`. Listeners get updates on main; blocking commands refuse to run on main.
+It publishes `AccessState(level, …, grants, …, resolved)`. `resolved` stays false only during bounded cold-start
+discovery (`AccessResolution.kt`). Listeners get updates on main; blocking commands refuse to run on main.
 
 | Backend | File | Mechanism |
 |---------|------|-----------|
@@ -54,7 +55,8 @@ physical-device gaps, is in `docs/doze-feature-ledger.md`.
 | Notification block | API 33+: `pm revoke|grant POST_NOTIFICATIONS` + user-fixed flags; below: `service call notification <txn>` (root, UNVERIFIED) | `dumpsys package` / `dumpsys notification` |
 | All-sensor privacy (root) | `service call sensor_privacy <txn>` | `dumpsys sensor_privacy` |
 | Tunables | `cmd device_config put device_idle` (API 34+) or `settings put global device_idle_constants` | matching `get` |
-| Whitelist | `dumpsys deviceidle whitelist +pkg|-pkg` | structured `whitelist` dump |
+| Whitelist | `dumpsys deviceidle whitelist +pkg|-pkg` | structured `whitelist` dump (`WhitelistParser.kt`: COMMAND_FAILED / TIMED_OUT / PARTIALLY_PARSED / EMPTY) |
+| Focused app (read only) | `dumpsys window` | `mCurrentFocus` / `mFocusedApp` (`doze/parse/FocusedAppParser.kt`); a failed or unfamiliar dump is Unknown |
 
 Package names are validated by `CapabilityResolver.PackageNames` before they reach a command. External input is never
 interpolated into a shell string.

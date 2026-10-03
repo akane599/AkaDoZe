@@ -1,6 +1,6 @@
 # Architecture
 
-*Last Updated: 2026-10-03*
+*Last Updated: 2026-10-04*
 
 ## Overview
 
@@ -57,13 +57,30 @@ Two rules decide what works:
 | Admission | `ForceDozeService.admitted` | Active session, SHELL/ROOT, healthy ledger, `serviceEnabled`, due time, screen/schedule/charging/call policy |
 | Enter | `enterDoze` → `DozeController.enterCore` / `enterGroups` | Reads the original value, **saves the ledger entry before any mutation**, then battery saver → sensor restriction → force-idle. Feature groups (radios, location, biometrics, app suspend, notification block) wait for a verified deep IDLE |
 | Verify | `DozeController.verifyEnter` | Readback is the oracle (sensor mode + allow token, `get deep`). Exit code 0 alone is never success; unknown/OEM output is UNVERIFIED and never retried in a loop |
-| While dozing | `idleChanged` → `DozeController.maintenance` + `WatchdogPolicy.onIdleChanged` | Radios restored/reapplied around maintenance windows; reforce after motion (`keepDozeEnforced`, ≤5 per session, ≥60 s apart) |
+| While dozing | `idleChanged` → `DozeController.maintenance` + `WatchdogPolicy.onIdleChanged` | Radios restored/reapplied around maintenance windows; reforce after motion (`keepDozeEnforced`, ≤5 per session, ≥60 s apart). External REAPPLY uses `WatchdogPolicy.onExternalReapply` (same spacing and budget, never cuts maintenance); a generation bump cancels a deferred reforce |
 | Screen on / unlock | `handleScreenOn` → `exitDoze` → `DozeController.exit` | Restores from the ledger, never from current prefs: **sensors → unforce → battery saver → the rest in reverse apply order**. Biometrics are restored at screen-on even when waiting for unlock |
 | Safety | `DozeRuntime.checkSafety` (SafetyNet) | Verifies sensors NORMAL and `mForceIdle=false` when the app owns them; otherwise journals RECOVERY_DEBT. Also runs at startup reconcile and on Main resume |
 | Service stop | `ForceDozeService.onDestroy` | Worker-side time-boxed exit (3.5 s command budget, 4 s main wait; `SessionLifecycle`) with a deadline admission. Entries it doesn't reach stay untouched, and an incomplete exit queues a deadline-free restore-only follow-up under the `forcedoze:restore` 30 s wakelock |
 
 Failed restores stay in the ledger (attempts/debt). RECOVERY_DEBT is announced when an entry first fails or its debt flag
 changes; RESTORE_FAILED is journaled on every pass. The access card and Monitor show debt with "Restore now".
+Damaged ledger lines: FORCE_DOZE / MOTION_SENSORS lines auto-clear after verified recovery; others stay as dismissible
+debt (`ui/DamagedRecords` → `DozeRuntime.clearRetainedCorruption`).
+
+## Restore outside a session
+
+- **Access discovery is bounded.** `access/AccessResolution` reports access "unresolved" only during cold-start
+  discovery: a 10 s Shizuku window, root 1 probe + 3 retries. A binder death after the binder was seen means no access
+  at once. Unresolved access never touches durable intent.
+- **Restore-only windows.** `DozeRuntime.requestRestoreOnly` runs without a foreground service: a 9 s
+  `RestoreOnlyRequest` window under the 30 s `forcedoze:restore` wakelock that reconciles and runs the safety check once
+  SHELL/ROOT is ready. Triggers: boot and package update with the service off (gated by `service/BootRestore.hasPending`),
+  `requestSafetyCheck` (Main / Monitor / access card resume, mode switch) and the teardown follow-up when access is still unresolved.
+- **One continuation.** Windows that end without SHELL/ROOT arm the runtime's single process-level
+  `RestoreContinuation`: one subscription, one follow-up window when access arrives, then disarmed.
+- **Reset.** `DozeRuntime.resetSystemState` (Settings) bumps the generation, restores from the ledger and runs
+  `service/SystemReset` on the worker. `OK` means readback-confirmed; "Reset complete" needs restore COMPLETE and every
+  step OK. Prefs are never cleared there; `ui/ResetReport` clears them, keeping restore-intent keys while debt remains.
 
 ## State
 

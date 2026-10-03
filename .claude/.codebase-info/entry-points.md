@@ -1,6 +1,6 @@
 # Entry Points
 
-*Last Updated: 2026-10-03*
+*Last Updated: 2026-10-04*
 
 All components are declared in `app/src/main/AndroidManifest.xml`. Classes live in
 `app/src/main/java/com/akylas/enforcedoze/` unless prefixed `ui.`.
@@ -11,9 +11,9 @@ All components are declared in `app/src/main/AndroidManifest.xml`. Classes live 
 |-------|----------|---------|
 | `MainActivity` | yes (launcher, shortcuts) | Master switch, access card (`ui/AccessCard`), navigation, safety check on resume |
 | `ui.DozeMonitorActivity` | yes (`QS_TILE_PREFERENCES`: long-press a tile) | Live Doze state, self-tests ("Test Doze now", "Test sensor restriction"), session list/timeline, "Restore system state", "Share report". Long-presses on other tiles are forwarded |
-| `SettingsActivity` | no | Capability-aware preferences (`res/xml/prefs.xml`), mode switch root ↔ Shizuku (`ui/ModeSwitchRules`), "Other apps" gates |
+| `SettingsActivity` | no | Capability-aware preferences (`res/xml/prefs.xml`), mode switch root ↔ Shizuku (`ui/ModeSwitchRules`), "Other apps" gates, readback-verified reset (`DozeRuntime.resetSystemState` → `ui/ResetReport`) |
 | `DozeTunablesActivity` | no | `device_idle` tunables with per-key apply result |
-| `WhitelistAppsActivity` | no | System Doze whitelist, readback-verified |
+| `WhitelistAppsActivity` | no | System Doze whitelist, readback-verified (`access/WhitelistParser`, `ui/WhitelistUi`) |
 | `BlockAppsActivity` / `BlockNotificationsActivity` | no | App-suspend / notification-block lists |
 | `DozeBatteryStatsActivity`, `DozeStatsActivity` | no | Legacy stats (`dozeUsageDataAdvanced`) |
 | `LogActivity` | no | logcat view + share via FileProvider |
@@ -37,7 +37,7 @@ All components are declared in `app/src/main/AndroidManifest.xml`. Classes live 
 |--------|----------|------|--------|
 | `ENABLE_FORCEDOZE` | `EnableForceDozeService` | basic | — |
 | `DISABLE_FORCEDOZE` | `DisableForceDozeService` | basic | — |
-| explicit component, no filter | `ReenterDoze` | basic | — (reapply; never cancels a pending enter or shortens `dozeEnterDelay`) |
+| explicit component, no filter | `ReenterDoze` | basic | — (reapply; never cancels a pending enter or shortens `dozeEnterDelay`; shares the watchdog's 60 s spacing and 5-per-session budget, skipped during maintenance or an unknown light state on API 24+) |
 | `ADD_WHITELIST` / `REMOVE_WHITELIST` | `AddWhiteListReceiver` / `RemoveWhiteListReceiver` | privileged | `packageName` |
 | `CHANGE_SETTING` | `SettingsChangeReceiver` | privileged | `settingName`, `settingValue` |
 
@@ -55,8 +55,8 @@ All components are declared in `app/src/main/AndroidManifest.xml`. Classes live 
 
 | Trigger | Receiver |
 |---------|----------|
-| `BOOT_COMPLETED` (code also accepts locked boot) | `BootCompleteReceiver`: start the service if enabled, re-arm schedule |
-| `MY_PACKAGE_REPLACED` | `AutoRestartOnUpdate`: restart the service if enabled |
+| `BOOT_COMPLETED` (locked boot is ignored: credential-protected prefs aren't readable yet) | `BootCompleteReceiver`: start the service if enabled, else a `goAsync` restore-only window when `BootRestore.hasPending`; re-arm schedule |
+| `MY_PACKAGE_REPLACED` | `AutoRestartOnUpdate`: restart the service if enabled, else the same restore-only window |
 | Schedule alarm | `CustomDozePeriodReceiver` (not exported) |
 | Dynamic, not exported | `ForceDozeService.DozeReceiver`: screen/power/unlock/(light) idle changes |
 | Launcher shortcuts | `res/xml/shortcuts.xml` |

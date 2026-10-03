@@ -1,6 +1,6 @@
 # Patterns, Style and Known Oddities
 
-*Last Updated: 2026-10-03*
+*Last Updated: 2026-10-04*
 
 ## Patterns
 
@@ -27,7 +27,7 @@
   on main.
 - **Wakelocks.**
   - `forcedoze:tempWakelock` (10 min cap) covers delayed entry.
-  - `forcedoze:restore` (30 s cap) covers the teardown follow-up.
+  - `forcedoze:restore` (30 s cap) covers the teardown follow-up and every restore-only window.
 - **Singletons**: `AccessManager`, `MyApplication.getDozeRuntime()`, `DozeTunableHandler.getInstance`,
   `NotificationService.getInstance`.
 
@@ -40,17 +40,17 @@
 
 ## Testing
 
-`app/src/test/java/com/akylas/enforcedoze/` has 42 JVM sources with 265 `@Test` methods (JUnit 4.13.2, no mocking library):
+`app/src/test/java/com/akylas/enforcedoze/` has 58 JVM sources with 387 `@Test` methods (JUnit 4.13.2, no mocking library):
 
 | Package | Files | Tests |
 |---------|-------|-------|
-| root | 2 | 14 |
-| access | 8 | 32 |
-| doze | 7 | 81 |
-| doze/parse | 6 | 23 |
-| monitor | 4 | 28 |
-| service | 12 | 64 |
-| ui | 3 | 23 |
+| root | 2 | 15 |
+| access | 10 | 39 |
+| doze | 9 | 102 |
+| doze/parse | 7 | 30 |
+| monitor | 5 | 29 |
+| service | 21 | 136 |
+| ui | 4 | 36 |
 
 The suites use these styles:
 - fake-backed behaviour tests: `FakeRunner` (a `CommandRunner`), `FakeClock` and an in-memory ledger store, in

@@ -1,13 +1,13 @@
 # Codebase Map — AkaDoZe (EnforceDoze fork)
 
-*Last Updated: 2026-10-03*
+*Last Updated: 2026-10-04*
 
 AkaDoZe is an Android app that forces Doze right after screen-off and restricts motion sensors. It can also apply
 optional radio, location, biometrics, app-suspend and notification-block toggles while the device dozes. It works through
 root (libsuperuser) or Shizuku, and every change is verified by readback and undone from a durable restore ledger. The
 package is `com.akylas.enforcedoze`, and the current version is 1.11.0 (AkaDoZe 2.0).
 
-**Stack:** Java (51 files) + Kotlin (44) · XML Views + AndroidX Preference · platform SQLite · Groovy Gradle 8.13 / AGP 8.13.2 · minSdk 23, target/compile 36
+**Stack:** Java (54 files) + Kotlin (51) · XML Views + AndroidX Preference · platform SQLite · Groovy Gradle 8.13 / AGP 8.13.2 · minSdk 23, target/compile 36
 **Shape:** a single `:app` module in seven packages. The root package is the Android shell; pure Kotlin logic lives in
 `access/`, `doze/` (+ `parse/`), `monitor/` and `service/`; the newer screens are in `ui/`.
 
@@ -15,7 +15,7 @@ package is `com.akylas.enforcedoze`, and the current version is 1.11.0 (AkaDoZe 
 
 | Document | What's inside |
 |----------|---------------|
-| [architecture.md](./architecture.md) | Layers, access levels, the screen-off → Doze → restore flow, teardown, debt |
+| [architecture.md](./architecture.md) | Layers, access levels, the screen-off → Doze → restore flow, teardown, debt, restore-only windows, reset |
 | [entry-points.md](./entry-points.md) | Manifest components, gated automation API, tiles, alarms, boot/update triggers |
 | [communication.md](./communication.md) | Transports and lanes, capability matrix, command catalogue, engine events, local broadcasts |
 | [database.md](./database.md) | Preferences, restore ledger format, notice store, SQLite journal schema, backup rules |
