@@ -99,6 +99,12 @@ class WatchdogPolicy(private val clock: Clock) {
         return null
     }
 
+    /** Forget a cancelled callback without changing spacing or the session budget. */
+    @Synchronized
+    fun cancelDeferred() {
+        deferred = false
+    }
+
     @Synchronized
     fun resetSession() {
         lastReforce = null
