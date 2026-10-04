@@ -110,6 +110,36 @@ public class ConsumerLogicTest {
         assertEquals(Reason.NOT_EFFECTIVE_ON_THIS_VERSION, applied.reason);
     }
 
+    @Test public void shellTunablesAtApi30UseGlobalFallbackAndVerifyEveryKey() {
+        Runner control = new Runner(AccessLevel.SHELL, result(0));
+        Runner reads = new Runner(AccessLevel.SHELL, result(0, "Settings:", "  inactive_to=+5m0s0ms", "  idle_factor=2.0", "  idle_to=42"));
+        DozeTunableHandler.ApplyResult applied = DozeTunableHandler.apply(control, reads, 30,
+                new Grants(false, false), "inactive_to=300000,idle_factor=2,idle_to=60,absent_to=10");
+        assertEquals(Collections.singletonList("settings put global device_idle_constants inactive_to=300000,idle_factor=2,idle_to=60,absent_to=10"), control.commands);
+        assertEquals(Collections.singletonList("dumpsys deviceidle"), reads.commands);
+        assertEquals(Arrays.asList("inactive_to", "idle_factor"), applied.applied);
+        assertEquals(Arrays.asList("idle_to", "absent_to"), applied.notEffective);
+        assertTrue(applied.failed.isEmpty());
+        assertFalse(applied.allApplied());
+        assertEquals(Reason.NOT_EFFECTIVE_ON_THIS_VERSION, applied.reason);
+    }
+
+    @Test public void privilegedTunablesSwitchToDeviceConfigAtApi34() {
+        for (AccessLevel level : Arrays.asList(AccessLevel.SHELL, AccessLevel.ROOT)) {
+            for (int api : new int[] {33, 34}) {
+                Runner control = new Runner(level, result(0));
+                Runner reads = new Runner(level, result(0, "Settings:", "  idle_to=60000"));
+                DozeTunableHandler.ApplyResult applied = DozeTunableHandler.apply(control, reads, api,
+                        new Grants(false, false), "idle_to=60000");
+                assertEquals(level + " at API " + api, Collections.singletonList(api < 34
+                        ? "settings put global device_idle_constants idle_to=60000"
+                        : "cmd device_config put device_idle idle_to 60000"), control.commands);
+                assertEquals(Collections.singletonList("dumpsys deviceidle"), reads.commands);
+                assertTrue(applied.allApplied());
+            }
+        }
+    }
+
     @Test public void appWssUsesGlobalFallbackAndOnlyReadbackEstablishesSuccess() {
         Runner control = new Runner(AccessLevel.APP, result(1));
         Runner reads = new Runner(AccessLevel.APP, result(0, "Settings:", "  idle_to=60000"));

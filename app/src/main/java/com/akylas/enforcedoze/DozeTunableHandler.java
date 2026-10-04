@@ -25,6 +25,7 @@ import com.akylas.enforcedoze.access.Reason;
 import com.akylas.enforcedoze.doze.parse.DozeStateParser;
 
 public class DozeTunableHandler {
+    public static final int DEVICE_CONFIG_MIN_API = 34;
     private static DozeTunableHandler single_instance = null;
 
     // Static method
@@ -193,7 +194,7 @@ public class DozeTunableHandler {
             return new ApplyResult(outcomes, status instanceof FeatureStatus.Unavailable
                     ? ((FeatureStatus.Unavailable) status).getReason() : Reason.API_TOO_OLD);
         }
-        boolean deviceConfig = apiLevel >= 29
+        boolean deviceConfig = apiLevel >= DEVICE_CONFIG_MIN_API
                 && (control.getLevel() == AccessLevel.SHELL || control.getLevel() == AccessLevel.ROOT);
         if (deviceConfig) {
             for (Map.Entry<String, String> pair : requested.entrySet()) {
