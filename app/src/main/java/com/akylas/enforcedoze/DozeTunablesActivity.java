@@ -49,7 +49,7 @@ public class DozeTunablesActivity extends AppCompatActivity {
     public static String TAG = "EnforceDoze";
     public static boolean suAvailable = false;
     public DozeTunableHandler.ApplyResult lastApplyResult;
-    private final String tunableCommand = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE ? "device_config put device_idle" : "settings put global device_idle_constants";
+    private final String tunableCommand = Build.VERSION.SDK_INT >= DozeTunableHandler.DEVICE_CONFIG_MIN_API ? "device_config put device_idle" : "settings put global device_idle_constants";
 
     private static void log(String message) {
         logToLogcat(TAG, message);
