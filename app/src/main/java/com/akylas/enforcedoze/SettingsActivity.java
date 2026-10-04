@@ -44,6 +44,7 @@ import com.nanotasks.Tasks;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
@@ -60,6 +61,8 @@ import com.akylas.enforcedoze.access.ShizukuState;
 import com.akylas.enforcedoze.ui.AccessUi;
 import com.akylas.enforcedoze.ui.ModeSwitchRules;
 import com.akylas.enforcedoze.ui.ResetReport;
+import com.akylas.enforcedoze.service.ResetCommandId;
+import com.akylas.enforcedoze.service.SystemResetResult;
 
 import android.Manifest;
 import android.os.Handler;
@@ -150,6 +153,8 @@ public class SettingsActivity extends AppCompatActivity {
         private static final long ROOT_PROBE_WAIT_MS = 2 * CommandRunner.DEFAULT_TIMEOUT_MS + 1_000;
         private MaterialDialog modeProgress;
         private MaterialDialog resetProgress;
+        private androidx.appcompat.app.AlertDialog resetReport;
+        private final ResetReport.Tracker.Listener resetListener = this::renderReset;
         private String modeBeforeSwitch;
         private boolean awaitingShizukuResult;
         /** The Activity was covered after the Shizuku request, so no prompt is in flight once it resumes. */
@@ -197,6 +202,9 @@ public class SettingsActivity extends AppCompatActivity {
             super.onStart();
             accessManager.addListener(accessListener);
             accessManager.refresh();
+            // A reset outlives this screen: show its wait, or the result it missed while recreated or stopped.
+            ResetReport.TRACKER.setListener(resetListener);
+            renderReset();
             // A recreated fragment shows its restored wait again (the old dialog went with the old window).
             if (modeProgress == null && awaitingShizukuResult) {
                 showModeProgress(R.string.mode_switch_waiting_shizuku, () -> onShizukuPermissionResult(false));
@@ -224,6 +232,7 @@ public class SettingsActivity extends AppCompatActivity {
         @Override
         public void onStop() {
             accessManager.removeListener(accessListener);
+            ResetReport.TRACKER.removeListener(resetListener);
             super.onStop();
         }
 
@@ -244,6 +253,7 @@ public class SettingsActivity extends AppCompatActivity {
             mainHandler.removeCallbacksAndMessages(null);
             dismissModeProgress();
             dismissResetProgress();
+            dismissResetReport();
             super.onDestroy();
         }
 
@@ -763,15 +773,13 @@ public class SettingsActivity extends AppCompatActivity {
         }
 
         public void resetForceDoze() {
+            if (!ResetReport.TRACKER.begin()) {
+                renderReset();
+                return;
+            }
             Context context = requireContext().getApplicationContext();
             context.stopService(new Intent(context, ForceDozeService.class));
-            dismissResetProgress();
-            resetProgress = new MaterialDialog.Builder(requireActivity())
-                    .title(R.string.please_wait_text)
-                    .content(R.string.reset_running_text)
-                    .progress(true, 0)
-                    .cancelable(false)
-                    .show();
+            renderReset();
             // Restores through the ledger first, then the reset steps; the callback runs on doze-worker.
             MyApplication.getDozeRuntime(context).resetSystemState(result -> {
                 // Only after the result, and never the restore intent that remaining debt still needs.
@@ -781,20 +789,9 @@ public class SettingsActivity extends AppCompatActivity {
                 } catch (RuntimeException failed) {
                     cleared = false;
                 }
-                int title = ResetReport.title(result, cleared);
-                String message = ResetReport.message(context, result, cleared);
-                mainHandler.post(() -> {
-                    dismissResetProgress();
-                    if (!isAdded()) return;
-                    new MaterialAlertDialogBuilder(requireContext())
-                            .setTitle(title)
-                            .setMessage(message)
-                            .setPositiveButton(R.string.okay_button_text, (dialogInterface, i) -> {
-                                dialogInterface.dismiss();
-                                ProcessPhoenix.triggerRebirth(requireContext());
-                            })
-                            .show();
-                });
+                // Kept past this screen: rotation or a theme change may have replaced it by now.
+                ResetReport.TRACKER.deliver(result, cleared);
+                new Handler(Looper.getMainLooper()).post(ResetReport.TRACKER::notifyListener);
             });
         }
 
@@ -803,6 +800,59 @@ public class SettingsActivity extends AppCompatActivity {
                 if (resetProgress.isShowing()) resetProgress.dismiss();
                 resetProgress = null;
             }
+        }
+
+        private void dismissResetReport() {
+            if (resetReport != null) {
+                if (resetReport.isShowing()) resetReport.dismiss();
+                resetReport = null;
+            }
+        }
+
+        /** Shows the reset's phase: the wait while it runs or finishes, else its report until confirmed. */
+        private void renderReset() {
+            if (!isAdded()) return;
+            ResetReport.Tracker.Phase phase = ResetReport.TRACKER.phase();
+            if (phase == ResetReport.Tracker.Phase.RUNNING || phase == ResetReport.Tracker.Phase.FINISHING) {
+                dismissResetReport();
+                if (resetProgress == null || !resetProgress.isShowing()) {
+                    resetProgress = new MaterialDialog.Builder(requireActivity())
+                            .title(R.string.please_wait_text)
+                            .content(R.string.reset_running_text)
+                            .progress(true, 0)
+                            .cancelable(false)
+                            .show();
+                }
+            } else if (phase == ResetReport.Tracker.Phase.REPORTED) {
+                dismissResetProgress();
+                if (resetReport != null && resetReport.isShowing()) return;
+                Context context = requireContext();
+                SystemResetResult result = ResetReport.TRACKER.result();
+                boolean cleared = ResetReport.TRACKER.prefsCleared();
+                resetReport = new MaterialAlertDialogBuilder(context)
+                        .setTitle(ResetReport.title(result, cleared))
+                        .setMessage(ResetReport.message(context, result, cleared))
+                        .setCancelable(false)
+                        .setPositiveButton(R.string.okay_button_text, (dialogInterface, i) -> finishReset())
+                        .show();
+            } else {
+                dismissResetProgress();
+                dismissResetReport();
+            }
+        }
+
+        /** The user saw the report: only now run the revokes Android kills this app for, then restart. */
+        private void finishReset() {
+            List<ResetCommandId> deferred = ResetReport.TRACKER.confirm();
+            if (deferred == null) {
+                renderReset();
+                return;
+            }
+            resetReport = null;
+            Context app = requireContext().getApplicationContext();
+            renderReset();
+            MyApplication.getDozeRuntime(app).finishReset(deferred,
+                    () -> new Handler(Looper.getMainLooper()).post(() -> ProcessPhoenix.triggerRebirth(app)));
         }
 
         /**

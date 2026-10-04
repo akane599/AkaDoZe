@@ -269,22 +269,39 @@ class DozeRuntime(context: Context) {
         bumpGeneration()
         worker().post {
             try {
-                sessionActive = false
-                session.recordExit()
-                val result = SystemReset.run(control, Build.VERSION.SDK_INT, app.packageName,
-                    permissionGranted = { permission ->
-                        app.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
-                    },
-                ) {
-                    val exit = controller.reconcile(Build.VERSION.SDK_INT, grants())
-                    recordExit(exit)
-                    checkSafety()
-                    val remaining = store.load()
-                    if (exit.complete && remaining.entries.isEmpty() && !store.loadFailed && store.corruptLines.isEmpty()) {
-                        ResetRestoreOutcome.COMPLETE
-                    } else ResetRestoreOutcome.REMAINING_DEBT
+                val result = SystemReset.runJob {
+                    sessionActive = false
+                    session.recordExit()
+                    SystemReset.run(control, Build.VERSION.SDK_INT, app.packageName,
+                        permissionGranted = { permission ->
+                            app.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+                        },
+                    ) {
+                        val exit = controller.reconcile(Build.VERSION.SDK_INT, grants())
+                        recordExit(exit)
+                        checkSafety()
+                        val remaining = store.load()
+                        if (exit.complete && remaining.entries.isEmpty() && !store.loadFailed && store.corruptLines.isEmpty()) {
+                            ResetRestoreOutcome.COMPLETE
+                        } else ResetRestoreOutcome.REMAINING_DEBT
+                    }
                 }
                 callback.onComplete(result)
+            } finally { quitIfDetached() }
+        }
+    }
+
+    /**
+     * After the user confirmed the reset result: runs its deferred revokes on doze-worker, then [restart]
+     * there. Android normally kills this process during a deferred revoke, so [restart] may never run.
+     */
+    @Synchronized
+    fun finishReset(deferred: List<ResetCommandId>, restart: Runnable) {
+        worker().post {
+            try {
+                try {
+                    SystemReset.runDeferred(control, Build.VERSION.SDK_INT, app.packageName, deferred)
+                } finally { restart.run() }
             } finally { quitIfDetached() }
         }
     }
