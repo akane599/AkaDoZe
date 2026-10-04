@@ -65,6 +65,82 @@ class AccessDiscoveryRepairTest {
         assertTrue("ready completion drops its listener", fixture.access.listeners.isEmpty())
     }
 
+    @Test fun bootWindowExpiredBeforeDiscoveryRestoresAppOnceThenRetriesAtShell() {
+        val fixture = WindowFixture()
+        val resolution = AccessResolution().apply { startDiscovery(0) }
+        fixture.access.state = resolution.shizuku(absent, grants, 10001, 0)
+        fixture.start()
+        fixture.timeout()
+        assertEquals(9_000L, fixture.now)
+        assertEquals(0, fixture.restores)
+        assertEquals(1, fixture.access.listeners.size)
+        val subscriptions = fixture.access.subscriptions
+
+        fixture.now = 10_000L
+        fixture.access.publish(resolution.shizuku(absent, grants, 10001, fixture.now))
+        repeat(3) { fixture.access.publish(fixture.access.state) }
+        assertEquals("settled APP after the boot deadline gets one restore", 1, fixture.restores)
+        assertEquals("APP restore leaves the shared continuation armed", 1, fixture.access.listeners.size)
+        assertEquals("APP recovery adds no subscription", subscriptions, fixture.access.subscriptions)
+        assertEquals("no-access announcement is not repeated", 1, fixture.debts)
+
+        fixture.access.publish(resolution.shizuku(ShizukuState(AccessLevel.SHELL, null, 2000), grants, 10001, 11_000))
+        repeat(3) { fixture.access.publish(fixture.access.state) }
+        assertEquals("SHELL gets exactly one follow-up window", 1, fixture.retries)
+        assertEquals(2, fixture.restores)
+        assertEquals("only the follow-up window subscribes", subscriptions + 1, fixture.access.subscriptions)
+        assertTrue(fixture.access.listeners.isEmpty())
+    }
+
+    @Test fun lateAppDiscoveryRestoresBiometricsAndRetainsShellIntentForRetry() {
+        val fixture = WindowFixture()
+        val store = InMemoryLedgerStore()
+        store.save(RestoreLedger(listOf(
+            LedgerEntry(Feature.BIOMETRICS, null, "1", 0, apiLevel = 36),
+            LedgerEntry(Feature.FORCE_DOZE, null, "0", 0, apiLevel = 36),
+        )))
+        val runner = FakeRunner().apply {
+            level = AccessLevel.APP
+            replies("settings get secure biometric_keyguard_enabled", "1")
+            replies("dumpsys deviceidle", "mForceIdle=false")
+        }
+        val core = DozeController(runner, CommandCatalog, CapabilityResolver, store, FakeClock(),
+            DozeEventSink {}, 36, Grants(false, true), accessResolved = { fixture.access.state.resolved })
+        fixture.duringRestore = {
+            runner.level = fixture.access.state.level
+            core.reconcile()
+        }
+        fixture.start()
+        fixture.timeout()
+        fixture.now = 10_000L
+        fixture.access.publish(fixture.access.state.copy(resolved = true))
+        assertEquals("APP readback clears the biometric intent", listOf(Feature.FORCE_DOZE), store.load().entries.map { it.feature })
+        assertEquals(1, runner.commands.count { it == "settings put secure biometric_keyguard_enabled 1" })
+        assertEquals(1, fixture.access.listeners.size)
+
+        fixture.access.publish(fixture.access.state.copy(level = AccessLevel.SHELL))
+        assertEquals(1, fixture.retries)
+        assertTrue("SHELL readback clears the remaining intent", store.load().entries.isEmpty())
+        assertEquals(1, runner.commands.count { it == "cmd deviceidle unforce" })
+    }
+
+    @Test fun unresolvedWindowsJoiningAfterAppRecoveryDoNotRepeatIt() {
+        val fixture = WindowFixture()
+        fixture.start()
+        fixture.timeout()
+        fixture.access.publish(fixture.access.state.copy(resolved = true))
+        assertEquals(1, fixture.restores)
+        fixture.access.publish(fixture.access.state.copy(resolved = false))
+        repeat(3) { fixture.start(); fixture.timeout() }
+        fixture.access.publish(fixture.access.state.copy(resolved = true))
+        assertEquals("joining windows do not reset the APP attempt", 1, fixture.restores)
+        assertEquals(1, fixture.access.listeners.size)
+        fixture.access.publish(fixture.access.state.copy(level = AccessLevel.SHELL))
+        assertEquals(1, fixture.retries)
+        assertEquals(2, fixture.restores)
+        assertTrue(fixture.access.listeners.isEmpty())
+    }
+
     @Test fun retainedNonRecoverableDamageDoesNotBuildRuntime() {
         val retained = "1|APP_SUSPEND|broken\n1|LOCATION|broken\nunknown"
         var builds = 0
@@ -181,7 +257,8 @@ class AccessDiscoveryRepairTest {
     private class FakeAccess : RecoveryAccess {
         override var state = AccessState(AccessLevel.APP, Reason.NO_ACCESS, Grants(false, false), 10001, resolved = false)
         val listeners = linkedSetOf<AccessManager.Listener>()
-        override fun addListener(listener: AccessManager.Listener) { listeners += listener; listener.onAccessChanged(state) }
+        var subscriptions = 0
+        override fun addListener(listener: AccessManager.Listener) { subscriptions++; listeners += listener; listener.onAccessChanged(state) }
         override fun removeListener(listener: AccessManager.Listener) { listeners -= listener }
         fun publish(next: AccessState) { state = next; listeners.toList().forEach { it.onAccessChanged(next) } }
     }
@@ -197,7 +274,10 @@ class AccessDiscoveryRepairTest {
         var duringRestore: () -> Unit = {}
         lateinit var timeout: () -> Unit
         /** Mirrors DozeRuntime: one shared continuation for every window that may arm it. */
-        private val continuation = RestoreContinuation(access, { it() }, { retries++; start(false) }, { debts++ })
+        private val continuation = RestoreContinuation(access, { it() }, { retries++; start(false) }, { debts++ }, {
+            restores++
+            duringRestore()
+        })
         fun start(allowContinuation: Boolean = true) {
             RestoreOnlyRequest(access, { now }, { it() }, { deadline, callback ->
                 timeout = { now = deadline; callback() }; ({})

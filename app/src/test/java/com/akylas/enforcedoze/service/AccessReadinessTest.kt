@@ -148,6 +148,24 @@ class AccessReadinessTest {
         assertFalse(request.contains("sessionActive = true"))
     }
 
+    @Test fun lateAppContinuationUsesWakefulWorkerOwnedReconciliation() {
+        val root = if (File("src/main").exists()) File("src/main/java/com/akylas/enforcedoze")
+            else File("app/src/main/java/com/akylas/enforcedoze")
+        val runtime = File(root, "service/DozeRuntime.kt").readText()
+        val recovery = runtime.substringAfter("// Late APP discovery").substringBefore(").also { continuation = it }")
+        assertTrue("late APP recovery brackets a fresh worker with pendingRecoveries", recovery.contains("synchronized(this@DozeRuntime)") &&
+            recovery.indexOf("pendingRecoveries++") < recovery.indexOf("worker().post"))
+        assertFalse("must not post to the expired window's captured worker", recovery.contains("worker.post"))
+        assertTrue("the APP restore holds the same restore wakelock", recovery.contains("\"forcedoze:restore\"") &&
+            recovery.contains("appWakeLock.acquire(30_000L)") && recovery.contains("appWakeLock.release()"))
+        assertTrue("ledger work uses the bounded normal reconciliation path", recovery.contains("if (hasPendingRestore())") &&
+            recovery.contains("clock.elapsedRealtime() + 9_000L") &&
+            recovery.contains("withDeadline(appDeadline, Runnable { reconcileAndCheck() })"))
+        assertTrue("completion permits safe worker retirement", recovery.contains("pendingRecoveries--") &&
+            recovery.contains("quitIfDetached()"))
+        assertFalse("restore-only recovery never probes su", recovery.contains("refreshRoot"))
+    }
+
     @Test fun disabledBootAndReplacementRequestRestoreWithoutStartingSession() {
         val root = if (File("src/main").exists()) File("src/main/java/com/akylas/enforcedoze")
             else File("app/src/main/java/com/akylas/enforcedoze")

@@ -339,6 +339,28 @@ class DozeRuntime(context: Context) {
                         }
                     }
                 },
+                {
+                    // Late APP discovery owns its worker and wakeful budget independently of the
+                    // expired receiver window, while the shared continuation still awaits SHELL.
+                    synchronized(this@DozeRuntime) {
+                        pendingRecoveries++
+                        val appWakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "forcedoze:restore")
+                        appWakeLock.acquire(30_000L)
+                        val appDeadline = clock.elapsedRealtime() + 9_000L
+                        worker().post {
+                            try {
+                                if (hasPendingRestore()) {
+                                    withDeadline(appDeadline, Runnable { reconcileAndCheck() })
+                                }
+                            } finally {
+                                try { if (appWakeLock.isHeld) appWakeLock.release() }
+                                catch (_: RuntimeException) { /* Timeout release may race on API 23-27. */ }
+                                synchronized(this@DozeRuntime) { pendingRecoveries-- }
+                                quitIfDetached()
+                            }
+                        }
+                    }
+                },
             ).also { continuation = it }
             RestoreOnlyRequest(source, clock::elapsedRealtime, { action -> main.post { action() } },
                 { deadline, action ->

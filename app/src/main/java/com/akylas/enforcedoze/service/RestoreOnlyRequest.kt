@@ -80,21 +80,26 @@ class RestoreOnlyRequest(
 
 /**
  * Main-thread-only, process-level wait for SHELL/ROOT shared by every window that ends without it:
- * one subscription however many windows arm it, one follow-up window on ready, then disarmed.
+ * one subscription however many windows arm it, one APP restore if discovery settles after a window,
+ * then one follow-up window on ready and disarmed.
  */
 class RestoreContinuation(
     private val access: RecoveryAccess,
     private val post: (() -> Unit) -> Unit,
     private val retry: () -> Unit,
     private val noAccess: () -> Unit,
+    private val restoreApp: () -> Unit,
 ) {
     private var armed = false
     private var announced = false
+    private var restoredApp = false
     private val listener = AccessManager.Listener { post { changed() } }
 
     /** Idempotent; a window whose own restore already announced no access owes no second notice. */
     fun arm(windowAnnounced: Boolean) {
         announced = if (armed) announced && windowAnnounced else windowAnnounced
+        // An APP attempt already made by any window satisfies this arm's APP recovery.
+        restoredApp = if (armed) restoredApp || windowAnnounced else windowAnnounced
         if (!armed) {
             armed = true
             access.addListener(listener)
@@ -109,9 +114,15 @@ class RestoreContinuation(
             armed = false
             access.removeListener(listener)
             retry()
-        } else if (!announced) {
-            announced = true
-            noAccess()
+        } else {
+            if (!announced) {
+                announced = true
+                noAccess()
+            }
+            if (!restoredApp) {
+                restoredApp = true
+                restoreApp()
+            }
         }
     }
 }
