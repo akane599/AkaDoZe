@@ -73,15 +73,14 @@ object ExternalControlPolicy {
     fun whitelistMembership(lines: List<String>, target: String): Boolean? {
         if (lines.isEmpty() || !PackageNames.isValid(target)) return null
         var found = false
+        var parsedRows = 0
         for (line in lines) {
-            val fields = line.trim().split(',')
-            if (fields.size != 3 || fields[0] !in setOf("system", "system-excidle", "user") ||
-                (fields[1] != "android" && !PackageNames.isValid(fields[1])) ||
-                fields[2].toIntOrNull()?.let { it >= 0 } != true
-            ) return null
-            if (fields[1] == target && fields[0] != "system-excidle") found = true
+            if (line.isBlank()) continue
+            val row = WhitelistRow.parse(line) ?: return null
+            parsedRows++
+            if (row.packageName == target && row.deepDozeMember) found = true
         }
-        return found
+        return if (parsedRows == 0) null else found
     }
 
     private fun validateSetting(key: String?, text: String?): Decision {
