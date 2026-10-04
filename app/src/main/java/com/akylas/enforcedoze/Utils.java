@@ -546,17 +546,29 @@ public class Utils {
     }
 
     static final class PreferencesPermissions {
+        interface Chmod {
+            boolean chmod(File file, int mode);
+        }
+
         static boolean repairDirectory(File directory) {
+            return repairDirectory(directory, (file, mode) -> {
+                try {
+                    android.system.Os.chmod(file.getPath(), mode);
+                    return true;
+                } catch (android.system.ErrnoException error) {
+                    return false;
+                }
+            });
+        }
+
+        static boolean repairDirectory(File directory, Chmod chmod) {
             File[] files = directory.listFiles();
             if (files == null) return !directory.exists();
             boolean repaired = true;
             for (File file : files) {
                 if (!file.isFile()) continue;
-                boolean readable = file.setReadable(false, false);
-                boolean writable = file.setWritable(false, false);
-                boolean ownerRead = file.setReadable(true, true);
-                boolean ownerWrite = file.setWritable(true, true);
-                repaired &= readable && writable && ownerRead && ownerWrite;
+                // One mode change preserves owner access while removing group/other access.
+                repaired &= chmod.chmod(file, 0600);
             }
             return repaired;
         }
