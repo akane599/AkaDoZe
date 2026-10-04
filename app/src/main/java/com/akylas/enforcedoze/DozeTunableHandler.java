@@ -25,7 +25,8 @@ import com.akylas.enforcedoze.access.Reason;
 import com.akylas.enforcedoze.doze.parse.DozeStateParser;
 
 public class DozeTunableHandler {
-    public static final int DEVICE_CONFIG_MIN_API = 34;
+    /** DeviceIdleController reads DeviceConfig `device_idle` from Android 12 (AOSP android12-release); before that Settings.Global device_idle_constants. */
+    public static final int DEVICE_CONFIG_MIN_API = 31;
     private static DozeTunableHandler single_instance = null;
 
     // Static method

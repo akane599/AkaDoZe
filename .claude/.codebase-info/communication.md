@@ -54,7 +54,7 @@ physical-device gaps, is in `docs/doze-feature-ledger.md`.
 | App suspend | `pm suspend|unsuspend` (root on API 23: `pm disable|enable`) | `dumpsys package <pkg>` |
 | Notification block | API 33+: `pm revoke|grant POST_NOTIFICATIONS` + user-fixed flags; below: `service call notification <txn>` (root, UNVERIFIED) | `dumpsys package` / `dumpsys notification` |
 | All-sensor privacy (root) | `service call sensor_privacy <txn>` | `dumpsys sensor_privacy` |
-| Tunables | `cmd device_config put device_idle` (API 34+) or `settings put global device_idle_constants` | matching `get` |
+| Tunables | `cmd device_config put device_idle` (API 31+) or `settings put global device_idle_constants` | matching `get` |
 | Whitelist | `dumpsys deviceidle whitelist +pkg|-pkg` | structured `whitelist` dump (`WhitelistParser.kt`: COMMAND_FAILED / TIMED_OUT / PARTIALLY_PARSED / EMPTY) |
 | Focused app (read only) | `dumpsys window` | `mCurrentFocus` / `mFocusedApp` (`doze/parse/FocusedAppParser.kt`); a failed or unfamiliar dump is Unknown |
 

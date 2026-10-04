@@ -124,14 +124,14 @@ public class ConsumerLogicTest {
         assertEquals(Reason.NOT_EFFECTIVE_ON_THIS_VERSION, applied.reason);
     }
 
-    @Test public void privilegedTunablesSwitchToDeviceConfigAtApi34() {
+    @Test public void privilegedTunablesSwitchToDeviceConfigAtApi31() {
         for (AccessLevel level : Arrays.asList(AccessLevel.SHELL, AccessLevel.ROOT)) {
-            for (int api : new int[] {33, 34}) {
+            for (int api : new int[] {30, 31, 33, 34}) {
                 Runner control = new Runner(level, result(0));
                 Runner reads = new Runner(level, result(0, "Settings:", "  idle_to=60000"));
                 DozeTunableHandler.ApplyResult applied = DozeTunableHandler.apply(control, reads, api,
                         new Grants(false, false), "idle_to=60000");
-                assertEquals(level + " at API " + api, Collections.singletonList(api < 34
+                assertEquals(level + " at API " + api, Collections.singletonList(api < 31
                         ? "settings put global device_idle_constants idle_to=60000"
                         : "cmd device_config put device_idle idle_to 60000"), control.commands);
                 assertEquals(Collections.singletonList("dumpsys deviceidle"), reads.commands);
