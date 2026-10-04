@@ -206,15 +206,21 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
                         // Never persist a false enabled state when background FGS start was denied.
                         if (!Utils.startForceDozeService(app)) {
                             complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.FOREGROUND_START_DENIED);
-                        } else if (!prefs.edit().putBoolean(Prefs.SERVICE_ENABLED, true).commit()) {
+                        } else if (!prefs.edit().putBoolean(Prefs.SERVICE_ENABLED, true)
+                                .putBoolean(Prefs.SERVICE_USER_ENABLED, true).commit()) {
                             complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.PREFERENCE_WRITE_FAILED);
-                        } else complete(Permission.ALLOWED, ExternalCallOutcome.REQUESTED, ExecutionReason.SERVICE_START_REQUESTED);
+                        } else {
+                            Utils.scheduleNextCustomDozePeriodBoundary(app);
+                            complete(Permission.ALLOWED, ExternalCallOutcome.REQUESTED, ExecutionReason.SERVICE_START_REQUESTED);
+                        }
                         break;
                     case DISABLE_SERVICE:
                         if (!admitted()) { complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.ADMISSION_CHANGED); return; }
-                        if (!prefs.edit().putBoolean(Prefs.SERVICE_ENABLED, false).commit()) {
+                        if (!prefs.edit().putBoolean(Prefs.SERVICE_ENABLED, false)
+                                .putBoolean(Prefs.SERVICE_USER_ENABLED, false).commit()) {
                             complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.PREFERENCE_WRITE_FAILED); return;
                         }
+                        Utils.cancelCustomDozePeriodAlarm(app);
                         Utils.stopForceDozeService(app);
                         complete(Permission.ALLOWED, ExternalCallOutcome.REQUESTED, ExecutionReason.SERVICE_STOP_REQUESTED);
                         break;

@@ -12,6 +12,7 @@ import android.service.quicksettings.Tile;
 import android.service.quicksettings.TileService;
 import androidx.annotation.RequiresApi;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+import com.akylas.enforcedoze.access.Prefs;
 
 
 @RequiresApi(api = Build.VERSION_CODES.N)
@@ -65,12 +66,16 @@ public class ForceDozeTileService extends TileService {
         serviceEnabled = settings.getBoolean("serviceEnabled", false);
         if (serviceEnabled) {
             log("Disabling EnforceDoze");
-            settings.edit().putBoolean("serviceEnabled", false).apply();
+            settings.edit().putBoolean("serviceEnabled", false)
+                    .putBoolean(Prefs.SERVICE_USER_ENABLED, false).apply();
+            Utils.cancelCustomDozePeriodAlarm(this);
             Utils.stopForceDozeService(this);
         } else {
             log("Enabling EnforceDoze");
             if (Utils.startForceDozeService(this)) {
-                settings.edit().putBoolean("serviceEnabled", true).apply();
+                settings.edit().putBoolean("serviceEnabled", true)
+                        .putBoolean(Prefs.SERVICE_USER_ENABLED, true).apply();
+                Utils.scheduleNextCustomDozePeriodBoundary(this);
                 Utils.updateTileState(this);
             }
         }

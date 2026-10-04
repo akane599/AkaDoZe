@@ -9,6 +9,30 @@ class ExternalControlWiringTest {
     private fun service() = File("src/main/java/com/akylas/enforcedoze/ForceDozeService.java").readText()
     private fun receiver() = File("src/main/java/com/akylas/enforcedoze/ExternalControlReceiver.java").readText()
 
+    @Test fun explicitEnableRetainsStartThenPersistOrderingAndOriginalOutcomes() {
+        val on = receiver().substringAfter("case ENABLE_SERVICE:").substringBefore("case DISABLE_SERVICE:")
+        val start = on.indexOf("if (!Utils.startForceDozeService(app)) {")
+        val persist = on.indexOf("else if (!prefs.edit().putBoolean(Prefs.SERVICE_ENABLED, true)")
+        assertTrue("admitted enable must start unconditionally before persisting enabled state",
+            start >= 0 && persist > start)
+        assertTrue("admission must still precede the service start", on.indexOf("if (!admitted())") in 0 until start)
+        val failure = on.substring(start, persist)
+        assertTrue("a denied start must retain FAILED / FOREGROUND_START_DENIED",
+            failure.contains("complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.FOREGROUND_START_DENIED);"))
+        assertFalse("a denied start must not persist enabled state or intent", failure.contains("putBoolean("))
+        val write = on.substring(persist).substringBefore("} else {")
+        assertTrue("effective state and user intent must commit together",
+            write.contains(".putBoolean(Prefs.SERVICE_USER_ENABLED, true).commit()"))
+        assertTrue("a failed write must retain FAILED / PREFERENCE_WRITE_FAILED",
+            write.contains("complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.PREFERENCE_WRITE_FAILED);"))
+        val success = on.substringAfter("} else {")
+        assertTrue("successful enable must retain REQUESTED / SERVICE_START_REQUESTED",
+            success.contains("complete(Permission.ALLOWED, ExternalCallOutcome.REQUESTED, ExecutionReason.SERVICE_START_REQUESTED);"))
+        assertFalse("enable must never report a stop", on.contains("ExecutionReason.SERVICE_STOP_REQUESTED"))
+        assertTrue("next boundary must arm only after the successful write",
+            success.indexOf("Utils.scheduleNextCustomDozePeriodBoundary(app);") in 0 until success.indexOf("complete("))
+    }
+
     @Test fun pendingEnterCannotBeCancelledOrItsUserDelayShortenedByReapply() {
         val start = service().substringAfter("public int onStartCommand(").substringBefore("public void reloadSettings()")
         assertTrue("pending admission must precede any reapply work", start.contains("enterDueElapsed > now"))
