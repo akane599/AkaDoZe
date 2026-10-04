@@ -41,6 +41,14 @@ public final class WhitelistUi {
         return read != null ? read : Problem.NOT_APPLIED;
     }
 
+    /**
+     * Whether a background read or edit may still touch the screen when it finishes. A finishing or destroyed
+     * Activity has no window left for a dialog, so its result is dropped; a recreated screen loads fresh.
+     */
+    public static boolean mayTouchUi(boolean finishing, boolean destroyed) {
+        return !finishing && !destroyed;
+    }
+
     public static int title(boolean edit) {
         return edit ? R.string.whitelist_edit_problem_title : R.string.whitelist_read_problem_title;
     }

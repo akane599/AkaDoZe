@@ -176,6 +176,7 @@ public class WhitelistAppsActivity extends AppCompatActivity {
         Tasks.executeInBackground(this, () -> readWhitelist(accessManager.reads()), new Completion<WhitelistResult>() {
             @Override
             public void onSuccess(Context context, WhitelistResult result) {
+                if (!WhitelistUi.mayTouchUi(isFinishing(), isDestroyed())) return;
                 dismissProgress();
                 lastResult = result;
                 WhitelistUi.Problem problem = WhitelistUi.readProblem(result.parseReason);
@@ -206,6 +207,7 @@ public class WhitelistAppsActivity extends AppCompatActivity {
             }
             @Override
             public void onError(Context context, Exception error) {
+                if (!WhitelistUi.mayTouchUi(isFinishing(), isDestroyed())) return;
                 dismissProgress();
                 log("Error loading packages: " + error.getMessage());
                 if (reportProblems) {
@@ -219,6 +221,14 @@ public class WhitelistAppsActivity extends AppCompatActivity {
 
     private void dismissProgress() {
         if (progressDialog != null) progressDialog.dismiss();
+        progressDialog = null;
+    }
+
+    /** An in-flight read or edit result is dropped by its callback's guard; only its dialog is ours to close. */
+    @Override
+    protected void onDestroy() {
+        dismissProgress();
+        super.onDestroy();
     }
 
     public static final class WhitelistResult {
@@ -327,6 +337,7 @@ public class WhitelistAppsActivity extends AppCompatActivity {
         }, new Completion<WhitelistResult>() {
             @Override
             public void onSuccess(Context context, WhitelistResult result) {
+                if (!WhitelistUi.mayTouchUi(isFinishing(), isDestroyed())) return;
                 lastResult = result;
                 WhitelistUi.Problem problem = WhitelistUi.editProblem(result.verified, result.reason, result.parseReason);
                 if (problem != null) {
@@ -337,6 +348,7 @@ public class WhitelistAppsActivity extends AppCompatActivity {
             }
             @Override
             public void onError(Context context, Exception error) {
+                if (!WhitelistUi.mayTouchUi(isFinishing(), isDestroyed())) return;
                 log("Error modifying whitelist: " + error.getMessage());
                 WhitelistUi.Problem problem = error instanceof PackageManager.NameNotFoundException
                         ? WhitelistUi.Problem.NOT_INSTALLED : WhitelistUi.Problem.ERROR;

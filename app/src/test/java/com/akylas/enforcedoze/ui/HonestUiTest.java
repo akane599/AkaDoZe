@@ -23,6 +23,10 @@ import com.akylas.enforcedoze.service.SystemResetResult;
 
 import org.junit.Test;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -101,6 +105,49 @@ public class HonestUiTest {
         assertEquals(WhitelistUi.Problem.NOT_APPLIED, WhitelistUi.editProblem(false, Reason.UNVERIFIED, null));
         assertEquals(WhitelistUi.Problem.NOT_APPLIED,
                 WhitelistUi.editProblem(false, Reason.UNVERIFIED, WhitelistParseReason.EMPTY));
+    }
+
+    // --- 2b. SQ-77: whitelist results never touch a finishing or destroyed screen ---
+
+    @Test
+    public void whitelistResultsTouchOnlyALiveScreen() {
+        assertTrue(WhitelistUi.mayTouchUi(false, false));
+        assertFalse(WhitelistUi.mayTouchUi(true, false));
+        assertFalse(WhitelistUi.mayTouchUi(false, true));
+        assertFalse(WhitelistUi.mayTouchUi(true, true));
+    }
+
+    private static final String WHITELIST_GUARD = "if (!WhitelistUi.mayTouchUi(isFinishing(), isDestroyed())) return;";
+
+    private static String whitelistActivitySource() throws IOException {
+        return new String(Files.readAllBytes(
+                Paths.get("src/main/java/com/akylas/enforcedoze/WhitelistAppsActivity.java")), StandardCharsets.UTF_8);
+    }
+
+    @Test
+    public void everyWhitelistCompletionCallbackChecksTheScreenFirst() throws IOException {
+        String source = whitelistActivitySource();
+        int completions = source.split("new Completion<", -1).length - 1;
+        assertTrue("expected the read and edit completions", completions >= 2);
+        int callbacks = 0;
+        for (String marker : new String[] {"public void onSuccess(", "public void onError("}) {
+            for (int at = source.indexOf(marker); at >= 0; at = source.indexOf(marker, at + 1)) {
+                callbacks++;
+                String body = source.substring(source.indexOf('{', at) + 1).trim();
+                assertTrue("callback at offset " + at + " must start with the screen guard, got: "
+                        + body.substring(0, Math.min(80, body.length())), body.startsWith(WHITELIST_GUARD));
+            }
+        }
+        assertEquals("one onSuccess and one onError per completion", completions * 2, callbacks);
+    }
+
+    @Test
+    public void whitelistScreenDismissesItsProgressDialogOnDestroy() throws IOException {
+        String source = whitelistActivitySource();
+        int at = source.indexOf("protected void onDestroy()");
+        assertTrue("WhitelistAppsActivity must override onDestroy", at >= 0);
+        String body = source.substring(at, source.indexOf("\n    }", at));
+        assertTrue(body.contains("dismissProgress();"));
     }
 
     // --- 3. Settings reset: truthful result, prefs cleared without dropping restore intent ---
