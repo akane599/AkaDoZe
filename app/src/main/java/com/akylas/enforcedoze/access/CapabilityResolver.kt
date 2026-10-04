@@ -16,7 +16,8 @@ object CapabilityResolver {
     @JvmStatic
     fun status(feature: Feature, level: AccessLevel, apiLevel: Int, grants: Grants): FeatureStatus {
         if (apiLevel < 23 || feature == Feature.APP_SUSPEND && apiLevel < 24 ||
-            feature == Feature.AIRPLANE && apiLevel < 30
+            feature == Feature.AIRPLANE && apiLevel < 30 ||
+            feature == Feature.SENSOR_PRIVACY_ALL && apiLevel < 29
         ) {
             return FeatureStatus.Unavailable(Reason.API_TOO_OLD)
         }

@@ -16,6 +16,7 @@ class CapabilityResolverTest {
                     val reason = when {
                         feature == Feature.APP_SUSPEND && api == 23 -> Reason.API_TOO_OLD
                         feature == Feature.AIRPLANE && api < 30 -> Reason.API_TOO_OLD
+                        feature == Feature.SENSOR_PRIVACY_ALL && api < 29 -> Reason.API_TOO_OLD
                         level == AccessLevel.NONE -> Reason.NO_ACCESS
                         (feature in rootFeatures ||
                             feature == Feature.NOTIFICATION_BLOCK && api < 33) && level != AccessLevel.ROOT -> Reason.REQUIRES_ROOT
@@ -53,6 +54,14 @@ class CapabilityResolverTest {
             assertEquals("$level/api=$api", FeatureStatus.Unavailable(Reason.API_TOO_OLD),
                 CapabilityResolver.status(Feature.AIRPLANE, level, api, Grants(true, true)))
         }
+    }
+
+    @Test
+    fun sensorPrivacyRequiresApi29EvenWithRoot() {
+        assertEquals(FeatureStatus.Unavailable(Reason.API_TOO_OLD),
+            CapabilityResolver.status(Feature.SENSOR_PRIVACY_ALL, AccessLevel.ROOT, 28, Grants(true, true)))
+        assertEquals(FeatureStatus.Available,
+            CapabilityResolver.status(Feature.SENSOR_PRIVACY_ALL, AccessLevel.ROOT, 29, Grants(true, true)))
     }
 
     @Test
