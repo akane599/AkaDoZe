@@ -51,6 +51,7 @@ import com.akylas.enforcedoze.access.AccessManager;
 import com.akylas.enforcedoze.access.AccessLevel;
 import com.akylas.enforcedoze.access.AccessState;
 import com.akylas.enforcedoze.access.Reason;
+import com.akylas.enforcedoze.access.Prefs;
 import com.akylas.enforcedoze.ui.AccessCard;
 import com.akylas.enforcedoze.ui.AccessUi;
 
@@ -360,7 +361,9 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
                 updateToggleState();
                 return;
             }
-            settings.edit().putBoolean("serviceEnabled", true).apply();
+            settings.edit().putBoolean("serviceEnabled", true)
+                    .putBoolean(Prefs.SERVICE_USER_ENABLED, true).apply();
+            Utils.scheduleNextCustomDozePeriodBoundary(this);
             serviceEnabled = true;
             renderServiceStatus();
             if (AccessUi.sessionsAvailable(lastAccess != null ? lastAccess : accessManager.getState())) {
@@ -371,7 +374,9 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         } else {
             editor = settings.edit();
             editor.putBoolean("serviceEnabled", false);
+            editor.putBoolean(Prefs.SERVICE_USER_ENABLED, false);
             editor.apply();
+            Utils.cancelCustomDozePeriodAlarm(this);
             serviceEnabled = false;
             renderServiceStatus();
             if (Utils.isMyServiceRunning(ForceDozeService.class, MainActivity.this)) {

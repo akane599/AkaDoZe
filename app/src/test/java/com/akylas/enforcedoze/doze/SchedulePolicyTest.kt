@@ -4,6 +4,27 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SchedulePolicyTest {
+    @Test fun userOffWinsAtTheOvernightStartBoundary() {
+        assertFalse(SchedulePolicy.shouldRunService(false, listOf("23:00-07:00"), 23 * 60))
+    }
+
+    @Test fun userOnRunsAtTheOvernightStartBoundary() {
+        assertTrue(SchedulePolicy.shouldRunService(true, listOf("23:00-07:00"), 23 * 60))
+    }
+
+    @Test fun userOnStopsOutsideThePeriodAndResumesAtTheNextStart() {
+        val periods = listOf("23:00-07:00")
+        assertFalse(SchedulePolicy.shouldRunService(true, periods, 7 * 60))
+        assertFalse(SchedulePolicy.shouldRunService(true, periods, 20 * 60))
+        assertTrue(SchedulePolicy.shouldRunService(true, periods, 23 * 60))
+    }
+
+    @Test fun noPeriodsStillHonorsExplicitOffAndDefaultsToExistingScheduleBehavior() {
+        assertFalse(SchedulePolicy.shouldRunService(false, emptyList(), 20 * 60))
+        assertTrue(SchedulePolicy.shouldRunService(true, emptyList(), 20 * 60))
+        assertTrue(com.akylas.enforcedoze.access.Prefs.DEFAULT_SERVICE_USER_ENABLED)
+    }
+
     @Test fun overnightWrapIncludesStartAndExcludesEnd() {
         val periods = listOf("22:00-06:00")
         assertTrue(SchedulePolicy.isInside(periods, 22 * 60))

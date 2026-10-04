@@ -18,6 +18,9 @@ object Prefs {
     const val RESTRICT_SENSORS_ALLOW_TOKEN = "restrictSensorsAllowToken"
     const val DEFAULT_RESTRICT_SENSORS_ALLOW_TOKEN = "com.akylas.enforcedoze"
     const val SERVICE_ENABLED = "serviceEnabled"
+    const val SERVICE_USER_ENABLED = "serviceUserEnabled"
+    // Preserve existing installs' schedule behavior until an explicit user toggle.
+    const val DEFAULT_SERVICE_USER_ENABLED = true
     const val DISABLE_MOTION_SENSORS = "disableMotionSensors"
     const val TURN_OFF_WIFI = "turnOffWiFiInDoze"
     const val TURN_OFF_DATA = "turnOffDataInDoze"

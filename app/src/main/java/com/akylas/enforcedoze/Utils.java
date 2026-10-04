@@ -95,32 +95,30 @@ public class Utils {
         Utils.updateTileState(context);
     }
 
-    public static void applyForceDozeSchedule(Context context) {
-        boolean isServiceEnabled = PreferenceManager.getDefaultSharedPreferences(context).getBoolean("serviceEnabled", false);
-        // if (!isServiceEnabled) {
-        //     cancelCustomDozePeriodAlarm(context);
-        //     if (isMyServiceRunning(ForceDozeService.class, context)) {
-        //         context.stopService(new Intent(context, ForceDozeService.class));
-        //     }
-        //     return;
-        // }
-
+    public static boolean applyForceDozeSchedule(Context context) {
+        boolean userEnabled = PreferenceManager.getDefaultSharedPreferences(context).getBoolean(
+                com.akylas.enforcedoze.access.Prefs.SERVICE_USER_ENABLED,
+                com.akylas.enforcedoze.access.Prefs.DEFAULT_SERVICE_USER_ENABLED);
         scheduleNextCustomDozePeriodBoundary(context);
-        boolean shouldRunService = isInsideCustomDozePeriod(context);
+        boolean shouldRunService = SchedulePolicy.shouldRunService(userEnabled,
+                getCustomDozePeriods(context), getCurrentMinuteOfDay());
 
         if (shouldRunService) {
-            if (startForceDozeService(context)) {
-                updateSettingBool(context, "serviceEnabled", true);
-            }
+            if (!startForceDozeService(context)) return false;
+            updateSettingBool(context, "serviceEnabled", true);
         } else {
             updateSettingBool(context, "serviceEnabled", false);
             stopForceDozeService(context);
         }
+        return true;
     }
 
     public static void scheduleNextCustomDozePeriodBoundary(Context context) {
         cancelCustomDozePeriodAlarm(context);
-        if (!hasCustomDozePeriods(context)) {
+        if (!PreferenceManager.getDefaultSharedPreferences(context).getBoolean(
+                com.akylas.enforcedoze.access.Prefs.SERVICE_USER_ENABLED,
+                com.akylas.enforcedoze.access.Prefs.DEFAULT_SERVICE_USER_ENABLED)
+                || !hasCustomDozePeriods(context)) {
             return;
         }
 

@@ -32,6 +32,11 @@ object SchedulePolicy {
         }
     }
 
+    /** A scheduled stop must not erase the user's permission to run at the next boundary. */
+    @JvmStatic
+    fun shouldRunService(userEnabled: Boolean, periods: Collection<String>, nowMinute: Int): Boolean =
+        userEnabled && isInside(periods, nowMinute)
+
     /** Strictly future: a boundary at the current minute was already applied. */
     @JvmStatic
     fun nextBoundary(periods: Collection<String>, nowMinute: Int): Boundary? {
