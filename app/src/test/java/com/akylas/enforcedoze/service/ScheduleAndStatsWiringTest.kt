@@ -6,6 +6,12 @@ import java.io.File
 
 /** Android permission/Handler adapters are compile-only; pin delegation to the tested pure policies. */
 class ScheduleAndStatsWiringTest {
+    @Test fun exactAlarmPermissionIsDeclaredWithoutPlayRestrictedAlternative() {
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+        assertTrue(manifest.contains("<uses-permission android:name=\"android.permission.SCHEDULE_EXACT_ALARM\" />"))
+        assertFalse(manifest.contains("android.permission.USE_EXACT_ALARM"))
+    }
+
     @Test fun scheduleAdapterUsesMinutePolicyAndChecksExactAlarmPermissionBeforeScheduling() {
         val utils = File("src/main/java/com/akylas/enforcedoze/Utils.java").readText()
         assertTrue(utils.contains("SchedulePolicy.isInside(getCustomDozePeriods(context), getCurrentMinuteOfDay())"))
