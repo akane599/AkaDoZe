@@ -66,7 +66,7 @@ object CommandCatalog {
         val state = if (enabled) "enable" else "disable"
         val bit = if (enabled) 1 else 0
         val command = when (feature) {
-            Feature.FORCE_DOZE -> "${deviceIdle(apiLevel)} ${if (enabled) "force-idle${if (apiLevel >= 24) " deep" else ""}" else "unforce"}"
+            Feature.FORCE_DOZE -> "${deviceIdle(apiLevel)} ${if (enabled) "force-idle${if (apiLevel >= 24) " deep" else ""}" else if (apiLevel >= 24) "unforce" else "step"}"
             Feature.MOTION_SENSORS -> "dumpsys sensorservice ${if (enabled) "restrict $pkg" else "enable"}"
             Feature.BATTERY_SAVER -> if (apiLevel >= 29) "cmd power set-mode $bit"
                 else "settings put global low_power $bit"
@@ -105,7 +105,7 @@ object CommandCatalog {
         }
         if (apiLevel < 23) return null
         return when (feature) {
-            Feature.FORCE_DOZE -> "${deviceIdle(apiLevel)} get deep"
+            Feature.FORCE_DOZE -> if (apiLevel >= 24) "${deviceIdle(apiLevel)} get deep" else "dumpsys deviceidle"
             Feature.DOZE_STATE_READ, Feature.TUNABLES -> "dumpsys deviceidle"
             Feature.MOTION_SENSORS -> "dumpsys sensorservice"
             Feature.BATTERY_SAVER -> "settings get global low_power"

@@ -1,6 +1,8 @@
 package com.akylas.enforcedoze.doze.parse
 
+import com.akylas.enforcedoze.access.Feature
 import com.akylas.enforcedoze.doze.DeepState
+import com.akylas.enforcedoze.doze.FeatureReadback
 import com.akylas.enforcedoze.doze.LightState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -28,6 +30,34 @@ class DozeStateParserTest {
             ),
             reading.settings,
         )
+    }
+
+    @Test
+    fun marshmallowDumpProvidesDeepReadbackAndIndependentForceIdleRestoreOracle() {
+        val forced = """
+            Settings:
+              inactive_to=+30m0s0ms
+              idle_to=+1h0m0s0ms
+            mEnabled=true
+            mForceIdle=true
+            mScreenOn=false
+            mCharging=false
+            mState=IDLE
+        """.trimIndent()
+        val reading = DozeStateParser.parse(forced)
+        assertEquals(DeepState.IDLE, reading.deep)
+        assertEquals(true, reading.forceIdle)
+        assertNull(reading.light)
+        assertNull(reading.quickDozeActivated)
+        assertEquals(DeepState.IDLE, DozeStateParser.parseDeep(forced.lines()))
+        assertEquals("1", FeatureReadback.value(Feature.FORCE_DOZE, 23, forced.lines(), null))
+
+        // A step may leave maintenance state; restoration depends on force, not deep ACTIVE.
+        val restored = forced.replace("mForceIdle=true", "mForceIdle=false")
+            .replace("mState=IDLE", "mState=IDLE_MAINTENANCE")
+        assertEquals(DeepState.IDLE_MAINTENANCE, DozeStateParser.parseDeep(restored))
+        assertEquals(false, DozeStateParser.parse(restored).forceIdle)
+        assertEquals("0", FeatureReadback.value(Feature.FORCE_DOZE, 23, restored.lines(), null))
     }
 
     @Test

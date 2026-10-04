@@ -58,9 +58,10 @@ object DozeStateParser {
         )
     }
 
-    /** A command reply must be one exact token, not a substring or multiple output lines. */
+    /** Read M's full dump or N+'s exact `get deep` token; never infer state from a substring. */
     @JvmStatic
-    fun parseDeep(output: String): DeepState? = output.trim().takeIf { it.isNotEmpty() }?.let(::deepToken)
+    fun parseDeep(output: String): DeepState? =
+        parse(output).deep ?: output.trim().takeIf { it.isNotEmpty() }?.let(::deepToken)
 
     @JvmStatic
     fun parseDeep(output: List<String>): DeepState? = parseDeep(output.joinToString("\n"))

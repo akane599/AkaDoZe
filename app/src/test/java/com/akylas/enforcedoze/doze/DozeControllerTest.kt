@@ -57,7 +57,7 @@ internal class FakeRunner : CommandRunner {
             CommandResult(exit, output.lines(), emptyList(), 1, timeout)
         fun isMutation(command: String): Boolean = command.startsWith("pm ") ||
             command.startsWith("settings put ") || command.startsWith("svc ") ||
-            listOf(" restrict ", " enable", " disable", "force-idle", " unforce", " set-")
+            listOf(" restrict ", " enable", " disable", "force-idle", " unforce", " step", " set-")
                 .any { it in command }
     }
 }
@@ -330,15 +330,33 @@ class DozeControllerTest {
     }
 
     @Test fun legacyApiRestoresExactLocationModeAndUsesLegacyForceCommands() {
-        runner.replies("dumpsys deviceidle", "mForceIdle=false", "mForceIdle=false")
-        runner.replies("dumpsys deviceidle get deep", "IDLE")
+        runner.replies("dumpsys deviceidle", "mForceIdle=false\nmState=ACTIVE",
+            "mForceIdle=true\nmState=IDLE", "mForceIdle=false\nmState=IDLE_MAINTENANCE")
         runner.replies("settings get secure location_mode", "2", "0", "2")
         runner.replies("settings get global low_power", "0", "1", "0")
-        enter(config.copy(apiLevel = 23, restrictSensors = false, batterySaver = true, features = setOf(Feature.LOCATION)))
+        val result = enter(config.copy(apiLevel = 23, restrictSensors = false, batterySaver = true, features = setOf(Feature.LOCATION)))
+        assertTrue(result.steps.all { it.status == StepStatus.VERIFIED })
         assertTrue(controller.exit().complete)
+        assertTrue(store.load().entries.isEmpty())
         assertEquals(listOf("settings put global low_power 1", "dumpsys deviceidle force-idle",
-            "settings put secure location_mode 0", "dumpsys deviceidle unforce",
+            "settings put secure location_mode 0", "dumpsys deviceidle step",
             "settings put global low_power 0", "settings put secure location_mode 2"), runner.mutations())
+    }
+
+    @Test fun api23StepExitZeroRetainsDebtWhenForceIdleReadbackStaysTrue() {
+        runner.replies("dumpsys deviceidle", "mForceIdle=false\nmState=ACTIVE",
+            "mForceIdle=true\nmState=IDLE", "mForceIdle=true\nmState=IDLE_MAINTENANCE")
+        runner.answer("dumpsys deviceidle step") { FakeRunner.result("", exit = 0) }
+        val entered = enter(config.copy(apiLevel = 23, restrictSensors = false))
+        assertEquals(StepStatus.VERIFIED, entered.steps.single().status)
+        val exited = controller.exit()
+        assertFalse(exited.complete)
+        assertEquals(1, exited.remaining.entries.single().attempts)
+        assertEquals(exited.remaining.entries, store.load().entries)
+        assertTrue(events.any { it.type == EventType.RECOVERY_DEBT && it.feature == Feature.FORCE_DOZE })
+        assertEquals(Feature.FORCE_DOZE, exited.remaining.entries.single().feature)
+        assertEquals(listOf("dumpsys deviceidle force-idle", "dumpsys deviceidle step"), runner.mutations())
+        assertTrue(events.any { it.type == EventType.RESTORE_FAILED && it.feature == Feature.FORCE_DOZE })
     }
 
     companion object {
