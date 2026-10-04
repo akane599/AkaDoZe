@@ -128,16 +128,27 @@ object SystemReset {
             result.timedOut -> ResetCommandOutcome.TIMEOUT
             !result.ok || result.stderr.any { it.isNotBlank() } -> ResetCommandOutcome.UNVERIFIED
             else -> {
-                // Only an exact, single operation/mode readback is understood. Missing operations,
-                // UID modes, history suffixes and OEM output are not proof of the package's default.
-                val mode = when (result.stdout.filterNot(String::isBlank).singleOrNull()?.trim()) {
-                    "WRITE_SETTINGS: default" -> true
-                    "WRITE_SETTINGS: allow", "WRITE_SETTINGS: ignore", "WRITE_SETTINGS: deny",
-                    "WRITE_SETTINGS: foreground" -> false
-                    else -> null
-                }
-                verifiedOutcome(mode)
+                verifiedOutcome(writeSettingsIsDefault(result.stdout))
             }
+        }
+    }
+
+    private val writeSettingsMode = Regex("""WRITE_SETTINGS: (\w+)(?:;.*| \(running\))?""")
+
+    /**
+     * AOSP `appops get <pkg> WRITE_SETTINGS` (AppOpsService shell, M through 16): setting the op back to
+     * its default prunes it, which prints "No operations." (plus "Default mode: default" from Q on);
+     * a kept op prints "WRITE_SETTINGS: <mode>" with optional "; time=…" history. UID modes override
+     * the package mode, and anything else is unknown.
+     */
+    internal fun writeSettingsIsDefault(stdout: List<String>): Boolean? {
+        val lines = stdout.map(String::trim).filter(String::isNotEmpty)
+        if (lines == listOf("No operations.") || lines == listOf("No operations.", "Default mode: default")) return true
+        val mode = writeSettingsMode.matchEntire(lines.singleOrNull() ?: return null)?.groupValues?.get(1)
+        return when (mode) {
+            "default" -> true
+            "allow", "ignore", "deny", "foreground" -> false
+            else -> null
         }
     }
 

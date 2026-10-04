@@ -77,9 +77,19 @@ class SystemResetTest {
         assertFalse(result.complete)
     }
 
+    @Test fun writeSettingsReadbackAcceptsAospPrunedAndHistoryForms() {
+        // AOSP prunes an op set back to its default mode, so `appops get` usually prints "No operations.".
+        for (output in listOf("No operations.", "No operations.\nDefault mode: default",
+            "WRITE_SETTINGS: default; time=+1m2s ago", "WRITE_SETTINGS: default; time=+5s ago; rejectTime=+1h ago",
+            "WRITE_SETTINGS: default (running)")) {
+            assertEquals(output, true, SystemReset.writeSettingsIsDefault(output.split('\n')))
+        }
+        assertEquals(false, SystemReset.writeSettingsIsDefault(listOf("WRITE_SETTINGS: allow; time=+3s ago")))
+    }
+
     @Test fun writeSettingsReadbackAcceptsOnlyOneExactOperationAndMode() {
-        val outputs = listOf("", "No operations.", "default", "GET_USAGE_STATS: default",
-            "Uid mode: WRITE_SETTINGS: default", "WRITE_SETTINGS: default; time=+1s ago",
+        val outputs = listOf("", "default", "GET_USAGE_STATS: default", "No operations.\nDefault mode: allow",
+            "Uid mode: WRITE_SETTINGS: default", "Uid mode: WRITE_SETTINGS: allow\nWRITE_SETTINGS: default",
             "WRITE_SETTINGS: default extra", "WRITE_SETTINGS: unknown", "write_settings: default",
             "WRITE_SETTINGS: default\nWRITE_SETTINGS: default", "WRITE_SETTINGS: default\nOEM warning")
         for (output in outputs) {
