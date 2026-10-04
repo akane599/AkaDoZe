@@ -361,7 +361,11 @@ class DozeController @JvmOverloads constructor(
     }
 
     private fun verifyRestore(entry: LedgerEntry, apiLevel: Int): Boolean {
-        val value = readValue(entry.feature, entry.target, original = true, apiLevel = apiLevel)
+        val value = if (entry.feature == Feature.APP_SUSPEND && entry.originalValue == "0") {
+            FeatureReadback.restoredSuspensionValue(
+                read(entry.feature, entry.target, original = true, apiLevel = apiLevel), entry.target, control.level,
+            )
+        } else readValue(entry.feature, entry.target, original = true, apiLevel = apiLevel)
         val expected = if (entry.feature == Feature.NOTIFICATION_BLOCK && apiLevel < 33)
             entry.originalValue?.substringBeforeLast(',') else entry.originalValue
         val verified = value != null && value == expected
