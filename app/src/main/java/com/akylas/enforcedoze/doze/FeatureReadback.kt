@@ -33,11 +33,10 @@ internal object FeatureReadback {
     /** Restore only our pm suspension, not another owner's aggregate suspension. */
     fun restoredSuspensionValue(output: List<String>, target: String?, level: AccessLevel): String? {
         val aggregate = suspension(output, target) ?: return null
-        val ours = when (level) {
-            AccessLevel.SHELL -> setOf("com.android.shell")
-            AccessLevel.ROOT -> setOf("root", "android")
-            else -> return aggregate
-        }
+        if (level != AccessLevel.SHELL && level != AccessLevel.ROOT) return aggregate
+        // Either privileged mode may have applied the suspension (execution mode can change between
+        // apply and restore), so a remaining shell or root suspender is never reported as restored.
+        val ours = setOf("com.android.shell", "root", "android")
         val user = userZero(output, target) ?: return aggregate
         val start = user.indices.filter { user[it].trim() == "Suspend params:" }.singleOrNull()
             ?: return aggregate

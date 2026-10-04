@@ -330,6 +330,14 @@ class DozeControllerTest {
         assertFalse(events.any { it.type in setOf(EventType.RESTORE_FAILED, EventType.RECOVERY_DEBT) })
     }
 
+    @Test fun appSuspendRestoreAtShellStillSeesASuspensionAppliedAtRoot() {
+        // The execution mode can change between apply and restore; a root-owned suspension is still ours.
+        store.save(RestoreLedger(listOf(entry(Feature.APP_SUSPEND, "0", PKG))))
+        runner.replies("dumpsys package $PKG", suspensionFixture(PKG, true, "com.google.android.apps.wellbeing", "root"))
+        assertFalse(controller.exit().complete)
+        assertEquals(1, store.load().entries.single().attempts)
+    }
+
     @Test fun appSuspendUnknownOrIncompleteDetailsRetainAggregateRestoreFailure() {
         val wellbeing = suspensionFixture(PKG, true, "com.google.android.apps.wellbeing")
         val dumps = listOf(
