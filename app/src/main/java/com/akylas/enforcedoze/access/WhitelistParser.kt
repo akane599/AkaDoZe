@@ -13,6 +13,22 @@ data class WhitelistParseResult(
     val verified: Boolean get() = parseReason == null || parseReason == WhitelistParseReason.EMPTY
 }
 
+internal data class WhitelistRow(val packageName: String, val deepDozeMember: Boolean) {
+    companion object {
+        private val kinds = setOf("system", "system-excidle", "user")
+
+        fun parse(line: String): WhitelistRow? {
+            val fields = line.trim().split(',').map(String::trim)
+            if (fields.size != 3 || fields[0] !in kinds ||
+                (fields[1] != "android" && !PackageNames.isValid(fields[1])) ||
+                fields[2].toIntOrNull()?.let { it >= 0 } != true
+            ) return null
+            // Except-idle exemptions do not establish deep-Doze whitelist membership.
+            return WhitelistRow(fields[1], fields[0] != "system-excidle")
+        }
+    }
+}
+
 object WhitelistParser {
     @JvmStatic
     fun parse(result: CommandResult): WhitelistParseResult {
@@ -20,13 +36,9 @@ object WhitelistParser {
         var unparsed = 0
         for (line in result.stdout) {
             if (line.isBlank()) continue
-            val fields = line.trim().split(',').map(String::trim)
-            if (fields.size == 3 && PackageNames.isValid(fields[1]) && fields[2].matches(Regex("[0-9]+")) &&
-                fields[0] in setOf("system", "system-excidle", "user")
-            ) {
-                // Except-idle exemptions do not establish deep-Doze whitelist membership.
-                if (fields[0] != "system-excidle") packages.add(fields[1])
-            } else unparsed++
+            val row = WhitelistRow.parse(line)
+            if (row == null) unparsed++
+            else if (row.deepDozeMember) packages.add(row.packageName)
         }
         val reason = when {
             result.timedOut -> WhitelistParseReason.TIMED_OUT

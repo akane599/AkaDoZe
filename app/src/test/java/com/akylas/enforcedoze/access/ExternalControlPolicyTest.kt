@@ -99,13 +99,22 @@ class ExternalControlPolicyTest {
     }
 
     @Test
+    fun blankLinesBetweenValidWhitelistRowsDoNotMakeMembershipUnknown() {
+        val target = "com.example.app"
+        val rows = listOf("system,android,1000", "", "  ", "user,$target,10123")
+        assertEquals("blank lines are skipped during membership readback", true,
+            ExternalControlPolicy.whitelistMembership(rows, target))
+        assertEquals(false, ExternalControlPolicy.whitelistMembership(rows, "com.example.absent"))
+    }
+
+    @Test
     fun whitelistSuccessRequiresStructuredReadbackNotExitCodeOrSubstring() {
         val target = "com.example.app"
         val rows = listOf("system,android,1000", "system-excidle,$target,10001", "user,com.example.app.other,10002")
         assertEquals(false, ExternalControlPolicy.whitelistMembership(rows, target))
         assertEquals(true, ExternalControlPolicy.whitelistMembership(rows + "user,$target,10001", target))
         assertEquals(true, ExternalControlPolicy.whitelistMembership(listOf("system,$target,10001"), target))
-        for (bad in listOf(emptyList(), listOf("Permission Denial"), listOf("user,$target"),
+        for (bad in listOf(emptyList(), listOf("", "  "), listOf("Permission Denial"), listOf("user,$target"),
             listOf("user,$target,notAnId"), rows + "OEM unknown", listOf("user,$target,-1"))) {
             assertNull(bad.toString(), ExternalControlPolicy.whitelistMembership(bad, target))
         }
