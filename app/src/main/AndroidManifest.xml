@@ -65,6 +65,9 @@
             </intent-filter>
         </receiver>
         <receiver
+            android:name="com.akylas.enforcedoze.InternalEnableReceiver"
+            android:exported="false" />
+        <receiver
             android:name="com.akylas.enforcedoze.EnableForceDozeService"
             android:enabled="true"
             android:exported="true">
