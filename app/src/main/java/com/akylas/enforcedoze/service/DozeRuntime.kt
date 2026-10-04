@@ -217,7 +217,8 @@ class DozeRuntime(context: Context) {
 
     fun readState(): DozeStateReading {
         if (control.level >= AccessLevel.SHELL) {
-            val prefix = if (Build.VERSION.SDK_INT >= 24) "cmd deviceidle" else "dumpsys deviceidle"
+            if (Build.VERSION.SDK_INT < 24) return DozeStateParser.parse(runRead("dumpsys deviceidle"))
+            val prefix = "cmd deviceidle"
             return DozeStateReading(
                 DozeStateParser.parseDeep(runRead("$prefix get deep")) ?: DeepState.UNKNOWN,
                 DozeStateParser.parseLight(runRead("$prefix get light")) ?: LightState.UNKNOWN,
