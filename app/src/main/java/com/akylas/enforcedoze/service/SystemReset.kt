@@ -74,6 +74,7 @@ object SystemReset {
                     result.ok -> when (id) {
                         ResetCommandId.DISABLE_DEVICE_IDLE -> verifyDeviceIdle(control, apiLevel, false)
                         ResetCommandId.ENABLE_DEVICE_IDLE -> verifyDeviceIdle(control, apiLevel, true)
+                        ResetCommandId.REVOKE_WRITE_SETTINGS -> verifyWriteSettings(control, pkg)
                         else -> verifiedOutcome(permissionGranted(command.substringAfterLast(' '))?.not())
                     }
                     result.exitCode < 0 -> ResetCommandOutcome.UNVERIFIED
@@ -111,7 +112,7 @@ object SystemReset {
             ResetCommandId.REVOKE_READ_LOGS to "pm revoke $pkg android.permission.READ_LOGS",
             ResetCommandId.REVOKE_READ_PHONE_STATE to "pm revoke $pkg android.permission.READ_PHONE_STATE",
             ResetCommandId.REVOKE_WRITE_SECURE_SETTINGS to "pm revoke $pkg android.permission.WRITE_SECURE_SETTINGS",
-            ResetCommandId.REVOKE_WRITE_SETTINGS to "pm revoke $pkg android.permission.WRITE_SETTINGS",
+            ResetCommandId.REVOKE_WRITE_SETTINGS to "appops set $pkg WRITE_SETTINGS default",
         )
     }
 
@@ -119,6 +120,25 @@ object SystemReset {
         true -> ResetCommandOutcome.OK
         false -> ResetCommandOutcome.FAILED
         null -> ResetCommandOutcome.UNVERIFIED
+    }
+
+    private fun verifyWriteSettings(control: CommandRunner, pkg: String): ResetCommandOutcome {
+        val result = control.run("appops get $pkg WRITE_SETTINGS")
+        return when {
+            result.timedOut -> ResetCommandOutcome.TIMEOUT
+            !result.ok || result.stderr.any { it.isNotBlank() } -> ResetCommandOutcome.UNVERIFIED
+            else -> {
+                // Only an exact, single operation/mode readback is understood. Missing operations,
+                // UID modes, history suffixes and OEM output are not proof of the package's default.
+                val mode = when (result.stdout.filterNot(String::isBlank).singleOrNull()?.trim()) {
+                    "WRITE_SETTINGS: default" -> true
+                    "WRITE_SETTINGS: allow", "WRITE_SETTINGS: ignore", "WRITE_SETTINGS: deny",
+                    "WRITE_SETTINGS: foreground" -> false
+                    else -> null
+                }
+                verifiedOutcome(mode)
+            }
+        }
     }
 
     private fun verifyDeviceIdle(control: CommandRunner, apiLevel: Int, enabled: Boolean): ResetCommandOutcome {

@@ -17,7 +17,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SystemResetTest {
-    private val runner = FakeRunner()
+    private val runner = resetRunner()
+
+    private fun resetRunner(writeSettingsOutput: String = "WRITE_SETTINGS: default") = FakeRunner().apply {
+        answer("pm revoke $PACKAGE android.permission.WRITE_SETTINGS") {
+            FakeRunner.result("SecurityException: not a changeable permission type", exit = 1)
+        }
+        confirmingWriteSettingsReadback(this, writeSettingsOutput)
+    }
+
+    private fun confirmingWriteSettingsReadback(fake: FakeRunner, output: String = "WRITE_SETTINGS: default") {
+        fake.replies("appops set $PACKAGE WRITE_SETTINGS default", "")
+        fake.replies("appops get $PACKAGE WRITE_SETTINGS", output)
+    }
     private val store = InMemoryLedgerStore()
     private val controller = DozeController(runner, CommandCatalog, CapabilityResolver, store,
         FakeClock(), DozeEventSink {}, 36, Grants(true, true))
@@ -27,6 +39,107 @@ class SystemResetTest {
             runner.replies("cmd deviceidle enabled deep", "0", "1")
             runner.replies("cmd deviceidle enabled light", "0", "1")
         } else runner.replies("dumpsys deviceidle enabled", "0", "1")
+    }
+
+    @Test fun writeSettingsUsesAppOpInsteadOfUnchangeablePermissionAndCanComplete() {
+        for (apiLevel in listOf(23, 36)) {
+            val fake = FakeRunner()
+            if (apiLevel >= 24) {
+                fake.replies("cmd deviceidle enabled deep", "0", "1")
+                fake.replies("cmd deviceidle enabled light", "0", "1")
+            } else fake.replies("dumpsys deviceidle enabled", "0", "1")
+            fake.answer("pm revoke $PACKAGE android.permission.WRITE_SETTINGS") {
+                FakeRunner.result("SecurityException: not a changeable permission type", exit = 1)
+            }
+            fake.replies("appops set $PACKAGE WRITE_SETTINGS default", "")
+            fake.replies("appops get $PACKAGE WRITE_SETTINGS", "WRITE_SETTINGS: default")
+
+            val result = SystemReset.run(fake, apiLevel, PACKAGE, permissionGranted = { false }) {
+                ResetRestoreOutcome.COMPLETE
+            }
+            assertEquals("WRITE_SETTINGS must be reset through its app-op on API $apiLevel",
+                ResetCommandOutcome.OK, result.commands.last().outcome)
+            assertEquals(ResetCommandId.REVOKE_WRITE_SETTINGS, result.commands.last().id)
+            assertEquals(listOf("appops set $PACKAGE WRITE_SETTINGS default", "appops get $PACKAGE WRITE_SETTINGS"),
+                fake.commands.takeLast(2))
+            assertFalse(fake.commands.contains("pm revoke $PACKAGE android.permission.WRITE_SETTINGS"))
+            assertTrue("all readbacks confirmed, so reset can be complete on API $apiLevel", result.complete)
+        }
+    }
+
+    @Test fun unparseableWriteSettingsAppOpReadbackIsUnverified() {
+        val fake = resetRunner("OEM unknown")
+        fake.replies("cmd deviceidle enabled deep", "0", "1")
+        fake.replies("cmd deviceidle enabled light", "0", "1")
+        val result = SystemReset.run(fake, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
+        assertEquals("unknown app-op output is never confirmed", ResetCommandOutcome.UNVERIFIED,
+            result.commands.last().outcome)
+        assertFalse(result.complete)
+    }
+
+    @Test fun writeSettingsReadbackAcceptsOnlyOneExactOperationAndMode() {
+        val outputs = listOf("", "No operations.", "default", "GET_USAGE_STATS: default",
+            "Uid mode: WRITE_SETTINGS: default", "WRITE_SETTINGS: default; time=+1s ago",
+            "WRITE_SETTINGS: default extra", "WRITE_SETTINGS: unknown", "write_settings: default",
+            "WRITE_SETTINGS: default\nWRITE_SETTINGS: default", "WRITE_SETTINGS: default\nOEM warning")
+        for (output in outputs) {
+            val fake = resetRunner(output)
+            fake.replies("cmd deviceidle enabled deep", "0", "1")
+            fake.replies("cmd deviceidle enabled light", "0", "1")
+            val result = SystemReset.run(fake, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
+            assertEquals(output, ResetCommandOutcome.UNVERIFIED, result.commands.last().outcome)
+            assertFalse(result.complete)
+        }
+        for (mode in listOf("allow", "ignore", "deny", "foreground")) {
+            val fake = resetRunner("WRITE_SETTINGS: $mode")
+            fake.replies("cmd deviceidle enabled deep", "0", "1")
+            fake.replies("cmd deviceidle enabled light", "0", "1")
+            val result = SystemReset.run(fake, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
+            assertEquals(mode, ResetCommandOutcome.FAILED, result.commands.last().outcome)
+            assertFalse(result.complete)
+        }
+        val fake = resetRunner("\n  WRITE_SETTINGS: default  \n")
+        fake.replies("cmd deviceidle enabled deep", "0", "1")
+        fake.replies("cmd deviceidle enabled light", "0", "1")
+        val result = SystemReset.run(fake, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
+        assertTrue("blank lines and surrounding whitespace do not change an exact mode", result.complete)
+    }
+
+    @Test fun writeSettingsReadbackTransportFailureAndTimeoutCannotConfirm() {
+        val reads = listOf(
+            FakeRunner.result("WRITE_SETTINGS: default", exit = 1) to ResetCommandOutcome.UNVERIFIED,
+            FakeRunner.result("WRITE_SETTINGS: default", exit = -1) to ResetCommandOutcome.UNVERIFIED,
+            FakeRunner.result("WRITE_SETTINGS: default", timeout = true) to ResetCommandOutcome.TIMEOUT,
+            FakeRunner.result("WRITE_SETTINGS: default").copy(stderr = listOf("OEM warning")) to ResetCommandOutcome.UNVERIFIED,
+        )
+        for ((reply, expected) in reads) {
+            val fake = FakeRunner()
+            fake.replies("cmd deviceidle enabled deep", "0", "1")
+            fake.replies("cmd deviceidle enabled light", "0", "1")
+            fake.replies("appops set $PACKAGE WRITE_SETTINGS default", "")
+            fake.answer("appops get $PACKAGE WRITE_SETTINGS") { reply }
+            val result = SystemReset.run(fake, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
+            assertEquals(expected, result.commands.last().outcome)
+            assertFalse(result.complete)
+        }
+    }
+
+    @Test fun writeSettingsMutationFailureDoesNotRunReadback() {
+        val writes = listOf(
+            FakeRunner.result("", exit = 1) to ResetCommandOutcome.FAILED,
+            FakeRunner.result("", exit = -1) to ResetCommandOutcome.UNVERIFIED,
+            FakeRunner.result("", timeout = true) to ResetCommandOutcome.TIMEOUT,
+        )
+        for ((reply, expected) in writes) {
+            val fake = FakeRunner()
+            fake.replies("cmd deviceidle enabled deep", "0", "1")
+            fake.replies("cmd deviceidle enabled light", "0", "1")
+            fake.answer("appops set $PACKAGE WRITE_SETTINGS default") { reply }
+            val result = SystemReset.run(fake, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
+            assertEquals(expected, result.commands.last().outcome)
+            assertFalse(fake.commands.contains("appops get $PACKAGE WRITE_SETTINGS"))
+            assertFalse(result.complete)
+        }
     }
 
     @Test fun throwingResetJobDeliversFailureAndAllowsRetry() {
@@ -203,10 +316,12 @@ class SystemResetTest {
             checked.add(permission)
             true
         }) { ResetRestoreOutcome.COMPLETE }
-        assertEquals(listOf("DUMP", "READ_LOGS", "READ_PHONE_STATE", "WRITE_SECURE_SETTINGS", "WRITE_SETTINGS")
+        assertEquals(listOf("DUMP", "READ_LOGS", "READ_PHONE_STATE", "WRITE_SECURE_SETTINGS")
             .map { "android.permission.$it" }, checked)
         assertTrue(result.commands.take(2).all { it.outcome == ResetCommandOutcome.OK })
-        assertTrue(result.commands.drop(2).all { it.outcome == ResetCommandOutcome.FAILED })
+        assertTrue(result.commands.drop(2).dropLast(1).all { it.outcome == ResetCommandOutcome.FAILED })
+        assertEquals("WRITE_SETTINGS uses app-op readback, not the permission predicate",
+            ResetCommandOutcome.OK, result.commands.last().outcome)
         assertFalse(result.complete)
     }
 
@@ -228,13 +343,14 @@ class SystemResetTest {
     @Test fun missingPermissionPredicateNeverClaimsVerifiedRevocations() {
         confirmingDeviceIdleReadbacks()
         val result = SystemReset.run(runner, 36, PACKAGE) { ResetRestoreOutcome.COMPLETE }
-        assertTrue(result.commands.drop(2).all { it.outcome == ResetCommandOutcome.UNVERIFIED })
+        assertTrue(result.commands.drop(2).dropLast(1).all { it.outcome == ResetCommandOutcome.UNVERIFIED })
+        assertEquals(ResetCommandOutcome.OK, result.commands.last().outcome)
         assertFalse(result.complete)
     }
 
     @Test fun deviceIdleReadbackAcceptsOnlyOneExactBit() {
         for (unknown in listOf("", "true", "01", "1 extra", "1\n1", "1\nOEM warning")) {
-            val fake = FakeRunner()
+            val fake = resetRunner()
             fake.replies("cmd deviceidle enabled deep", unknown, " 1 ")
             fake.replies("cmd deviceidle enabled light", "0", "\n1\n")
             val result = SystemReset.run(fake, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
@@ -282,7 +398,7 @@ class SystemResetTest {
             runner.commands.any { it.endsWith(PHONE_STATE) })
         assertTrue("steps after it still run", runner.commands.containsAll(listOf(
             "pm revoke $PACKAGE android.permission.WRITE_SECURE_SETTINGS",
-            "pm revoke $PACKAGE android.permission.WRITE_SETTINGS")))
+            "appops set $PACKAGE WRITE_SETTINGS default")))
         assertTrue(result.commands.none { it.id == ResetCommandId.REVOKE_READ_PHONE_STATE })
         assertEquals(listOf(ResetCommandId.REVOKE_READ_PHONE_STATE), result.deferred)
         assertTrue("restore complete and every executed step confirmed", result.complete)
@@ -318,9 +434,10 @@ class SystemResetTest {
         assertTrue("revoking a permission not held kills nothing, so it runs and is read back in place",
             notHeld.deferred.isEmpty() && notHeld.commands.any { it.id == ResetCommandId.REVOKE_READ_PHONE_STATE })
         confirmingDeviceIdleReadbacks()
+        confirmingWriteSettingsReadback(runner)
         val unknown = SystemReset.run(runner, 36, PACKAGE) { ResetRestoreOutcome.COMPLETE }
         assertEquals("unknown grant state is treated as held", listOf(ResetCommandId.REVOKE_READ_PHONE_STATE), unknown.deferred)
-        val throwing = FakeRunner()
+        val throwing = resetRunner()
         throwing.replies("cmd deviceidle enabled deep", "0", "1")
         throwing.replies("cmd deviceidle enabled light", "0", "1")
         val failedCheck = SystemReset.run(throwing, 36, PACKAGE, permissionGranted = { throw IllegalStateException("gone") }) {
