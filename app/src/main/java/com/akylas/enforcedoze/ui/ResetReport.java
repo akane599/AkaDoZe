@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 
 import com.akylas.enforcedoze.R;
 import com.akylas.enforcedoze.access.Prefs;
+import com.akylas.enforcedoze.service.ResetCommandId;
 import com.akylas.enforcedoze.service.ResetCommandOutcome;
 import com.akylas.enforcedoze.service.ResetCommandResult;
 import com.akylas.enforcedoze.service.ResetRestoreOutcome;
@@ -44,6 +45,7 @@ public final class ResetReport {
 
     /** Clears every preference except what a remaining restore needs, in one commit. Call off main. */
     public static boolean clearPreferences(SharedPreferences prefs, SystemResetResult result) {
+        if (result.getFailed()) return false;
         Map<String, Object> kept = retained(prefs.getAll(), keysToKeep(result));
         SharedPreferences.Editor editor = prefs.edit().clear();
         for (Map.Entry<String, Object> entry : kept.entrySet()) {
@@ -76,7 +78,10 @@ public final class ResetReport {
     }
 
     public static String message(Context context, SystemResetResult result, boolean prefsCleared) {
-        if (complete(result, prefsCleared)) return context.getString(R.string.reset_complete_dialog_text);
+        List<ResetCommandId> deferred = result.getDeferred();
+        if (complete(result, prefsCleared) && deferred.isEmpty()) {
+            return context.getString(R.string.reset_complete_dialog_text);
+        }
         StringBuilder text = new StringBuilder();
         if (result.getRestoreOutcome() == ResetRestoreOutcome.REMAINING_DEBT) {
             text.append(context.getString(R.string.reset_debt_remaining));
@@ -94,7 +99,19 @@ public final class ResetReport {
         text.append(context.getString(!prefsCleared ? R.string.reset_prefs_failed
                 : result.getRestoreOutcome() == ResetRestoreOutcome.COMPLETE ? R.string.reset_prefs_cleared
                 : R.string.reset_prefs_cleared_kept));
-        text.append("\n\n").append(context.getString(R.string.reset_restart_text));
+        if (result.getFailed()) return text.toString();
+        text.append("\n\n");
+        if (deferred.isEmpty()) {
+            text.append(context.getString(R.string.reset_restart_text));
+        } else {
+            // Not run yet, so not counted as confirmed: they run on OK, and Android then closes the app.
+            StringBuilder names = new StringBuilder();
+            for (ResetCommandId id : deferred) {
+                if (names.length() > 0) names.append(", ");
+                names.append(permission(id));
+            }
+            text.append(context.getString(R.string.reset_deferred_text, names.toString()));
+        }
         return text.toString();
     }
 
@@ -102,12 +119,86 @@ public final class ResetReport {
         switch (command.getId()) {
             case DISABLE_DEVICE_IDLE: return context.getString(R.string.reset_step_disable_doze);
             case ENABLE_DEVICE_IDLE: return context.getString(R.string.reset_step_enable_doze);
-            case REVOKE_DUMP: return context.getString(R.string.reset_step_revoke, "DUMP");
-            case REVOKE_READ_LOGS: return context.getString(R.string.reset_step_revoke, "READ_LOGS");
-            case REVOKE_READ_PHONE_STATE: return context.getString(R.string.reset_step_revoke, "READ_PHONE_STATE");
-            case REVOKE_WRITE_SECURE_SETTINGS: return context.getString(R.string.reset_step_revoke, "WRITE_SECURE_SETTINGS");
+            default: return context.getString(R.string.reset_step_revoke, permission(command.getId()));
+        }
+    }
+
+    private static String permission(ResetCommandId id) {
+        switch (id) {
+            case REVOKE_DUMP: return "DUMP";
+            case REVOKE_READ_LOGS: return "READ_LOGS";
+            case REVOKE_READ_PHONE_STATE: return "READ_PHONE_STATE";
+            case REVOKE_WRITE_SECURE_SETTINGS: return "WRITE_SECURE_SETTINGS";
             case REVOKE_WRITE_SETTINGS:
-            default: return context.getString(R.string.reset_step_revoke, "WRITE_SETTINGS");
+            default: return "WRITE_SETTINGS";
+        }
+    }
+
+    /** The one reset this process runs, kept past the Settings screen that started it (rotation, dark mode). */
+    public static final Tracker TRACKER = new Tracker();
+
+    /**
+     * Reset progress for whichever Settings screen is showing. The worker records the result here, so a
+     * recreated screen still shows it and still finishes the reset. Pure state: callers own the threads.
+     */
+    public static final class Tracker {
+        public enum Phase { IDLE, RUNNING, REPORTED, FINISHING }
+
+        /** Main thread: render {@link #phase()} again. */
+        public interface Listener { void onResetChanged(); }
+
+        private Phase phase = Phase.IDLE;
+        private SystemResetResult result;
+        private boolean prefsCleared;
+        private Listener listener;
+
+        /** Main: false when a reset is already under way in this process. */
+        public synchronized boolean begin() {
+            if (phase != Phase.IDLE) return false;
+            phase = Phase.RUNNING;
+            return true;
+        }
+
+        /** Worker: the result is known and the preference clear has finished (or failed). */
+        public synchronized void deliver(SystemResetResult result, boolean prefsCleared) {
+            if (phase != Phase.RUNNING) return;
+            this.result = result;
+            this.prefsCleared = prefsCleared;
+            phase = Phase.REPORTED;
+        }
+
+        public synchronized Phase phase() { return phase; }
+
+        public synchronized SystemResetResult result() { return result; }
+
+        public synchronized boolean prefsCleared() { return prefsCleared; }
+
+        /** Main: a failed job is dismissed for retry; otherwise finish the reset once before restart. */
+        public synchronized List<ResetCommandId> confirm() {
+            if (phase != Phase.REPORTED) return null;
+            if (result.getFailed()) {
+                phase = Phase.IDLE;
+                result = null;
+                prefsCleared = false;
+                return null;
+            }
+            phase = Phase.FINISHING;
+            return result.getDeferred();
+        }
+
+        /** Main: the screen now showing; it renders the current phase itself. */
+        public synchronized void setListener(Listener listener) { this.listener = listener; }
+
+        /** Main: only the screen that registered can unregister, so a newer screen keeps receiving. */
+        public synchronized void removeListener(Listener listener) {
+            if (this.listener == listener) this.listener = null;
+        }
+
+        /** Main: tell the screen now showing, if any; one that starts later renders from {@link #phase()}. */
+        public void notifyListener() {
+            Listener current;
+            synchronized (this) { current = listener; }
+            if (current != null) current.onResetChanged();
         }
     }
 

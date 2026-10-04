@@ -52,6 +52,17 @@ before, and nothing should be reset.
     - Settings → Reset: a progress dialog, then "Reset complete" only if every step was confirmed. Without
       root/Shizuku, expect "Reset incomplete" listing each step as "couldn't be checked". With leftover
       debt, the execution mode survives the reset.
+    - Reset with READ_PHONE_STATE granted (SQ-71): the app stays open through the progress dialog, and the
+      report names "revoke READ_PHONE_STATE" as the last step that runs on OK. After OK the app closes or
+      restarts. Reopened, settings are defaults and `adb shell dumpsys package com.akylas.enforcedoze`
+      shows READ_PHONE_STATE as not granted. Rotate (or switch dark mode) while the progress dialog is up:
+      the report still appears on the new screen, and OK still finishes.
+    - Reset worker retirement/retry (SQ-89): with the service stopped, tap OK on the reset report just as
+      another worker operation finishes; deferred revokes/restart must not hang on "Please wait".
+      With a diagnostic build that throws during reset/reconciliation, expect a dismissable "Reset
+      incomplete" report, unchanged preferences, and no automatic restart. After OK (also after rotating
+      while the job runs), Settings → Reset can start another attempt. This exception injection is covered
+      on the JVM; device timing and dialog behavior remain unverified here.
     - Re-picking the execution mode that is already active doesn't restart the service (no new
       foreground notification, no stop/start in logcat).
     - Whitelist with a failing read (e.g. no DUMP/Shizuku/root) shows "The Doze whitelist couldn't be read",

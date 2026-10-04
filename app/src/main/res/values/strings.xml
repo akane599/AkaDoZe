@@ -562,6 +562,7 @@
     <string name="reset_prefs_cleared_kept">Other settings were reset.</string>
     <string name="reset_prefs_failed">Settings couldn\'t be reset.</string>
     <string name="reset_restart_text">The app will restart now.</string>
+    <string name="reset_deferred_text">Last step: revoke %1$s. Android closes EnforceDoze when it revokes a permission the app holds, so this runs only when you tap OK. The app then closes or restarts; if it closes, open it again.</string>
 
     <string name="damaged_records_debt">Some restore records are damaged, so EnforceDoze can\'t restore them automatically: %1$s. Check those settings yourself, then dismiss the records.</string>
     <string name="damaged_records_dismiss">Dismiss damaged records</string>

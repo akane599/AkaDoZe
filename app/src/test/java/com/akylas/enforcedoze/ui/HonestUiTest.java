@@ -23,6 +23,7 @@ import com.akylas.enforcedoze.service.SystemResetResult;
 
 import org.junit.Test;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -208,6 +209,122 @@ public class HonestUiTest {
         assertTrue(ResetReport.keysToKeep(reset(ResetRestoreOutcome.COMPLETE)).isEmpty());
         assertTrue(ResetReport.retained(stored, ResetReport.keysToKeep(reset(ResetRestoreOutcome.COMPLETE,
                 ResetCommandOutcome.FAILED))).isEmpty());
+    }
+
+    private static String source(String path) throws IOException {
+        File file = new File(path).isFile() ? new File(path) : new File("app/" + path);
+        return new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+    }
+
+    private static String between(String text, String start, String end) {
+        int from = text.indexOf(start);
+        assertTrue("missing " + start, from >= 0);
+        int to = text.indexOf(end, from);
+        assertTrue("missing " + end, to >= 0);
+        return text.substring(from, to);
+    }
+
+    @Test
+    public void resetResultOutlivesTheSettingsScreenThatStartedIt() throws IOException {
+        String reset = between(source("src/main/java/com/akylas/enforcedoze/SettingsActivity.java"),
+                "public void resetForceDoze()", "private void dismissResetProgress()");
+        assertFalse("an isAdded() gate drops the result (prefs already cleared) when the screen was recreated",
+                reset.contains("isAdded()"));
+        assertTrue("the result is kept process-wide for whichever Settings screen is showing",
+                reset.contains("ResetReport.TRACKER.deliver("));
+        assertFalse("the fragment's own handler is cleared in onDestroy, so it can't carry the result",
+                reset.contains("mainHandler.post"));
+        String settings = source("src/main/java/com/akylas/enforcedoze/SettingsActivity.java");
+        String onStart = between(settings, "public void onStart()", "public void onResume()");
+        assertTrue("a started screen listens and renders a reset it missed",
+                onStart.contains("ResetReport.TRACKER.setListener(resetListener)") && onStart.contains("renderReset()"));
+        String finish = between(settings, "private void finishReset()", "private void applyCapabilities(");
+        assertTrue("deferred revokes run only after the user confirmed the report, then the rebirth",
+                finish.indexOf("ResetReport.TRACKER.confirm()") < finish.indexOf(".finishReset(deferred")
+                        && finish.contains("ProcessPhoenix.triggerRebirth("));
+        String runtime = source("src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt");
+        String resetJob = between(runtime, "fun resetSystemState(", "fun finishReset(");
+        assertFalse("the reset job itself never runs the deferred steps", resetJob.contains("runDeferred"));
+    }
+
+    @Test
+    public void finishResetPostsUnderTheSameRuntimeLockAsResetSystemState() throws IOException {
+        String runtime = source("src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt");
+        assertTrue("resetSystemState queues atomically with worker retirement",
+                runtime.contains("@Synchronized\n    fun resetSystemState("));
+        assertTrue("finishReset must hold the runtime lock from worker() through post()",
+                runtime.contains("@Synchronized\n    fun finishReset("));
+    }
+
+    @Test
+    public void failedJobNeverClearsPrefsOrClaimsCompletionEvenWithAnEmptySuccessfulRestore() {
+        SystemResetResult failed = new SystemResetResult(ResetRestoreOutcome.COMPLETE,
+                Collections.emptyList(), Collections.emptyList(), true);
+        assertFalse(failed.getComplete());
+        assertFalse(ResetReport.complete(failed, true));
+        assertFalse("a failed job must not even access the preference store", ResetReport.clearPreferences(null, failed));
+    }
+
+    @Test
+    public void failedResetJobIsWiredThroughTheBoundaryAndDismissedWithoutRestart() throws IOException {
+        String runtime = source("src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt");
+        String job = between(runtime, "val result = SystemReset.runJob {", "callback.onComplete(result)");
+        assertTrue("the boundary includes work before SystemReset.run", job.contains("session.recordExit()"));
+        assertTrue("the boundary includes reset, reconciliation and the final ledger load",
+                job.contains("SystemReset.run(control") && job.contains("controller.reconcile(") && job.contains("store.load()"));
+        String report = source("src/main/java/com/akylas/enforcedoze/ui/ResetReport.java");
+        String message = between(report, "public static String message(", "private static String step(");
+        assertTrue("a failed report must not promise an automatic restart",
+                message.indexOf("if (result.getFailed()) return text.toString();") >= 0
+                        && message.indexOf("if (result.getFailed()) return text.toString();")
+                        < message.indexOf("R.string.reset_restart_text"));
+        String finish = between(source("src/main/java/com/akylas/enforcedoze/SettingsActivity.java"),
+                "private void finishReset()", "private void applyCapabilities(");
+        assertTrue("a failed confirmation renders IDLE instead of starting a rebirth",
+                finish.contains("if (deferred == null) {\n                renderReset();\n                return;\n            }"));
+    }
+
+    @Test
+    public void recreatedScreenStillGetsTheReportAndFinishesOnce() {
+        ResetReport.Tracker tracker = new ResetReport.Tracker();
+        List<String> rendered = new ArrayList<>();
+        ResetReport.Tracker.Listener first = () -> rendered.add("first");
+        ResetReport.Tracker.Listener second = () -> rendered.add("second");
+
+        assertTrue(tracker.begin());
+        assertFalse("one reset per process", tracker.begin());
+        tracker.setListener(first);
+        // Rotation: the old screen stops after the new one registered; that must not unregister the new one.
+        tracker.setListener(second);
+        tracker.removeListener(first);
+        SystemResetResult result = new SystemResetResult(ResetRestoreOutcome.COMPLETE, Collections.emptyList(),
+                Collections.singletonList(ResetCommandId.REVOKE_READ_PHONE_STATE));
+        tracker.deliver(result, true);
+        tracker.notifyListener();
+        assertEquals(Collections.singletonList("second"), rendered);
+        assertEquals(ResetReport.Tracker.Phase.REPORTED, tracker.phase());
+        assertEquals(result, tracker.result());
+        assertTrue(tracker.prefsCleared());
+
+        // No screen showing when it lands: the next one to start renders it from the phase.
+        tracker.removeListener(second);
+        tracker.notifyListener();
+        assertEquals(1, rendered.size());
+        assertEquals(ResetReport.Tracker.Phase.REPORTED, tracker.phase());
+
+        assertEquals(Collections.singletonList(ResetCommandId.REVOKE_READ_PHONE_STATE), tracker.confirm());
+        assertEquals(ResetReport.Tracker.Phase.FINISHING, tracker.phase());
+        assertNull("a second OK (or a re-shown report) cannot run the deferred steps twice", tracker.confirm());
+    }
+
+    @Test
+    public void deferredStepDoesNotCountAgainstCompleteButIsNotConfirmed() {
+        SystemResetResult result = new SystemResetResult(ResetRestoreOutcome.COMPLETE,
+                Collections.singletonList(new ResetCommandResult(ResetCommandId.REVOKE_DUMP, ResetCommandOutcome.OK)),
+                Collections.singletonList(ResetCommandId.REVOKE_READ_PHONE_STATE));
+        assertTrue("complete: restore complete and every executed step OK", ResetReport.complete(result, true));
+        assertTrue("the deferred step is not listed as a confirmed step", ResetReport.unconfirmed(result).isEmpty()
+                && result.getCommands().size() == 1);
     }
 
     // --- 4. Re-picking the active execution mode is not a switch ---
