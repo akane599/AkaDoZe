@@ -32,7 +32,7 @@ class CommandCatalogTest {
         assertNull(CommandCatalog.apply(Feature.APP_SUSPEND, 23, pkg))
         assertNull(CommandCatalog.apply(Feature.NOTIFICATION_BLOCK, 32, pkg))
         assertEquals("cmd deviceidle get deep", CommandCatalog.readback(Feature.FORCE_DOZE, 36))
-        assertEquals("dumpsys deviceidle get deep", CommandCatalog.readback(Feature.FORCE_DOZE, 23))
+        assertEquals("dumpsys deviceidle", CommandCatalog.readback(Feature.FORCE_DOZE, 23))
         assertEquals("dumpsys deviceidle", CommandCatalog.readback(Feature.DOZE_STATE_READ, 36))
         assertEquals("dumpsys sensorservice", CommandCatalog.readback(Feature.MOTION_SENSORS, 36))
         for ((feature, command) in mapOf(
@@ -61,7 +61,7 @@ class CommandCatalogTest {
     fun restoreUsesCapturedValuesIncludingLocationModesAndNotificationFlags() {
         assertEquals(listOf("cmd wifi set-wifi-enabled disabled"), CommandCatalog.restore(Feature.WIFI, 36, "0"))
         assertEquals(listOf("cmd wifi set-wifi-enabled enabled"), CommandCatalog.restore(Feature.WIFI, 36, "1"))
-        assertEquals(listOf("dumpsys deviceidle unforce"), CommandCatalog.restore(Feature.FORCE_DOZE, 23, "false"))
+        assertEquals(listOf("dumpsys deviceidle step"), CommandCatalog.restore(Feature.FORCE_DOZE, 23, "false"))
         assertEquals(listOf("cmd deviceidle unforce"), CommandCatalog.restore(Feature.FORCE_DOZE, 24, "false"))
         assertEquals(listOf("dumpsys sensorservice enable"), CommandCatalog.restore(Feature.MOTION_SENSORS, 36, "NORMAL"))
         assertNull(CommandCatalog.restore(Feature.MOTION_SENSORS, 36, "OTHER"))
@@ -90,6 +90,11 @@ class CommandCatalogTest {
         rejects { CommandCatalog.restore(Feature.WIFI, 36, "UNKNOWN") }
         rejects { CommandCatalog.restore(Feature.LOCATION, 29, "2;reboot") }
         rejects { CommandCatalog.apply(Feature.TUNABLES, 36, value = "inactive_to=1;reboot") }
+    }
+
+    @Test
+    fun api23SafetyUnforceUsesTheSameStepAsRestore() {
+        assertEquals(listOf("dumpsys deviceidle step"), CommandCatalog.setEnabled(Feature.FORCE_DOZE, 23, false))
     }
 
     @Test
