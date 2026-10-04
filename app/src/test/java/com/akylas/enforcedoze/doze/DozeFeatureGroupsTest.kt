@@ -14,8 +14,13 @@ class DozeFeatureGroupsTest {
     private val config = DozeConfig(36, AccessLevel.SHELL, grants, restrictSensors = false)
 
     private fun force(api: Int = 36, deep: String = "IDLE") {
-        runner.replies("dumpsys deviceidle", "mForceIdle=false", "mForceIdle=false")
-        runner.replies(if (api >= 24) "cmd deviceidle get deep" else "dumpsys deviceidle get deep", deep)
+        if (api >= 24) {
+            runner.replies("dumpsys deviceidle", "mForceIdle=false", "mForceIdle=false")
+            runner.replies("cmd deviceidle get deep", deep)
+        } else {
+            // M has no `get deep`: the applied deep state comes from the plain dump.
+            runner.replies("dumpsys deviceidle", "mForceIdle=false", "mForceIdle=true\nmState=$deep", "mForceIdle=false")
+        }
     }
     private fun enter(config: DozeConfig = this.config) = controller.enter(config, controller.currentGeneration) { true }
 
