@@ -1,6 +1,8 @@
 package com.akylas.enforcedoze.doze
 
+import com.akylas.enforcedoze.access.AccessLevel
 import com.akylas.enforcedoze.access.Feature
+import com.akylas.enforcedoze.access.PackageNames
 import com.akylas.enforcedoze.doze.parse.DozeStateParser
 import com.akylas.enforcedoze.doze.parse.SensorModeParser
 
@@ -13,10 +15,7 @@ internal object FeatureReadback {
         Feature.LOCATION -> if (apiLevel < 30) {
             output.joinToString("\n").trim().takeIf { it in setOf("0", "1", "2", "3") }
         } else bit(output)
-        Feature.APP_SUSPEND -> userZero(output, target)?.firstOrNull()?.let { header ->
-            Regex("(?:^|\\s)suspended=(true|false)(?:\\s|$)").find(header)?.groupValues?.get(1)
-                ?.let { if (it == "true") "1" else "0" }
-        }
+        Feature.APP_SUSPEND -> suspension(output, target)
         Feature.NOTIFICATION_BLOCK -> if (apiLevel >= 33) notification(output, target) else legacyNotification(output, target)
         Feature.PM_DISABLE -> userZero(output, target)?.firstOrNull()?.let {
             Regex("(?:^|\\s)enabled=([0-4])(?:\\s|$)").find(it)?.groupValues?.get(1)
@@ -31,6 +30,35 @@ internal object FeatureReadback {
         else -> null
     }
 
+    /** Restore only our pm suspension, not another owner's aggregate suspension. */
+    fun restoredSuspensionValue(output: List<String>, target: String?, level: AccessLevel): String? {
+        val aggregate = suspension(output, target) ?: return null
+        val ours = when (level) {
+            AccessLevel.SHELL -> setOf("com.android.shell")
+            AccessLevel.ROOT -> setOf("root", "android")
+            else -> return aggregate
+        }
+        val user = userZero(output, target) ?: return aggregate
+        val start = user.indices.filter { user[it].trim() == "Suspend params:" }.singleOrNull()
+            ?: return aggregate
+        val indent = user[start].takeWhile { it.isWhitespace() }.length
+        val params = user.drop(start + 1).takeWhile {
+            it.isBlank() || it.takeWhile { c -> c.isWhitespace() }.length > indent
+        }.filter { it.isNotBlank() }
+        val entryIndent = params.minOfOrNull { it.takeWhile { c -> c.isWhitespace() }.length }
+            ?: return aggregate
+        val entries = params.filter { it.takeWhile { c -> c.isWhitespace() }.length == entryIndent }
+        val pattern = Regex("\\s*suspendingPackage=([a-zA-Z0-9_.]+)\\s*")
+        val suspenders = entries.map { line ->
+            val name = pattern.matchEntire(line)?.groupValues?.get(1) ?: return aggregate
+            if (name !in setOf("root", "android") && !PackageNames.isValid(name)) return aggregate
+            name
+        }
+        // A differently indented/encoded entry makes the set incomplete: keep the aggregate oracle.
+        if (params.any { it !in entries && "suspendingPackage" in it }) return aggregate
+        return if (suspenders.any { it in ours }) "1" else "0"
+    }
+
     fun appliedValue(feature: Feature): String = when (feature) {
         Feature.MOTION_SENSORS -> "RESTRICTED"
         Feature.WIFI, Feature.MOBILE_DATA, Feature.BLUETOOTH, Feature.LOCATION, Feature.BIOMETRICS -> "0"
@@ -38,6 +66,12 @@ internal object FeatureReadback {
         Feature.NOTIFICATION_BLOCK -> "0,1,1" // grant,user-set,user-fixed
         else -> "1"
     }
+
+    private fun suspension(output: List<String>, target: String?): String? =
+        userZero(output, target)?.firstOrNull()?.let { header ->
+            Regex("(?:^|\\s)suspended=(true|false)(?:\\s|$)").find(header)?.groupValues?.get(1)
+                ?.let { if (it == "true") "1" else "0" }
+        }
 
     private fun legacyNotification(output: List<String>, target: String?): String? {
         // A package-wide custom importance cannot be restored by the boolean hidden method.

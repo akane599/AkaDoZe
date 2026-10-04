@@ -8,6 +8,7 @@ import com.akylas.enforcedoze.access.CommandRunner
 import com.akylas.enforcedoze.access.Feature
 import com.akylas.enforcedoze.access.Grants
 import com.akylas.enforcedoze.access.Reason
+import com.akylas.enforcedoze.doze.parse.suspensionFixture
 import org.junit.Assert.*
 import org.junit.Test
 import java.util.ArrayDeque
@@ -285,6 +286,89 @@ class DozeControllerTest {
             "pm clear-permission-flags $PKG android.permission.POST_NOTIFICATIONS user-set",
             "pm set-permission-flags $PKG android.permission.POST_NOTIFICATIONS user-fixed"), runner.mutations().takeLast(4).take(3))
         assertTrue(runner.commands.contains("pm unsuspend $PKG"))
+    }
+
+    @Test fun appSuspendRestoreClearsLedgerWhenOnlyWellbeingRemains() {
+        forceCycle()
+        runner.replies("dumpsys package $PKG",
+            suspensionFixture(PKG, false),
+            suspensionFixture(PKG, true, "com.android.shell"),
+            suspensionFixture(PKG, true, "com.google.android.apps.wellbeing"))
+        val entered = enter(config.copy(restrictSensors = false, appsToSuspend = setOf(PKG)))
+        assertTrue(entered.steps.all { it.status == StepStatus.VERIFIED })
+        assertEquals("0", store.load().entries.single { it.feature == Feature.APP_SUSPEND }.originalValue)
+
+        val exited = controller.exit()
+        assertTrue("another suspender must not leave our restore debt", exited.complete)
+        assertTrue("verified unsuspend removes durable intent", store.load().entries.isEmpty())
+        assertTrue(runner.commands.contains("pm unsuspend $PKG"))
+        assertFalse(events.any { it.type in setOf(EventType.RESTORE_FAILED, EventType.RECOVERY_DEBT) })
+    }
+
+    @Test fun appSuspendRestoreRetainsLedgerWhenShellSuspenderRemains() {
+        store.save(RestoreLedger(listOf(entry(Feature.APP_SUSPEND, "0", PKG))))
+        runner.replies("dumpsys package $PKG",
+            suspensionFixture(PKG, true, "com.google.android.apps.wellbeing", "com.android.shell"))
+
+        assertFalse(controller.exit().complete)
+        assertEquals(1, store.load().entries.single().attempts)
+        assertTrue(events.any { it.type == EventType.RESTORE_FAILED && it.feature == Feature.APP_SUSPEND })
+    }
+
+    @Test fun appSuspendRootRestoreRecognizesRootAndAndroidSuspenders() {
+        runner.level = AccessLevel.ROOT
+        for (owner in listOf("root", "android")) {
+            store.save(RestoreLedger(listOf(entry(Feature.APP_SUSPEND, "0", PKG))))
+            runner.replies("dumpsys package $PKG", suspensionFixture(PKG, true, "com.google.android.apps.wellbeing", owner))
+            assertFalse("$owner still owns a suspension", controller.exit().complete)
+            assertEquals(1, store.load().entries.single().attempts)
+        }
+        runner.replies("dumpsys package $PKG", suspensionFixture(PKG, true, "com.google.android.apps.wellbeing"))
+        events.clear()
+        assertTrue("root suspension is gone despite Wellbeing", controller.exit().complete)
+        assertTrue(store.load().entries.isEmpty())
+        assertFalse(events.any { it.type in setOf(EventType.RESTORE_FAILED, EventType.RECOVERY_DEBT) })
+    }
+
+    @Test fun appSuspendUnknownOrIncompleteDetailsRetainAggregateRestoreFailure() {
+        val wellbeing = suspensionFixture(PKG, true, "com.google.android.apps.wellbeing")
+        val dumps = listOf(
+            suspensionFixture(PKG, true), // No user-0 details; user-10 detail cannot authorize restore.
+            wellbeing.replace("suspendingPackage=com.google.android.apps.wellbeing", "suspendingPackage="),
+            wellbeing.replace("suspendingPackage=com.google.android.apps.wellbeing", "suspender=com.google.android.apps.wellbeing"),
+            wellbeing.replace("          dialogInfo=null", "        suspendingPackage="),
+            wellbeing.replace("          dialogInfo=null", "          suspendingPackage=com.android.shell"),
+            wellbeing.replace("        suspendingPackage=com.google.android.apps.wellbeing\n          dialogInfo=null", ""),
+            wellbeing.replace("Package [$PKG]", "Package [com.other.app]"),
+            wellbeing.replace("User 0:", "User 1:"),
+            wellbeing.replace("suspended=true", "suspended=unknown"),
+        )
+        for (dump in dumps) {
+            store.save(RestoreLedger(listOf(entry(Feature.APP_SUSPEND, "0", PKG))))
+            runner.replies("dumpsys package $PKG", dump)
+            events.clear()
+            assertFalse("unknown/foreign details cannot clear intent: $dump", controller.exit().complete)
+            assertEquals(1, store.load().entries.single().attempts)
+            assertTrue(events.any { it.type == EventType.RESTORE_FAILED && it.feature == Feature.APP_SUSPEND })
+        }
+    }
+
+    @Test fun appSuspendAbsentDetailsStillAcceptAggregateUnsuspended() {
+        store.save(RestoreLedger(listOf(entry(Feature.APP_SUSPEND, "0", PKG))))
+        runner.replies("dumpsys package $PKG", suspensionFixture(PKG, false))
+        assertTrue(controller.exit().complete)
+        assertTrue(store.load().entries.isEmpty())
+        assertFalse(events.any { it.type == EventType.RESTORE_FAILED })
+    }
+
+    @Test fun appSuspendOriginalRemainsAggregateAndDoesNotAdoptWellbeingSuspension() {
+        runner.replies("cmd deviceidle get deep", "IDLE")
+        val dump = suspensionFixture(PKG, true, "com.google.android.apps.wellbeing")
+        runner.replies("dumpsys package $PKG", dump, dump)
+        val entered = controller.enterGroups(config.copy(appsToSuspend = setOf(PKG)), 0) { true }
+        assertTrue(entered.steps.single().alreadyOn)
+        assertTrue(store.load().entries.isEmpty())
+        assertTrue(runner.mutations().isEmpty())
     }
 
     @Test fun noMutationOfAlreadyEnabledFeaturesOrOtherOwnersSensorRestriction() {
