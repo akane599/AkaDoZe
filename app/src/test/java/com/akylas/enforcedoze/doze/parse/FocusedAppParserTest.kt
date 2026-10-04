@@ -61,7 +61,48 @@ class FocusedAppParserTest {
         """.trimIndent())))
     }
 
+    @Test fun notificationShadeDoesNotHideFocusedActivity() {
+        assertEquals(FocusedApps.Known(setOf("com.example.reader")), FocusedAppParser.parse(result("""
+            mCurrentFocus=Window{abc123 u0 NotificationShade}
+            mFocusedApp=ActivityRecord{be3942d u0 com.example.reader/.MainActivity t31}
+        """.trimIndent())))
+    }
+
+    @Test fun legacyAppWindowTokenExposesNestedActivity() {
+        assertEquals(FocusedApps.Known(setOf("com.example.reader")), FocusedAppParser.parse(result("""
+            mFocusedApp=AppWindowToken{4f2a1b token=Token{9c1d2e ActivityRecord{77aa u0 com.example.reader/.MainActivity t5}}}
+        """.trimIndent())))
+    }
+
+    @Test fun legacyStatusBarDoesNotHideWrappedFocusedActivity() {
+        assertEquals(FocusedApps.Known(setOf("com.example.reader")), FocusedAppParser.parse(result("""
+            mCurrentFocus=Window{abc123 u0 StatusBar}
+            mFocusedApp=AppWindowToken{4f2a1b token=Token{9c1d2e ActivityRecord{77aa u0 com.example.reader/.MainActivity t5}}}
+        """.trimIndent())))
+    }
+
+    @Test fun keyguardAfterFocusedActivityDoesNotDiscardKnownPackage() {
+        assertEquals(FocusedApps.Known(setOf("com.example.reader")), FocusedAppParser.parse(result("""
+            $focusedWindow
+            mCurrentFocus=Window{abc123 u10 Keyguard}
+        """.trimIndent())))
+    }
+
+    @Test fun malformedWrappedRowsRemainUnknownEvenWithKnownPackageEvidence() {
+        for (focus in listOf(
+            "AppWindowToken{4f2a1b token=Token{9c1d2e ActivityRecord{77aa u0 com.example.reader/.MainActivity t5}}",
+            "AppWindowToken{4f2a1b token=Token{9c1d2e ActivityRecord{77aa u0 com.example.reader/.MainActivity t5}}}}",
+            "}ActivityRecord{77aa u0 com.example.reader/.MainActivity t5}{",
+            "AppWindowToken{4f2a1b token=Token{9c1d2e ActivityRecord{77aa u0 invalid/.MainActivity t5}}}",
+            "AppWindowToken{4f2a1b token=Token{9c1d2e ActivityRecord{77aa u0 com.example.reader;evil/.MainActivity t5}}}",
+        )) {
+            unknown("$focusedWindow\nmFocusedApp=$focus")
+        }
+        unknown("$focusedWindow\nmCurrentFocus=Window{abc123 u0 NotificationShade")
+    }
+
     @Test fun nonActivityFocusedWindowIsUnknownWithoutFocusedPackageEvidence() {
         unknown("mCurrentFocus=Window{abc123 u0 NotificationShade}")
+        unknown("mCurrentFocus=Window{abc123 u0 StatusBar}\nmFocusedApp=null")
     }
 }
