@@ -165,9 +165,11 @@ class DozeFeatureGroupsTest {
     @Test fun legacyRootFeaturesAreSkippedWithRequiresRootUnderShell() {
         force(23)
         val result = enter(config.copy(apiLevel = 23, features = setOf(Feature.SETPROP_DOZE, Feature.SENSOR_PRIVACY_ALL), appsToSuspend = setOf(OWNED)))
-        for (feature in setOf(Feature.SETPROP_DOZE, Feature.SENSOR_PRIVACY_ALL, Feature.PM_DISABLE)) {
+        for (feature in setOf(Feature.SETPROP_DOZE, Feature.PM_DISABLE)) {
             assertEquals(Reason.REQUIRES_ROOT, result.steps.single { it.feature == feature }.reason)
         }
+        // sensor_privacy only exists from API 29, so M reports the API before the access level.
+        assertEquals(Reason.API_TOO_OLD, result.steps.single { it.feature == Feature.SENSOR_PRIVACY_ALL }.reason)
         assertFalse(runner.commands.any { it.startsWith("setprop") || it.startsWith("service call") || it.startsWith("pm disable") })
     }
 
