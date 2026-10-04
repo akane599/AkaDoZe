@@ -5,14 +5,14 @@
 Single Gradle module `:app`, base package `com.akylas.enforcedoze` at
 `app/src/main/java/com/akylas/enforcedoze/`: 105 sources (54 Java, 51 Kotlin) in seven packages.
 
-## Root package (42 Java, 2 Kotlin): Android shell
+## Root package (43 Java, 2 Kotlin): Android shell
 
 | Role | Files |
 |------|-------|
 | Service | `ForceDozeService.java` (foreground lifecycle, receivers, admission, engine wiring, teardown) |
 | App | `MyApplication.java` (context, lazy `getDozeRuntime()` that also attaches `NoticeSink`) |
 | Automation | `ExternalControlReceiver.java` (abstract trust/execution boundary) and its aliases `EnableForceDozeService`, `DisableForceDozeService`, `ReenterDoze`, `AddWhiteListReceiver`, `RemoveWhiteListReceiver`, `SettingsChangeReceiver` |
-| System receivers | `BootCompleteReceiver`, `AutoRestartOnUpdate` (both run a restore-only window when the service is off and the ledger has work), `CustomDozePeriodReceiver` |
+| System receivers | `BootCompleteReceiver`, `AutoRestartOnUpdate` (both run a restore-only window when the service is off and the ledger has work), `CustomDozePeriodReceiver`, `InternalEnableReceiver` (non-exported target of the app's own "tap to enable" notification) |
 | Screens | `MainActivity`, `SettingsActivity`, `DozeTunablesActivity`, `WhitelistAppsActivity`, `BlockAppsActivity`, `BlockNotificationsActivity`, `DozeBatteryStatsActivity`, `DozeStatsActivity`, `LogActivity`, `TaskerBroadcastsActivity`, `PackageChooserActivity`, `AboutAppActivity`, `RequestIgnoreBatteryActivity` |
 | Adapters / items | `AppsAdapter`+`AppsItem`, `BatteryConsumptionAdapter`+`BatteryConsumptionItem`, `DozeStatsAdapter`+`DozeStatsCard`, `TaskerBroadcastsAdapter`+`TaskerBroadcastsItem` |
 | Tunables | `DozeTunableHandler.java` (typed `ApplyResult` with readback), `DozeTunableConstants.java` |

@@ -40,17 +40,17 @@
 
 ## Testing
 
-`app/src/test/java/com/akylas/enforcedoze/` has 58 JVM sources with 387 `@Test` methods (JUnit 4.13.2, no mocking library):
+`app/src/test/java/com/akylas/enforcedoze/` has 59 JVM sources with 458 `@Test` methods (JUnit 4.13.2, no mocking library):
 
 | Package | Files | Tests |
 |---------|-------|-------|
-| root | 2 | 15 |
-| access | 10 | 39 |
-| doze | 9 | 102 |
-| doze/parse | 7 | 30 |
+| root | 2 | 20 |
+| access | 10 | 45 |
+| doze | 9 | 114 |
+| doze/parse | 7 | 36 |
 | monitor | 5 | 29 |
-| service | 21 | 136 |
-| ui | 4 | 36 |
+| service | 22 | 169 |
+| ui | 4 | 45 |
 
 The suites use these styles:
 - fake-backed behaviour tests: `FakeRunner` (a `CommandRunner`), `FakeClock` and an in-memory ledger store, in

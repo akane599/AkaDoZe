@@ -27,6 +27,7 @@ _Work items, stories and blockers live on the Sidequest board. This file keeps w
 - 2026-10-04: Doze tunables use DeviceConfig `device_idle` from API 31 and Settings.Global `device_idle_constants` before it, per AOSP android12-release. Platform-version cutoffs are checked against AOSP source, not repo docs: the candidate's 34 came from a repo doc. (US-3; SQ-76)
 - 2026-10-04: The schedule respects user intent (`serviceUserEnabled`, default true for upgrades). Explicit ON from the master switch, tile or external ENABLE still starts the service at once, then persists the intent and arms the next boundary. Explicit OFF cancels the boundary alarm. SQ-78's first candidate was rejected because it deferred explicit ON to the schedule. (US-3; SQ-90)
 - 2026-10-04: Reset: finishReset posts under the runtime lock. A throwing restore (including an undecodable ledger) gives a failed report, clears no prefs and allows a retry; the never-overwrite-an-unreadable-ledger invariant wins over always clearing. SQ-71's candidate failed review SQ-87; repair SQ-89 passed SQ-91. (US-3)
+- 2026-10-04: The reset clears WRITE_SETTINGS through its app-op (`appops set <pkg> WRITE_SETTINGS default`), because `pm revoke` rejects that appop permission. The readback accepts only AOSP's forms: "No operations." (the op is pruned at its default) and "WRITE_SETTINGS: <mode>" with optional history; UID modes and other output stay UNVERIFIED. (US-3; SQ-75)
 - 2026-10-04: App-suspend restore counts any shell, root or `android` suspender as ours, whichever mode is current, because the execution mode can change between apply and restore. Other suspenders (e.g. Digital Wellbeing) don't block restore. (US-3; SQ-80)
 
 ## Audit status
@@ -34,7 +35,7 @@ _Work items, stories and blockers live on the Sidequest board. This file keeps w
 |---|---|---|---|
 | Plan audit | 2026-10-03 | REWORK → plan reworked (AkaDoZe 2.0; SQ-3, SQ-4) | `/plan-audit` |
 | Story review | 2026-10-03 | US-1 whole-story review SQ-19: 1 BLOCKER, 1 FIX, 6 NIT → fixed in SQ-39/SQ-40, rest deferred to SQ-41; per-ticket reviews SQ-25, SQ-30, SQ-31, SQ-36, SQ-42; 2026-10-04 US-2 (external six-reviewer pass) bound reviews SQ-54 FAIL, SQ-56 FAIL, SQ-57 PASS, SQ-63 FAIL, SQ-66 PASS; suggestions held in SQ-53 | `review-audit` (Opus) |
-| Bug hunt | — | — | `/bug-hunt` |
+| Bug hunt | 2026-10-04 | 4 areas (restore engine/ledger, runtime/concurrency, access/automation, service/UI/journal); 20 verified; 14 fix tickets in US-3 (SQ-71..SQ-84, with SQ-89/SQ-90 replacing rejected SQ-71/SQ-78; SQ-71 also covers the reset-recreation finding), +1 found while fixing (SQ-85); 1 folded into SQ-41, 5 low/device-only held in SQ-92; reviews SQ-87 FAIL, SQ-88 PASS, SQ-91 PASS | `/bug-hunt` |
 | Security | — | — | `/claude-security` |
 | UI / design | — | — | `/ui-overhaul` phase review |
 | Lint | 2026-10-03 | baseline captured: 160 pre-existing issues in app/lint-baseline.xml (only new issues fail) | `./gradlew :app:lintDebug -q` |

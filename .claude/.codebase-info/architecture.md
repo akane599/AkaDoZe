@@ -80,7 +80,10 @@ debt (`ui/DamagedRecords` → `DozeRuntime.clearRetainedCorruption`).
   `RestoreContinuation`: one subscription, one follow-up window when access arrives, then disarmed.
 - **Reset.** `DozeRuntime.resetSystemState` (Settings) bumps the generation, restores from the ledger and runs
   `service/SystemReset` on the worker. `OK` means readback-confirmed; "Reset complete" needs restore COMPLETE and every
-  step OK. Prefs are never cleared there; `ui/ResetReport` clears them, keeping restore-intent keys while debt remains.
+  step OK. WRITE_SETTINGS is reset through its app-op (`appops set … default`, readback `appops get`). Prefs are never
+  cleared there; `ui/ResetReport` clears them, keeping restore-intent keys while debt remains. `SystemReset.runJob` turns a
+  throwing job (including an undecodable ledger) into a failed report that clears nothing and allows a retry;
+  `finishReset` posts under the runtime lock, and the static report tracker survives Activity recreation.
 
 ## State
 
@@ -90,7 +93,9 @@ See [database.md](./database.md): default SharedPreferences, the restore ledger 
 ## Scheduling
 
 Custom Doze periods: `Utils.applyForceDozeSchedule` / `scheduleNextCustomDozePeriodBoundary` (pure logic in
-`doze/SchedulePolicy.kt`) set an exact `RTC_WAKEUP` alarm when allowed (Android 12+ permission check), else an inexact
-one → `CustomDozePeriodReceiver` → start/stop the service. Boot re-arms it.
+`doze/SchedulePolicy.kt`) set an exact `RTC_WAKEUP` alarm when allowed (`SCHEDULE_EXACT_ALARM` is declared; on 13+ the user grants it), else an inexact
+one → `CustomDozePeriodReceiver` → start/stop the service. Boot re-arms it. Boundaries run only while the user intent
+`serviceUserEnabled` is on (`SchedulePolicy.shouldRunService`): explicit OFF cancels the alarm; explicit ON (master switch,
+tile, external ENABLE, notification) starts the service at once, then persists the intent and arms the next boundary.
 
 See [communication.md](./communication.md) for transports and commands, [entry-points.md](./entry-points.md) for triggers.

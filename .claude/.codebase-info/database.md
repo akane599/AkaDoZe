@@ -6,7 +6,7 @@ There's no ORM and no Room. The app keeps four private stores, all through platf
 
 | Store | File | Owner | Contents |
 |-------|------|-------|----------|
-| Default prefs | `com.akylas.enforcedoze_preferences.xml` | `access/Prefs.kt` (new keys), `res/xml/prefs.xml` | Settings, tunables, `executionMode`, `serviceEnabled`, timing / charging / feature toggles, `customDozePeriods`, `dozeAppBlockList` / `notificationBlockList`, legacy `dozeUsageDataAdvanced` stats |
+| Default prefs | `com.akylas.enforcedoze_preferences.xml` | `access/Prefs.kt` (new keys), `res/xml/prefs.xml` | Settings, tunables, `executionMode`, `serviceEnabled`, `serviceUserEnabled` (schedule user intent, default true), timing / charging / feature toggles, `customDozePeriods`, `dozeAppBlockList` / `notificationBlockList`, legacy `dozeUsageDataAdvanced` stats |
 | Restore ledger | `doze_ledger.xml` | `service/SharedPrefsLedgerStore.kt`, codec in `doze/RestoreLedger.kt` | Keys `restoreLedger`, `restoreLedgerCorruptLines`, `restoreLedgerAnnouncedCorruptLines` |
 | Notice state | `notices.xml` | `ui/NoticeSink.java` | `externalBasicRejectedShown`, `externalPrivilegedRejectedShown`, `debtNotified` (StringSet of detail+target) |
 | Journal | `doze_journal.db` (SQLite v1) | `monitor/JournalDb.kt` | `events` table |

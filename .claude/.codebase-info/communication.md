@@ -44,19 +44,19 @@ physical-device gaps, is in `docs/doze-feature-ledger.md`.
 
 | Feature | Apply / restore | Readback |
 |---------|-----------------|----------|
-| Force Doze | `dumpsys deviceidle force-idle deep` / `unforce` | `dumpsys deviceidle` (`mForceIdle`, `get deep`), parsed by `doze/parse/DozeStateParser.kt` |
+| Force Doze | `dumpsys deviceidle force-idle deep` / `unforce` (API 23 has no `unforce`/`get`: restore uses `step`) | `dumpsys deviceidle` (`mForceIdle`, `get deep`; API 23 reads `mState` from the plain dump, also for `DozeRuntime.readState`), parsed by `doze/parse/DozeStateParser.kt` |
 | Motion sensors | `dumpsys sensorservice restrict <package>` / `enable` | `dumpsys sensorservice` mode + allow token (`SensorModeParser.kt`) |
 | Battery saver | `settings put global low_power` / `cmd power set-mode` | `settings get global low_power` |
 | Wi-Fi / data / Bluetooth | `svc wifi|data|bluetooth`, `cmd wifi set-wifi-enabled`, `cmd bluetooth_manager` | `settings get global wifi_on|mobile_data|bluetooth_on` |
 | Airplane (API 30+) | `cmd connectivity airplane-mode enable|disable` | same command without argument |
 | Location | `cmd location set-location-enabled` / `settings put secure location_mode` | `cmd location is-location-enabled` / `location_mode` |
 | Biometrics | `settings put secure biometric_keyguard_enabled` | `settings get …` |
-| App suspend | `pm suspend|unsuspend` (root on API 23: `pm disable|enable`) | `dumpsys package <pkg>` |
+| App suspend | `pm suspend|unsuspend` (root on API 23: `pm disable|enable`) | `dumpsys package <pkg>`; restore checks the suspending packages, so only a shell/root/`android` suspender (either mode) blocks it, not e.g. Digital Wellbeing (`FeatureReadback.restoredSuspensionValue`) |
 | Notification block | API 33+: `pm revoke|grant POST_NOTIFICATIONS` + user-fixed flags; below: `service call notification <txn>` (root, UNVERIFIED) | `dumpsys package` / `dumpsys notification` |
-| All-sensor privacy (root) | `service call sensor_privacy <txn>` | `dumpsys sensor_privacy` |
+| All-sensor privacy (root, API 29+) | `service call sensor_privacy <txn>` | `dumpsys sensor_privacy` |
 | Tunables | `cmd device_config put device_idle` (API 31+) or `settings put global device_idle_constants` | matching `get` |
-| Whitelist | `dumpsys deviceidle whitelist +pkg|-pkg` | structured `whitelist` dump (`WhitelistParser.kt`: COMMAND_FAILED / TIMED_OUT / PARTIALLY_PARSED / EMPTY) |
-| Focused app (read only) | `dumpsys window` | `mCurrentFocus` / `mFocusedApp` (`doze/parse/FocusedAppParser.kt`); a failed or unfamiliar dump is Unknown |
+| Whitelist | `dumpsys deviceidle whitelist +pkg|-pkg` | structured `whitelist` dump; one row grammar (`WhitelistRow`, accepts `system,android,1000`) shared by `WhitelistParser.kt` (COMMAND_FAILED / TIMED_OUT / PARTIALLY_PARSED / EMPTY) and `ExternalControlPolicy.whitelistMembership` |
+| Focused app (read only) | `dumpsys window` | `mCurrentFocus` / `mFocusedApp` (`doze/parse/FocusedAppParser.kt`, incl. AppWindowToken-wrapped and system windows such as NotificationShade); a failed or unfamiliar dump is Unknown |
 
 Package names are validated by `CapabilityResolver.PackageNames` before they reach a command. External input is never
 interpolated into a shell string.

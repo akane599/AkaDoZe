@@ -57,6 +57,7 @@ All components are declared in `app/src/main/AndroidManifest.xml`. Classes live 
 |---------|----------|
 | `BOOT_COMPLETED` (locked boot is ignored: credential-protected prefs aren't readable yet) | `BootCompleteReceiver`: start the service if enabled, else a `goAsync` restore-only window when `BootRestore.hasPending`; re-arm schedule |
 | `MY_PACKAGE_REPLACED` | `AutoRestartOnUpdate`: restart the service if enabled, else the same restore-only window |
-| Schedule alarm | `CustomDozePeriodReceiver` (not exported) |
+| Schedule alarm | `CustomDozePeriodReceiver` (not exported); runs only while the user intent `serviceUserEnabled` is on |
+| "Disabled, tap to enable" notification | `InternalEnableReceiver` (not exported): same explicit-ON flow as the master switch, never journaled as an external call |
 | Dynamic, not exported | `ForceDozeService.DozeReceiver`: screen/power/unlock/(light) idle changes |
 | Launcher shortcuts | `res/xml/shortcuts.xml` |
