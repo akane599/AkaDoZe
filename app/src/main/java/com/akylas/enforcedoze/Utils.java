@@ -482,8 +482,7 @@ public class Utils {
         }
 
         // Create broadcast intent to enable ForceDoze when tapping the notification
-        Intent enableIntent = new Intent(context, EnableForceDozeService.class);
-        enableIntent.setAction("com.akylas.enforcedoze.ENABLE_FORCEDOZE");
+        Intent enableIntent = new Intent(context, InternalEnableReceiver.class);
         PendingIntent pendingIntent = PendingIntent.getBroadcast(
             context, 
             0, 

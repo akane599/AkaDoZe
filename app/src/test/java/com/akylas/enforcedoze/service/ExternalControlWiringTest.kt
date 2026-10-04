@@ -9,6 +9,49 @@ class ExternalControlWiringTest {
     private fun service() = File("src/main/java/com/akylas/enforcedoze/ForceDozeService.java").readText()
     private fun receiver() = File("src/main/java/com/akylas/enforcedoze/ExternalControlReceiver.java").readText()
 
+    @Test fun disabledNotificationUsesPrivateInternalEnableReceiver() {
+        val notification = File("src/main/java/com/akylas/enforcedoze/Utils.java").readText()
+            .substringAfter("public static void showDisabledNotification(")
+            .substringBefore("public static void hideDisabledNotification(")
+        val target = Regex("new Intent\\(context, (\\w+)\\.class\\)").find(notification)?.groupValues?.get(1)
+        assertNotEquals("own notification must not pass through exported automation", "EnableForceDozeService", target)
+        assertEquals("notification must explicitly target the internal enable receiver", "InternalEnableReceiver", target)
+        assertTrue("notification tap must deliver the broadcast PendingIntent directly",
+            notification.contains("PendingIntent.getBroadcast(") && notification.contains(".setContentIntent(pendingIntent)"))
+        assertTrue("notification capability must stay immutable", notification.contains("PendingIntent.FLAG_IMMUTABLE"))
+        assertFalse("notification must not reuse the external automation action", notification.contains("ENABLE_FORCEDOZE"))
+
+        val source = File("src/main/java/com/akylas/enforcedoze/$target.java").readText()
+        assertTrue("internal receiver must directly extend BroadcastReceiver", source.contains("extends BroadcastReceiver"))
+        assertFalse("internal receiver must not inherit external admission or journaling", source.contains("ExternalControlReceiver"))
+        assertFalse("own notification must not be gated as external control", source.contains("ALLOW_EXTERNAL"))
+        assertFalse("own notification must not journal an external call", source.contains("EXTERNAL_CALL"))
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+        val declaration = Regex("<receiver\\b[^>]*android:name=\"com\\.akylas\\.enforcedoze\\.$target\"[^>]*>")
+            .find(manifest)?.value
+        assertNotNull("internal receiver must be declared", declaration)
+        assertTrue("internal receiver must be non-exported", declaration!!.contains("android:exported=\"false\""))
+    }
+
+    @Test fun internalNotificationEnableStartsThenPersistsBothFlagsThenSchedules() {
+        val source = File("src/main/java/com/akylas/enforcedoze/InternalEnableReceiver.java").readText()
+            .substringAfter("public void onReceive(")
+        val start = source.indexOf("if (!Utils.startForceDozeService(context)) {")
+        val persist = source.indexOf(".edit().putBoolean(\"serviceEnabled\", true)")
+        val schedule = source.indexOf("Utils.scheduleNextCustomDozePeriodBoundary(context);")
+        assertTrue("direct notification enable must start before persisting and scheduling",
+            start >= 0 && persist > start && schedule > persist)
+        val failure = source.substring(start, persist)
+        assertTrue("a denied start must return before any preferences are changed", failure.contains("return;"))
+        assertFalse("a denied start must not persist state or intent", failure.contains("putBoolean("))
+        val write = source.substring(persist, schedule)
+        assertTrue("effective state and user intent must be saved in one edit",
+            write.contains(".putBoolean(Prefs.SERVICE_USER_ENABLED, true).apply();"))
+        assertEquals("enable must use a single preference edit", 1, Regex("\\.edit\\(\\)").findAll(source).count())
+        assertFalse("notification FGS start must not be deferred off the user action", source.contains("goAsync("))
+        assertFalse("explicit enable must not be gated by the schedule", source.contains("applyForceDozeSchedule("))
+    }
+
     @Test fun explicitEnableRetainsStartThenPersistOrderingAndOriginalOutcomes() {
         val on = receiver().substringAfter("case ENABLE_SERVICE:").substringBefore("case DISABLE_SERVICE:")
         val start = on.indexOf("if (!Utils.startForceDozeService(app)) {")
