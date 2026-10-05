@@ -6,6 +6,7 @@ import com.akylas.enforcedoze.doze.LightState
 import com.akylas.enforcedoze.doze.parse.HistoryEvent
 import com.akylas.enforcedoze.doze.parse.HistoryKind
 import com.akylas.enforcedoze.doze.parse.IdlingHistory
+import com.akylas.enforcedoze.doze.parse.IdlingHistoryParser
 import kotlin.math.abs
 
 data class HistoryMergeResult(
@@ -44,7 +45,10 @@ object HistoryMerger {
         val end = session.filter { it.type == EventType.SCREEN_ON }
             .minOfOrNull { it.elapsedRealtime } ?: session.maxOf { it.elapsedRealtime }
         val validHistory = historyEvents.filter { it.elapsedRealtime >= 0 }.sortedBy { it.elapsedRealtime }
-        val truncated = validHistory.firstOrNull()?.elapsedRealtime?.let { it > sessionStartElapsed } ?: false
+        // A late first transition alone is normal on a fresh boot. Only a full ring can lose
+        // older transitions; flag it when those retained transitions cannot cover the start.
+        val truncated = validHistory.size == IdlingHistoryParser.HISTORY_CAPACITY &&
+            validHistory.first().elapsedRealtime > sessionStartElapsed
         val history = validHistory.filter { it.elapsedRealtime <= end }
         val carryIn = history.lastOrNull { it.elapsedRealtime < sessionStartElapsed }
         val candidates = history.filter { it.elapsedRealtime >= sessionStartElapsed || it == carryIn }

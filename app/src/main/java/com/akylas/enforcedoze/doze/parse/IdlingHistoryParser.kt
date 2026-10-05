@@ -9,11 +9,18 @@ data class HistoryEvent(
 )
 
 data class IdlingHistory(val events: List<HistoryEvent>) {
-    /** Compare with session start to detect incomplete coverage of the OS ring buffer. */
+    /** The earliest retained transition; alone this is not evidence that older history was lost. */
     val oldestElapsed: Long? get() = events.minOfOrNull { it.elapsedRealtime }
 }
 
 object IdlingHistoryParser {
+    /**
+     * AOSP DeviceIdleController.EVENT_BUFFER_SIZE (API 24+); API 23 has no history block.
+     * https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-7.0.0_r1/services/core/java/com/android/server/DeviceIdleController.java
+     * https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-16.0.0_r1/apex/jobscheduler/service/java/com/android/server/DeviceIdleController.java
+     */
+    const val HISTORY_CAPACITY = 100
+
     private val entry = Regex(
         "^\\s*(normal|light-idle|light-maint|deep-idle|deep-maint):\\s*(\\S+)(?:\\s+\\((.*)\\))?\\s*$",
     )

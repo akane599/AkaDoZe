@@ -65,12 +65,13 @@ class IdlingHistoryParserTest {
     }
 
     @Test
-    fun truncatedRingExposesOldestElapsedWithoutInventingEarlierEvents() {
+    fun fullRingExposesCapacityAndOldestElapsedWithoutInventingEarlierEvents() {
         val entries = (1..100).joinToString("\n") { "  deep-idle: -${it}s0ms" }
         val history = IdlingHistoryParser.parse("Idling history:\n$entries", 1_000_000)
-        assertEquals(100, history.events.size)
+        assertEquals(100, IdlingHistoryParser.HISTORY_CAPACITY)
+        assertEquals(IdlingHistoryParser.HISTORY_CAPACITY, history.events.size)
         assertEquals(900_000L, history.oldestElapsed)
-        // A session starting before this boundary has incomplete OS-history coverage.
+        // Only a full ring with this late boundary can indicate missing pre-session history.
         assertTrue(checkNotNull(history.oldestElapsed) > 800_000L)
         assertEquals(
             listOf(HistoryEvent(HistoryKind.DEEP_IDLE, 988, null)),
