@@ -2,7 +2,7 @@
 
 Live status of the emulator-runnable parts of the device checklist. This file is updated and pushed as the run goes on.
 
-**Last update:** 2026-10-05 22:45 (+03) · **Run state:** IN PROGRESS
+**Last update:** 2026-10-05 22:55 (+03) · **Run state:** DONE (emulator-runnable items finished; device-only items left for a real phone)
 
 ## Setup
 - Build: `akadoze-2.0` @ 896e778, `:app:assembleDebug`
@@ -11,6 +11,24 @@ Live status of the emulator-runnable parts of the device checklist. This file is
 - Emulator limits: no real CPU suspend, no real motion, no SIM radio or Bluetooth, no TalkBack app on google_apis images, no API < 26 image.
 
 Legend: ✅ pass · ❌ fail (finding below) · ⚠️ partial / emulator-limited · ⏭️ skipped (device-only) · ⏳ pending · 🔄 running
+
+## Summary
+- **Passed:** 0, 1, 5, 6, 7, 9, 11, SQ-114/116/118, SQ-117, and the denied/no-access sub-cases of 10 and 13.
+- **Partial (enforcement works, something around it is wrong):** 2, 3, 8, 10, 13, SQ-115; item 4 only weakly checked.
+- **Skipped, device-only:** 12, F5 watchdog, A3, A4, SQ-126 (need app root, real CPU suspend or two SIMs); TalkBack sub-checks.
+- **Findings, all filed and not dispatched:**
+
+  | Finding | Ticket | Severity |
+  |---|---|---|
+  | F7 Reset kills the app, nothing reset (READ_LOGS gids) | SQ-7 | high |
+  | F2 sensor verdict wrong for every normal session | SQ-1 | medium (high on the board) |
+  | F9 revoking exact alarms drops the period boundary | SQ-9 | medium-high |
+  | F8 opening Main re-grants access the user revoked | SQ-8 | medium |
+  | F6 "service is disabled" while it runs without access | SQ-6 (UI) | medium |
+  | F4 stale debt notice | SQ-4 | low-medium |
+  | F5 false mobile-data debt after airplane restore | SQ-5 | low-medium |
+  | F1 phantom session card, F3 false "History truncated" | SQ-2, SQ-3 | low |
+- **Core enforcement held throughout:** forced Doze within the delay, sensors restricted, radios toggled and restored with readback, with survival across crash, update and reboot.
 
 ## Checklist
 
@@ -26,10 +44,10 @@ Legend: ✅ pass · ❌ fail (finding below) · ⚠️ partial / emulator-limite
 | 7 | Process death mid-session | ✅ | `am crash` 2.5 min into an enforced session: service back after 5 s (START_STICKY, restartCount=1), restored everything (verified), opened a new session and re-enforced after the 30 s delay. Screen on: NORMAL / unforced / radios back. (Restore rows carry sessionId 0, feeding F1) |
 | 8 | Radios/features restore | ⚠️ | Wi-Fi + data + BT + location + saver: all off while dozing, all restored + verified on screen-on ✅. Adding airplane: all restored, but mobile-data readback ~100 ms after airplane-off → `UNVERIFIED` → false RESTORE_FAILED + debt notice (**F5**, 2/2). Biometrics, app suspend and notification block not exercised |
 | 9 | Tasker/automation gates | ✅ | Basic gate defaults **on** (`DEFAULT_ALLOW_EXTERNAL_BASIC_CONTROL = true`): shell DISABLE/ENABLE stop/start the service. Privileged off by default: ADD_WHITELIST + CHANGE_SETTING denied (whitelist and pref unchanged), **one** "Another app tried to change EnforceDoze" notice for both. Basic gate off: 2× DISABLE denied, service kept running, one "tried to start or stop" notice. Journal rows show `caller=null` for shell broadcasts |
-| 10 | Summary notification (13+) | ⚠️ | permission granted + setting on: "While the screen was off — Deep Doze 59% of 3 min · 27% unknown · 0 maintenance · sensors on ✗ · 0.0%/h" posted on screen-on ✅. "sensors on ✗" is wrong (F2). Denied-permission case pending |
+| 10 | Summary notification (13+) | ⚠️ | permission granted + setting on: "While the screen was off — Deep Doze 59% of 3 min · 27% unknown · 0 maintenance · sensors on ✗ · 0.0%/h" posted on screen-on ✅. "sensors on ✗" is wrong (F2). Denied (POST_NOTIFICATIONS revoked, setting on): access card warns "Notifications are off…", full forced session + verified screen-on teardown, nothing posted, no crash ✅ |
 | 11 | Update / reboot | ✅ | `install -r` **mid-session** (forced + RESTRICTED + airplane/radios off): service back 5 s later, re-enforced while still screen-off; screen on → all NORMAL/restored. `adb reboot` with service enabled: service back in the foreground after boot, no leftover RESTRICTED/forced, radios as before |
 | 12 | Fresh root discovery (SQ-95) | ⏭️ | needs app root |
-| 13 | Honest UI (SQ-51 and others) | 🔄 | DUMP-only + sensors off: status "EnforceDoze is on, but not enforcing anything at screen-off", switch on → "Not enforcing yet" dialog, never "That's it" ✅. Re-picking the active mode: no service restart (same createTime, lastStartId=1) ✅. No access at all: "service is disabled" while the service runs (**F6**). **Reset over Shizuku with the service running ❌ (F7):** tapping Yes kills the app within ~200 ms ("permission grant or revoke changed gids"); no progress, no report, nothing reset. Timing/rotation sub-checks blocked by F7. API < 26 skipped |
+| 13 | Honest UI (SQ-51 and others) | ⚠️ | DUMP-only + sensors off: status "EnforceDoze is on, but not enforcing anything at screen-off", switch on → "Not enforcing yet" dialog, never "That's it" ✅. Re-picking the active mode: no service restart (same createTime, lastStartId=1) ✅. No access at all: "service is disabled" while the service runs (**F6**). **Reset over Shizuku with the service running ❌ (F7):** tapping Yes kills the app within ~200 ms ("permission grant or revoke changed gids"); no progress, no report, nothing reset. Timing/rotation sub-checks blocked by F7. API < 26 skipped. Damaged WIFI ledger line: access card and monitor both show "Dismiss damaged records" naming Wi-Fi; Cancel keeps it, Dismiss clears the ledger and the card ✅ (headline still says "Sensors or Doze may still be restricted" for a Wi-Fi-only record, same generic wording as F5). Whitelist "couldn't be read": not reachable here (entry disabled with "Root access not available") |
 | F5 | Deferred watchdog timing | ⏭️ | needs real CPU suspend |
 | A3 | Dual-SIM mobile data | ⏭️ | needs two SIMs |
 | A4 | Interrupted root command | ⏭️ | needs app root |
@@ -68,3 +86,4 @@ Filed on the Sidequest board as SQ-1 (F2), SQ-2 (F1), SQ-3 (F3), SQ-4 (F4), SQ-5
 - 21:39 item 2 done; enforcement solid for 30 min; monitor summary wrong about sensors (F2) and truncation (F3). F1 seen again (a 9:07 phantom card, now with "Access lost" from the startup NO_ACCESS→SHELL transition).
 - 22:20–22:24 F7 grant side confirmed (READ_LOGS revoke/grant kills, DUMP doesn't).
 - 22:23–22:42 SQ-115 and SQ-117 run; F8 and F9 found.
+- 22:43–22:52 item 10 denied case ✅; item 13 damaged-record dismissal ✅ (card + monitor). Run finished.
