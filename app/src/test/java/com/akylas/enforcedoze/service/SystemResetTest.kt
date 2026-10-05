@@ -17,6 +17,74 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SystemResetTest {
+    @Test fun attachedServiceTeardownRunsBeforeResetBody() {
+        val worker = java.util.ArrayDeque<Runnable>()
+        val queue = ServiceResetQueue { worker.add(it) }
+        val order = mutableListOf<String>()
+        queue.attachService()
+        queue.resetSystemState(Runnable { order += "reset" })
+        queue.detachService(Runnable { order += "teardown" })
+        while (worker.isNotEmpty()) worker.removeFirst().run()
+        assertEquals("teardown must run before the reset job body", listOf("teardown", "reset"), order)
+    }
+
+    @Test fun resetIsHeldWhileAttachedEvenWhenWorkerDrainsBeforeDetach() {
+        val worker = java.util.ArrayDeque<Runnable>()
+        val queue = ServiceResetQueue { worker.add(it) }
+        var resetRan = false
+        queue.attachService()
+        queue.resetSystemState(Runnable { resetRan = true })
+        assertTrue("reset is not posted before Android delivers onDestroy", worker.isEmpty())
+        assertFalse(resetRan)
+        queue.detachService(Runnable {})
+        worker.removeFirst().run()
+        assertFalse("teardown alone does not run reset", resetRan)
+        worker.removeFirst().run()
+        assertTrue(resetRan)
+    }
+
+    @Test fun resetWithoutServicePostsImmediatelyIncludingAfterDetach() {
+        val worker = java.util.ArrayDeque<Runnable>()
+        val queue = ServiceResetQueue { worker.add(it) }
+        val order = mutableListOf<String>()
+        queue.resetSystemState(Runnable { order += "no-service reset" })
+        assertEquals(1, worker.size)
+        worker.removeFirst().run()
+        queue.attachService()
+        queue.detachService(Runnable { order += "teardown" })
+        queue.resetSystemState(Runnable { order += "detached reset" })
+        assertEquals(2, worker.size)
+        while (worker.isNotEmpty()) worker.removeFirst().run()
+        assertEquals(listOf("no-service reset", "teardown", "detached reset"), order)
+    }
+
+    @Test fun detachReleasesEveryHeldResetOnceAndNextAttachmentHoldsAgain() {
+        val worker = java.util.ArrayDeque<Runnable>()
+        val queue = ServiceResetQueue { worker.add(it) }
+        val order = mutableListOf<String>()
+        queue.attachService()
+        queue.resetSystemState(Runnable { order += "reset 1" })
+        queue.resetSystemState(Runnable { order += "reset 2" })
+        queue.detachService(Runnable { order += "teardown 1" })
+        queue.attachService()
+        queue.resetSystemState(Runnable { order += "reset 3" })
+        while (worker.isNotEmpty()) worker.removeFirst().run()
+        assertEquals(listOf("teardown 1", "reset 1", "reset 2"), order)
+        queue.detachService(Runnable { order += "teardown 2" })
+        while (worker.isNotEmpty()) worker.removeFirst().run()
+        assertEquals(listOf("teardown 1", "reset 1", "reset 2", "teardown 2", "reset 3"), order)
+    }
+
+    @Test fun runtimeRoutesResetAndDetachThroughTheTestedQueueUnderItsMonitor() {
+        val source = java.io.File("src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt").readText()
+        assertTrue(source.contains("private val resets = ServiceResetQueue { job -> worker().post(job) }"))
+        assertTrue(source.contains("@Synchronized\n    fun attachService(): Handler {\n        selfTests.attach()\n        resets.attachService()"))
+        assertTrue(source.contains("@Synchronized\n    fun detachService(teardown: Runnable)"))
+        assertTrue(source.contains("resets.detachService(teardown)"))
+        assertTrue(source.contains("@Synchronized\n    fun resetSystemState(callback: SystemResetCallback) {\n        bumpGeneration()\n        resets.resetSystemState(Runnable {"))
+        assertTrue(source.contains("@Synchronized\n    fun finishReset(deferred: List<ResetCommandId>, restart: Runnable) {\n        bumpGeneration()\n        worker().post {"))
+    }
+
     private val runner = resetRunner()
 
     private fun resetRunner(writeSettingsOutput: String = "WRITE_SETTINGS: default") = FakeRunner().apply {
