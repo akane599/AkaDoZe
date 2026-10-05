@@ -661,7 +661,6 @@ public class ForceDozeService extends Service {
     }
 
     public void addSelfToDozeWhitelist() {
-        if (sessionMode() != SessionMode.FORCE) return;
         log("Checking self-whitelist capability....");
         log("Nougat: " + Utils.isDeviceRunningOnN());
         log("SU available: " + isSuAvailable);

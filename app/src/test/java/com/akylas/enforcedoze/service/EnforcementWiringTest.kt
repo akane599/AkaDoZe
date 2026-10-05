@@ -10,6 +10,19 @@ import java.io.File
 class EnforcementWiringTest {
     private fun service() = File("src/main/java/com/akylas/enforcedoze/ForceDozeService.java").readText()
 
+    @Test fun serviceStartSelfWhitelistRemainsReachableForUnresolvedAndAppAccess() {
+        val source = service()
+        val start = source.substringAfter("public int onStartCommand(").substringBefore("private void reapplyEnter(")
+        assertTrue("ordinary service start must post the whitelist check", start.contains("addSelfToDozeWhitelist();"))
+        val whitelist = source.substringAfter("public void addSelfToDozeWhitelist() {")
+            .substringBefore("private DozeConfig config(")
+        assertFalse("unresolved and APP access must not lose self-whitelisting to session admission",
+            whitelist.contains("sessionMode()") || whitelist.contains("SessionMode.FORCE"))
+        assertTrue(whitelist.contains("pm.isIgnoringBatteryOptimizations(packageName)"))
+        assertTrue(whitelist.contains("executeCommandWithRoot(\"dumpsys deviceidle whitelist +com.akylas.enforcedoze\")"))
+        assertTrue(whitelist.contains("RequestIgnoreBatteryActivity.class"))
+    }
+
     @Test fun forceOnlyUsesDurableGenerationCheckedControllerWithoutDeferredSelection() {
         val runner = FakeRunner()
         val store = InMemoryLedgerStore()
