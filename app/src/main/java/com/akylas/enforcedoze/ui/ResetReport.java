@@ -82,6 +82,7 @@ public final class ResetReport {
         if (complete(result, prefsCleared) && deferred.isEmpty()) {
             return context.getString(R.string.reset_complete_dialog_text);
         }
+        if (result.getFailed()) return context.getString(R.string.reset_failed_not_run);
         StringBuilder text = new StringBuilder();
         if (result.getRestoreOutcome() == ResetRestoreOutcome.REMAINING_DEBT) {
             text.append(context.getString(R.string.reset_debt_remaining));
@@ -99,7 +100,6 @@ public final class ResetReport {
         text.append(context.getString(!prefsCleared ? R.string.reset_prefs_failed
                 : result.getRestoreOutcome() == ResetRestoreOutcome.COMPLETE ? R.string.reset_prefs_cleared
                 : R.string.reset_prefs_cleared_kept));
-        if (result.getFailed()) return text.toString();
         text.append("\n\n");
         if (deferred.isEmpty()) {
             text.append(context.getString(R.string.reset_restart_text));
