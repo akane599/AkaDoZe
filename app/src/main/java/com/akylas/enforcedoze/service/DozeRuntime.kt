@@ -250,7 +250,20 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
     private val readiness = AccessReadiness()
 
     /** Main-thread invalidation wins over a recovery already running on the worker. */
-    fun invalidateAccess() = readiness.invalidate()
+    fun invalidateAccess() {
+        readiness.invalidate()
+        bumpGeneration()
+    }
+
+    fun sessionMode(): SessionMode = SessionAccess.mode(
+        access.level, grants(),
+        android.preference.PreferenceManager.getDefaultSharedPreferences(app)
+            .getBoolean("disableMotionSensors", true),
+        access.state.resolved,
+    )
+
+    /** Attached service supplies its live screen/charging/call/deadline/consent admission. */
+    @Volatile var forwardAdmission: (() -> Boolean)? = null
 
     fun accessReadyForEnter(): Boolean = readiness.ready(access.state)
 
@@ -459,10 +472,10 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
         for (action in actions) {
             if (!access.state.resolved) return
             // Healthy ledger-backed restriction/force belongs to the active session, not an orphan.
-            if (sessionActive && !recoveryNeeded && control.level >= AccessLevel.SHELL &&
-                (action == Action.UNFORCE || action == Action.RESTORE_SENSORS &&
-                    ledger.entries.any { it.feature == Feature.MOTION_SENSORS })
-            ) continue
+            if (SessionAccess.keepsSafetyIntent(
+                    action, sessionMode(), sessionActive && forwardAdmission?.invoke() == true,
+                    recoveryNeeded, ledger, allowToken,
+                )) continue
             when (action) {
                 Action.RAISE_DEBT -> journal.emit(DozeEvent(EventType.RECOVERY_DEBT, action.name))
                 Action.RESTORE_SENSORS, Action.UNFORCE -> {
