@@ -18,6 +18,27 @@ class TeardownRecoveryTest {
     )
     private fun debtKeys() = events.filter { it.type == EventType.RECOVERY_DEBT }.map { it.feature to it.target }
 
+    @Test fun queuedButNotStartedTeardownDoesNotEmitTimeoutDebt() {
+        if (TeardownTimeout.shouldReport(started = false, finished = false)) {
+            events += DozeEvent(EventType.RECOVERY_DEBT, "TEARDOWN_TIMEOUT")
+        }
+        assertTrue("a busy worker is not evidence of failed teardown", events.isEmpty())
+    }
+
+    @Test fun timeoutDebtRequiresStartedAndUnfinishedTeardown() {
+        assertTrue(TeardownTimeout.shouldReport(started = true, finished = false))
+        assertFalse(TeardownTimeout.shouldReport(started = true, finished = true))
+        assertFalse(TeardownTimeout.shouldReport(started = false, finished = true))
+    }
+
+    @Test fun serviceMarksTeardownStartedOnWorkerAndGatesTimeoutDebt() {
+        val source = File("src/main/java/com/akylas/enforcedoze/ForceDozeService.java").readText()
+        val teardown = source.substringAfter("public void onDestroy()").substringBefore("public int onStartCommand(")
+        assertTrue(teardown.contains("AtomicBoolean started = new AtomicBoolean();"))
+        assertTrue(teardown.contains("runtime.detachService(() -> {\n            started.set(true);\n            long deadline ="))
+        assertTrue(teardown.contains("&& TeardownTimeout.shouldReport(started.get(), stopped.getCount() == 0)"))
+    }
+
     @Test fun budgetExhaustionDefersMidCommandAndUnreachedEntriesWithoutFalseDebt() {
         val clock = FakeClock(0)
         val entries = listOf("first", "second", "third").map {

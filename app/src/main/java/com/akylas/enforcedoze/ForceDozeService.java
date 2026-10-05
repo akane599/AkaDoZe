@@ -34,6 +34,7 @@ import com.akylas.enforcedoze.service.PackageSelection;
 import com.akylas.enforcedoze.service.DozeRuntime;
 import com.akylas.enforcedoze.service.LegacyDozeStats;
 import com.akylas.enforcedoze.service.SessionLifecycle;
+import com.akylas.enforcedoze.service.TeardownTimeout;
 import com.akylas.enforcedoze.service.SessionAccess;
 import com.akylas.enforcedoze.service.FeatureSelection;
 import com.akylas.enforcedoze.service.DeferredFeatureSelection;
@@ -381,7 +382,9 @@ public class ForceDozeService extends Service {
         cancelEnter();
         if (pendingNotification != null) worker.removeCallbacks(pendingNotification);
         CountDownLatch stopped = new CountDownLatch(1);
+        AtomicBoolean started = new AtomicBoolean();
         runtime.detachService(() -> {
+            started.set(true);
             long deadline = runtime.getClock().elapsedRealtime() + SessionLifecycle.TEARDOWN_COMMAND_MS;
             AtomicBoolean complete = new AtomicBoolean();
             try {
@@ -407,7 +410,8 @@ public class ForceDozeService extends Service {
             }
         });
         try {
-            if (!stopped.await(SessionLifecycle.TEARDOWN_WAIT_MS, TimeUnit.MILLISECONDS)) {
+            if (!stopped.await(SessionLifecycle.TEARDOWN_WAIT_MS, TimeUnit.MILLISECONDS)
+                    && TeardownTimeout.shouldReport(started.get(), stopped.getCount() == 0)) {
                 runtime.getJournal().emit(new DozeEvent(EventType.RECOVERY_DEBT, "TEARDOWN_TIMEOUT"));
             }
         } catch (InterruptedException error) {

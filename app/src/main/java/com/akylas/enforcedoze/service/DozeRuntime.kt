@@ -78,6 +78,7 @@ class DozeRuntime(context: Context) {
     private var thread: HandlerThread? = null
     private var handler: Handler? = null
     private val selfTests = SelfTestQueue(diagnosticLogger)
+    private val resets = ServiceResetQueue { job -> worker().post(job) }
     private var shutdownQueued = false
     private var pendingRecoveries = 0
     private var deferred: Runnable? = null
@@ -85,6 +86,7 @@ class DozeRuntime(context: Context) {
     @Synchronized
     fun attachService(): Handler {
         selfTests.attach()
+        resets.attachService()
         return worker()
     }
 
@@ -92,7 +94,7 @@ class DozeRuntime(context: Context) {
     fun detachService(teardown: Runnable) {
         selfTests.detach()
         // Enqueue atomically with detach, before an idle shutdown can retire this worker.
-        worker().post(teardown)
+        resets.detachService(teardown)
     }
 
     @Synchronized
@@ -262,13 +264,14 @@ class DozeRuntime(context: Context) {
 
     /**
      * Caller stops the service first. Cancels pending enter on the caller thread, then restores and
-     * resets on doze-worker. The callback also runs on doze-worker; presentation must hop to main.
+     * resets on doze-worker after the attached service's teardown. Without a service, posts immediately.
+     * The callback also runs on doze-worker; presentation must hop to main.
      * Preferences are never cleared here, including when restoration leaves debt.
      */
     @Synchronized
     fun resetSystemState(callback: SystemResetCallback) {
         bumpGeneration()
-        worker().post {
+        resets.resetSystemState(Runnable {
             try {
                 val result = SystemReset.runJob {
                     sessionActive = false
@@ -289,7 +292,7 @@ class DozeRuntime(context: Context) {
                 }
                 callback.onComplete(result)
             } finally { quitIfDetached() }
-        }
+        })
     }
 
     /**
@@ -298,6 +301,7 @@ class DozeRuntime(context: Context) {
      */
     @Synchronized
     fun finishReset(deferred: List<ResetCommandId>, restart: Runnable) {
+        bumpGeneration()
         worker().post {
             try {
                 try {
@@ -514,4 +518,29 @@ class DozeRuntime(context: Context) {
         val candidate = value?.trim().orEmpty()
         allowToken = if (PackageNames.isValid(candidate)) candidate else app.packageName
     }
+}
+
+/** Reset/detach posting policy; all calls are made while holding the runtime monitor. */
+internal class ServiceResetQueue(private val post: (Runnable) -> Unit) {
+    private var attached = false
+    private val pending = mutableListOf<Runnable>()
+
+    fun attachService() { attached = true }
+
+    fun resetSystemState(job: Runnable) {
+        if (attached) pending += job else post(job)
+    }
+
+    fun detachService(teardown: Runnable) {
+        attached = false
+        post(teardown)
+        pending.forEach(post)
+        pending.clear()
+    }
+}
+
+/** Pure timeout decision shared by the service and JVM regressions. */
+object TeardownTimeout {
+    @JvmStatic
+    fun shouldReport(started: Boolean, finished: Boolean): Boolean = started && !finished
 }

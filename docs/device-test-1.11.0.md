@@ -57,6 +57,13 @@ before, and nothing should be reset.
       restarts. Reopened, settings are defaults and `adb shell dumpsys package com.akylas.enforcedoze`
       shows READ_PHONE_STATE as not granted. Rotate (or switch dark mode) while the progress dialog is up:
       the report still appears on the new screen, and OK still finishes.
+    - Reset with the service running (SQ-93 / SQ-92 F4): over Shizuku, start the service, then confirm
+      Settings → Reset. Expect teardown before reset commands, no 4-second UI stall behind the reset job,
+      and no "Sensors/Doze may still be restricted" notification or `RECOVERY_DEBT TEARDOWN_TIMEOUT`
+      journal row for queued-but-not-started teardown. A successful report still requires readbacks.
+      Record elapsed time from confirmation to the report and UI responsiveness during teardown/reset;
+      repeat over root and record both durations. Check notifications and the monitor journal before
+      tapping OK/restarting, so restart cannot conceal a false notice. Device timing remains unverified.
     - Reset worker retirement/retry (SQ-89): with the service stopped, tap OK on the reset report just as
       another worker operation finishes; deferred revokes/restart must not hang on "Please wait".
       With a diagnostic build that throws during reset/reconciliation, expect a dismissable "Reset
