@@ -34,7 +34,6 @@ import com.akylas.enforcedoze.MyApplication;
 import com.akylas.enforcedoze.R;
 import com.akylas.enforcedoze.access.AccessManager;
 import com.akylas.enforcedoze.access.AccessState;
-import com.akylas.enforcedoze.access.Feature;
 import com.akylas.enforcedoze.access.Reason;
 import com.akylas.enforcedoze.doze.DozeEventSink;
 import com.akylas.enforcedoze.doze.EventType;
@@ -418,11 +417,11 @@ public final class DozeMonitorActivity extends AppCompatActivity implements Moni
         AccessState state = accessState();
         boolean shizuku = shizukuMode();
         boolean service = serviceRunning();
-        // Self-tests run through the session engine: below SHELL they get the session reason too.
+        // Each test gets its own feature's reason: SENSORS runs at APP+DUMP, DOZE needs Shizuku or root.
         bindTestButton(card, R.id.testDoze, R.id.testDozeUnavailable, SelfTestKind.DOZE,
-                AccessUi.unavailableText(this, Feature.FORCE_DOZE, state, shizuku), service);
+                AccessUi.unavailableText(this, AccessUi.selfTestFeature(SelfTestKind.DOZE), state, shizuku), service);
         bindTestButton(card, R.id.testSensors, R.id.testSensorsUnavailable, SelfTestKind.SENSORS,
-                AccessUi.unavailableText(this, Feature.MOTION_SENSORS, state, shizuku), service);
+                AccessUi.unavailableText(this, AccessUi.selfTestFeature(SelfTestKind.SENSORS), state, shizuku), service);
 
         boolean running = runningTest != null;
         card.findViewById(R.id.testProgress).setVisibility(running ? View.VISIBLE : View.GONE);
@@ -436,8 +435,7 @@ public final class DozeMonitorActivity extends AppCompatActivity implements Moni
         if (result == null || running) return;
         text(card, R.id.testResultTitle, getString(R.string.monitor_test_result_title,
                 MonitorFormat.testName(this, result.getKind()), MonitorFormat.outcome(this, result.getOutcome())));
-        text(card, R.id.testResultText, MonitorFormat.resultText(this, result, shizuku,
-                AccessUi.sessionsAvailable(state)));
+        text(card, R.id.testResultText, MonitorFormat.resultText(this, result, shizuku, state));
         // The capped text is only laid out while expanded.
         text(card, R.id.testRaw, rawExpanded && lastRaw != null ? lastRaw : "");
         card.findViewById(R.id.testRawScroll).setVisibility(rawExpanded ? View.VISIBLE : View.GONE);
@@ -586,8 +584,8 @@ public final class DozeMonitorActivity extends AppCompatActivity implements Moni
     private void startTest(SelfTestKind kind) {
         if (runningTest != null) return;
         // The running service (START_STICKY + startup reconcile) is what restores a test cut short.
-        // Access can drop while the confirm dialog is open: the rebind shows the session reason.
-        if (!serviceRunning() || !AccessUi.sessionsAvailable(accessState())) {
+        // Access can drop while the confirm dialog is open: the rebind shows this test's reason.
+        if (!serviceRunning() || !AccessUi.selfTestOffered(kind, accessState(), shizukuMode(), Build.VERSION.SDK_INT)) {
             adapter.refreshType(MonitorAdapter.TESTS);
             return;
         }

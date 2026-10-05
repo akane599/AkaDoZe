@@ -45,20 +45,54 @@ public class HonestUiTest {
     // --- 1. Main screen: DUMP only is not enforcing ---
 
     @Test
-    public void dumpOnlyServiceIsOnButNotReportedAsEnforcing() {
-        assertEquals(AccessUi.ServiceStatus.NEEDS_SESSION_ACCESS,
-                AccessUi.serviceStatus(true, state(AccessLevel.APP, true)));
-        assertEquals(AccessUi.ServiceStatus.NEEDS_SESSION_ACCESS,
-                AccessUi.serviceStatus(true, state(AccessLevel.NONE, false)));
+    public void dumpOnlyServiceRestrictsSensorsButIsNotReportedAsForcing() {
+        // SQ-118 (1C): DUMP plus the sensor setting runs sensor-only sessions; Android keeps the idle timing.
+        assertEquals(AccessUi.ServiceStatus.SENSORS_ONLY,
+                AccessUi.serviceStatus(true, state(AccessLevel.APP, true), true));
+        assertEquals("sensors-off at APP+DUMP is passive", AccessUi.ServiceStatus.PASSIVE,
+                AccessUi.serviceStatus(true, state(AccessLevel.APP, true), false));
+        assertEquals(AccessUi.ServiceStatus.PASSIVE, AccessUi.serviceStatus(true, state(AccessLevel.APP, false), true));
+        assertEquals(AccessUi.ServiceStatus.PASSIVE, AccessUi.serviceStatus(true, state(AccessLevel.NONE, false), true));
     }
 
     @Test
-    public void shizukuOrRootServiceIsActiveAndOffIsInactive() {
-        assertEquals(AccessUi.ServiceStatus.ACTIVE, AccessUi.serviceStatus(true, state(AccessLevel.SHELL, false)));
-        assertEquals(AccessUi.ServiceStatus.ACTIVE, AccessUi.serviceStatus(true, state(AccessLevel.ROOT, true)));
-        assertEquals(AccessUi.ServiceStatus.INACTIVE, AccessUi.serviceStatus(false, state(AccessLevel.APP, true)));
-        // Access not published yet: no claim either way beyond the switch itself.
-        assertEquals(AccessUi.ServiceStatus.ACTIVE, AccessUi.serviceStatus(true, null));
+    public void shizukuOrRootServiceIsForcingAndOffIsInactive() {
+        assertEquals(AccessUi.ServiceStatus.FORCING, AccessUi.serviceStatus(true, state(AccessLevel.SHELL, false), false));
+        assertEquals(AccessUi.ServiceStatus.FORCING, AccessUi.serviceStatus(true, state(AccessLevel.ROOT, true), true));
+        assertEquals(AccessUi.ServiceStatus.INACTIVE, AccessUi.serviceStatus(false, state(AccessLevel.APP, true), true));
+        assertEquals(AccessUi.ServiceStatus.INACTIVE, AccessUi.serviceStatus(false, null, true));
+    }
+
+    @Test
+    public void unknownOrUnresolvedAccessIsCheckingNotActive() {
+        assertEquals(AccessUi.ServiceStatus.CHECKING, AccessUi.serviceStatus(true, null, true));
+        assertEquals(AccessUi.ServiceStatus.CHECKING, AccessUi.serviceStatus(true,
+                new AccessState(AccessLevel.APP, null, new Grants(true, false), null, false), true));
+        assertEquals("an unresolved root probe can't claim forcing yet", AccessUi.ServiceStatus.CHECKING,
+                AccessUi.serviceStatus(true, new AccessState(AccessLevel.ROOT, null, new Grants(true, true), null, false), true));
+    }
+
+    @Test
+    public void mainScreenRendersEveryStatusAndPicksTheSwitchOnDialogFromIt() throws IOException {
+        String main = source("src/main/java/com/akylas/enforcedoze/MainActivity.java");
+        String render = between(main, "private void renderServiceStatus()", "protected void onCreate(");
+        for (String status : new String[] {"case FORCING:", "case SENSORS_ONLY:", "case PASSIVE:", "case CHECKING:"}) {
+            assertTrue(status, render.contains(status));
+        }
+        assertTrue(render.contains("R.string.service_sensors_only") && render.contains("R.string.service_checking"));
+        String toggle = between(main, "public void onCheckedChanged(", "public void showDozeTunablesActivity()");
+        assertFalse("one sessionsAvailable Boolean can't tell sensor-only from passive",
+                toggle.contains("sessionsAvailable"));
+        assertTrue(toggle.contains("showSwitchedOnDialog("));
+        String dialog = between(main, "private void showSwitchedOnDialog(", "public void showSensorsOnlyDialog()");
+        assertTrue(dialog.contains("case FORCING:\n                showForceDozeActiveDialog();")
+                && dialog.contains("case SENSORS_ONLY:\n                showSensorsOnlyDialog();")
+                && dialog.contains("case PASSIVE:\n                showSessionsNeedAccessDialog();"));
+        String strings = source("src/main/res/values/strings.xml");
+        String sensorsOnly = between(strings, "name=\"sensors_only_dialog_text\"", "</string>");
+        assertTrue("explains Android still controls natural idle timing", sensorsOnly.contains("Android"));
+        assertTrue("the status line says who decides when Doze starts",
+                between(strings, "name=\"service_sensors_only\"", "</string>").contains("Android"));
     }
 
     // --- 2. Whitelist: typed reasons, partial reads still list their rows ---

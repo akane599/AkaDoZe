@@ -11,6 +11,8 @@ import com.akylas.enforcedoze.access.Feature;
 import com.akylas.enforcedoze.access.FeatureStatus;
 import com.akylas.enforcedoze.access.Grants;
 import com.akylas.enforcedoze.access.Reason;
+import com.akylas.enforcedoze.service.SelfTestKind;
+import com.akylas.enforcedoze.service.SessionMode;
 
 import org.junit.Test;
 
@@ -45,8 +47,8 @@ public class SessionHonestyTest {
                 CapabilityResolver.status(Feature.MOTION_SENSORS, AccessLevel.APP, API, dump.getGrants()));
         assertEquals(FeatureStatus.Available.INSTANCE,
                 CapabilityResolver.status(Feature.BIOMETRICS, AccessLevel.APP, API, wss.getGrants()));
-        // ...but no session runs there, so the UI must not offer them as working.
-        assertTrue(AccessUi.sessionBlocked(Feature.MOTION_SENSORS, dump, null));
+        // ...but only the sensor-only session runs there, so the UI offers motion sensors and nothing else.
+        assertFalse(AccessUi.sessionBlocked(Feature.MOTION_SENSORS, dump, null));
         assertTrue(AccessUi.sessionBlocked(Feature.BIOMETRICS, wss, null));
         assertTrue(AccessUi.sessionBlocked(Feature.WIFI, dump, Reason.NO_ACCESS));
         assertTrue(AccessUi.sessionBlocked(Feature.FORCE_DOZE, dump, Reason.SHIZUKU_NOT_RUNNING));
@@ -75,6 +77,79 @@ public class SessionHonestyTest {
         AccessState app = state(AccessLevel.APP, true, true);
         assertFalse(AccessUi.sessionBlocked(Feature.SENSOR_PRIVACY_ALL, app, Reason.REQUIRES_ROOT));
         assertFalse(AccessUi.sessionBlocked(Feature.APP_SUSPEND, app, Reason.API_TOO_OLD));
+    }
+
+    // --- SQ-118 (1C): sensor-only sessions at APP+DUMP ---
+
+    private static AccessState unresolved(AccessLevel level, boolean dump) {
+        return new AccessState(level, null, new Grants(dump, false), null, false);
+    }
+
+    @Test
+    public void sessionModeWeighsSensorPreferenceGrantsAndResolution() {
+        assertEquals(SessionMode.SENSOR_ONLY, AccessUi.sessionMode(state(AccessLevel.APP, true, false), true));
+        assertEquals("sensors-off leaves nothing to run", SessionMode.RESTORE_ONLY,
+                AccessUi.sessionMode(state(AccessLevel.APP, true, false), false));
+        assertEquals("no DUMP, no sensor session", SessionMode.RESTORE_ONLY,
+                AccessUi.sessionMode(state(AccessLevel.APP, false, true), true));
+        assertEquals(SessionMode.RESTORE_ONLY, AccessUi.sessionMode(state(AccessLevel.NONE, true, true), true));
+        assertEquals("still checking access", SessionMode.RESTORE_ONLY,
+                AccessUi.sessionMode(unresolved(AccessLevel.APP, true), true));
+        assertEquals(SessionMode.FORCE, AccessUi.sessionMode(state(AccessLevel.SHELL, false, false), false));
+        assertEquals(SessionMode.FORCE, AccessUi.sessionMode(state(AccessLevel.ROOT, false, false), true));
+    }
+
+    @Test
+    public void appWithDumpOffersMotionSensorsAndKeepsEveryOtherSessionReason() {
+        AccessState dump = state(AccessLevel.APP, true, true);
+        assertTrue(AccessUi.offered(Feature.MOTION_SENSORS, dump, false, API));
+        assertTrue(AccessUi.offered(Feature.MOTION_SENSORS, dump, true, API));
+        for (Feature feature : Feature.values()) {
+            if (feature == Feature.MOTION_SENSORS || !AccessUi.isSessionFeature(feature)) continue;
+            assertFalse(feature.name(), AccessUi.offered(feature, dump, false, API));
+        }
+        assertTrue(AccessUi.sessionBlocked(Feature.FORCE_DOZE, dump,
+                AccessUi.unavailableReason(Feature.FORCE_DOZE, dump, false, API)));
+        assertEquals("a platform limit stays the precise reason", Reason.REQUIRES_ROOT,
+                AccessUi.unavailableReason(Feature.SENSOR_PRIVACY_ALL, dump, false, API));
+    }
+
+    @Test
+    public void appWithoutDumpNamesTheDumpGrantForMotionSensors() {
+        AccessState app = state(AccessLevel.APP, false, true);
+        Reason reason = AccessUi.unavailableReason(Feature.MOTION_SENSORS, app, false, API);
+        assertEquals(Reason.NEEDS_DUMP, reason);
+        assertFalse("DUMP is what the user can grant, not Shizuku or root",
+                AccessUi.sessionBlocked(Feature.MOTION_SENSORS, app, reason));
+        assertFalse(AccessUi.offered(Feature.MOTION_SENSORS, app, false, API));
+        AccessState none = state(AccessLevel.NONE, false, false);
+        assertTrue(AccessUi.sessionBlocked(Feature.MOTION_SENSORS, none,
+                AccessUi.unavailableReason(Feature.MOTION_SENSORS, none, false, API)));
+    }
+
+    @Test
+    public void accessCardSaysWhatStillRunsBelowShell() {
+        assertEquals(com.akylas.enforcedoze.R.string.access_problem_sensors_only,
+                AccessUi.sessionProblem(state(AccessLevel.APP, true, false), true));
+        assertEquals("DUMP granted but the sensor setting is off", com.akylas.enforcedoze.R.string.access_problem_sensors_off,
+                AccessUi.sessionProblem(state(AccessLevel.APP, true, false), false));
+        assertEquals(com.akylas.enforcedoze.R.string.access_problem_sessions,
+                AccessUi.sessionProblem(state(AccessLevel.APP, false, false), true));
+        assertEquals(com.akylas.enforcedoze.R.string.access_problem_sessions,
+                AccessUi.sessionProblem(state(AccessLevel.NONE, false, false), true));
+    }
+
+    @Test
+    public void selfTestsFollowTheirOwnFeatureNotOneSessionsBoolean() {
+        assertEquals(Feature.FORCE_DOZE, AccessUi.selfTestFeature(SelfTestKind.DOZE));
+        assertEquals(Feature.MOTION_SENSORS, AccessUi.selfTestFeature(SelfTestKind.SENSORS));
+        AccessState dump = state(AccessLevel.APP, true, false);
+        assertTrue(AccessUi.selfTestOffered(SelfTestKind.SENSORS, dump, false, API));
+        assertFalse(AccessUi.selfTestOffered(SelfTestKind.DOZE, dump, false, API));
+        assertFalse(AccessUi.selfTestOffered(SelfTestKind.SENSORS, state(AccessLevel.APP, false, false), false, API));
+        AccessState shell = state(AccessLevel.SHELL, false, false);
+        assertTrue(AccessUi.selfTestOffered(SelfTestKind.SENSORS, shell, true, API));
+        assertTrue(AccessUi.selfTestOffered(SelfTestKind.DOZE, shell, true, API));
     }
 
     // --- N4: debt notice keys ---

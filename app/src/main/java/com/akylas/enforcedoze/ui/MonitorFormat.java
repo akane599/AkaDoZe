@@ -1,10 +1,13 @@
 package com.akylas.enforcedoze.ui;
 
 import android.content.Context;
+import android.os.Build;
 import android.text.TextUtils;
 import android.text.format.DateUtils;
 
 import com.akylas.enforcedoze.R;
+import com.akylas.enforcedoze.access.AccessState;
+import com.akylas.enforcedoze.access.Feature;
 import com.akylas.enforcedoze.access.Reason;
 import com.akylas.enforcedoze.doze.DeepState;
 import com.akylas.enforcedoze.doze.EventType;
@@ -256,7 +259,20 @@ final class MonitorFormat {
         }
     }
 
-    static String resultText(Context context, SelfTestResult result, boolean shizukuMode, boolean sessionsAvailable) {
+    /**
+     * The reason an UNAVAILABLE test result shows; null means "needs Shizuku or root". A precise engine
+     * reason stands. The engine's generic refusal (NO_ACCESS, or none) is refined from the test's own
+     * feature under the current access: a SENSORS test at APP without DUMP names the DUMP grant (N5).
+     */
+    static Reason testUnavailableReason(SelfTestResult result, AccessState state, boolean shizukuMode, int apiLevel) {
+        Reason reason = result.getReason();
+        if (reason != null && reason != Reason.NO_ACCESS) return reason;
+        Feature feature = AccessUi.selfTestFeature(result.getKind());
+        Reason now = AccessUi.unavailableReason(feature, state, shizukuMode, apiLevel);
+        return AccessUi.sessionBlocked(feature, state, now) ? null : now;
+    }
+
+    static String resultText(Context context, SelfTestResult result, boolean shizukuMode, AccessState state) {
         boolean doze = result.getKind() == SelfTestKind.DOZE;
         String reading = doze ? deep(context, result.getDeep()) : sensor(context, result.getSensor());
         switch (result.getOutcome()) {
@@ -267,13 +283,9 @@ final class MonitorFormat {
             case RESTORE_INCOMPLETE:
                 return context.getString(R.string.monitor_result_restore_incomplete);
             case UNAVAILABLE: {
-                // The session gate refuses a test below SHELL (no reason, or a generic no-access one):
-                // say that sessions need Shizuku or root rather than a transport guess.
-                Reason reason = result.getReason();
-                if (reason == Reason.NO_ACCESS || reason == null && !sessionsAvailable) {
-                    return context.getString(R.string.reason_sessions_need_access);
-                }
-                return AccessUi.reasonText(context, reason == null ? Reason.UNVERIFIED : reason, shizukuMode);
+                Reason reason = testUnavailableReason(result, state, shizukuMode, Build.VERSION.SDK_INT);
+                if (reason == null) return context.getString(R.string.reason_sessions_need_access);
+                return AccessUi.reasonText(context, reason, shizukuMode);
             }
             case CANCELLED:
                 return context.getString(R.string.monitor_result_cancelled);

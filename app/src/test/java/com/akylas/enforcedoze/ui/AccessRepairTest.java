@@ -12,7 +12,9 @@ import com.akylas.enforcedoze.doze.LedgerEntry;
 import com.akylas.enforcedoze.monitor.Coverage;
 import com.akylas.enforcedoze.monitor.JournalEvent;
 import com.akylas.enforcedoze.monitor.Source;
+import com.akylas.enforcedoze.R;
 import com.akylas.enforcedoze.service.SelfTestCommand;
+import com.akylas.enforcedoze.service.SessionMode;
 
 import org.junit.Test;
 
@@ -25,6 +27,30 @@ import java.util.Set;
 
 /** SQ-35 repairs of SQ-17/SQ-18 UI logic, through the pure helpers the screens use. */
 public class AccessRepairTest {
+
+    // --- SQ-118 (1C): a usable downgrade is not "paused" ---
+
+    @Test
+    public void losingShizukuOrRootDuringASensorOnlyCapableSessionIsADowngradeNotAPause() {
+        assertEquals(R.string.notice_sensors_only_title, NoticeSink.accessLossTitle(SessionMode.SENSOR_ONLY));
+        assertEquals(R.string.notice_sensors_only_shizuku_text, NoticeSink.accessLossText(SessionMode.SENSOR_ONLY, true));
+        assertEquals(R.string.notice_sensors_only_root_text, NoticeSink.accessLossText(SessionMode.SENSOR_ONLY, false));
+    }
+
+    @Test
+    public void losingEverySessionFeatureIsStillAPause() {
+        assertEquals(R.string.notice_paused_title, NoticeSink.accessLossTitle(SessionMode.RESTORE_ONLY));
+        assertEquals(R.string.notice_paused_shizuku_text, NoticeSink.accessLossText(SessionMode.RESTORE_ONLY, true));
+        assertEquals(R.string.notice_paused_root_text, NoticeSink.accessLossText(SessionMode.RESTORE_ONLY, false));
+    }
+
+    @Test
+    public void accessLossNoticeWeighsTheLiveGrantAndTheSensorSetting() {
+        assertEquals(SessionMode.SENSOR_ONLY, NoticeSink.modeAfterLoss(AccessLevel.APP, true, true));
+        assertEquals(SessionMode.RESTORE_ONLY, NoticeSink.modeAfterLoss(AccessLevel.APP, false, true));
+        assertEquals(SessionMode.RESTORE_ONLY, NoticeSink.modeAfterLoss(AccessLevel.APP, true, false));
+        assertEquals(SessionMode.RESTORE_ONLY, NoticeSink.modeAfterLoss(AccessLevel.NONE, true, true));
+    }
 
     // --- FIX-1 / NIT-1: the Shizuku wait decision ---
 
