@@ -34,6 +34,22 @@ public class ConsumerLogicTest {
         return new CommandResult(exit, Arrays.asList(lines), Collections.emptyList(), 1, false);
     }
 
+    @Test public void adbCommandTextIsOneSettingsLineBelowApi31() {
+        assertEquals("adb shell settings put global device_idle_constants a=1,b=2",
+                DozeTunableHandler.adbCommandText(30, "a=1,b=2"));
+    }
+
+    @Test public void adbCommandTextIsOneDeviceConfigPutPerKeyFromApi31() {
+        String[] lines = DozeTunableHandler.adbCommandText(31, "inactive_to=1000,idle_factor=2.0").split("\n");
+        assertEquals(2, lines.length);
+        assertEquals("adb shell cmd device_config put device_idle inactive_to 1000", lines[0]);
+        assertEquals("adb shell cmd device_config put device_idle idle_factor 2.0", lines[1]);
+        for (String line : lines) {
+            String tail = line.substring("adb shell cmd device_config put device_idle ".length());
+            assertFalse(tail.contains("=") || tail.contains(","));
+        }
+    }
+
     @Test public void whitelistParserDeduplicatesAndRejectsMalformedOutput() {
         WhitelistAppsActivity.WhitelistResult parsed = WhitelistAppsActivity.parseWhitelist(result(0,
                 "system,com.android.phone,1001", "user,com.example.app,10123", "user,com.example.app,10123"));

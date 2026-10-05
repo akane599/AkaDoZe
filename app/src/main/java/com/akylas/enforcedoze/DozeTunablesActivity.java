@@ -49,7 +49,6 @@ public class DozeTunablesActivity extends AppCompatActivity {
     public static String TAG = "EnforceDoze";
     public static boolean suAvailable = false;
     public DozeTunableHandler.ApplyResult lastApplyResult;
-    private final String tunableCommand = Build.VERSION.SDK_INT >= DozeTunableHandler.DEVICE_CONFIG_MIN_API ? "device_config put device_idle" : "settings put global device_idle_constants";
 
     private static void log(String message) {
         logToLogcat(TAG, message);
@@ -167,7 +166,8 @@ public class DozeTunablesActivity extends AppCompatActivity {
         String tunable_string = DozeTunableHandler.getInstance().getTunableString();
         MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this);
         builder.setTitle(getString(R.string.adb_command_text));
-        builder.setMessage("You can apply the new values using ADB by running the following command:\n\nadb shell " + tunableCommand + " " + tunable_string);
+        final String commandText = DozeTunableHandler.adbCommandText(Build.VERSION.SDK_INT, tunable_string);
+        builder.setMessage("You can apply the new values using ADB by running the following command:\n\n" + commandText);
         builder.setPositiveButton(getString(R.string.close_button_text), new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialogInterface, int i) {
@@ -178,7 +178,7 @@ public class DozeTunablesActivity extends AppCompatActivity {
             @Override
             public void onClick(DialogInterface dialogInterface, int i) {
                 ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                ClipData clip = ClipData.newPlainText("Copied Tunable k/v string", "adb shell " + tunableCommand + " " + tunable_string);
+                ClipData clip = ClipData.newPlainText("Copied Tunable k/v string", commandText);
                 clipboard.setPrimaryClip(clip);
                 dialogInterface.dismiss();
             }
