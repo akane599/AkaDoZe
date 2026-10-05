@@ -268,8 +268,10 @@ public class HonestUiTest {
     @Test
     public void failedResetJobIsWiredThroughTheBoundaryAndDismissedWithoutRestart() throws IOException {
         String runtime = source("src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt");
-        String job = between(runtime, "val result = SystemReset.runJob {", "callback.onComplete(result)");
+        String job = between(runtime, "val result = SystemReset.runJob(", "callback.onComplete(result)");
         assertTrue("the boundary includes work before SystemReset.run", job.contains("session.recordExit()"));
+        assertTrue("both reset catch sites report to the runtime error sink",
+                job.contains("onError = onError,\n") && job.contains("}, onError = onError)"));
         assertTrue("the boundary includes reset, reconciliation and the final ledger load",
                 job.contains("SystemReset.run(control") && job.contains("controller.reconcile(") && job.contains("store.load()"));
         String report = source("src/main/java/com/akylas/enforcedoze/ui/ResetReport.java");
