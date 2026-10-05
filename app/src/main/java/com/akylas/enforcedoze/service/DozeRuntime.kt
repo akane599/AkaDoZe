@@ -278,6 +278,7 @@ class DozeRuntime(context: Context) {
                     diagnosticLogger("System reset failed", error)
                     journal.emit(DozeEvent(EventType.ERROR, "RESET_FAILED"))
                 }
+                // Keep the tested source boundary: val result = SystemReset.runJob {
                 val result = SystemReset.runJob({
                     sessionActive = false
                     session.recordExit()
