@@ -123,9 +123,10 @@ class CommandCatalogTest {
     @Test
     fun helperGrantsUseCorrectPermissionsAndApiSpecificWhitelist() {
         val helpers = GrantCommands.forApp(36, pkg, "$pkg.NotificationService")
-        assertEquals(8, helpers.size)
+        assertEquals(7, helpers.size)
         assertEquals("pm grant $pkg android.permission.READ_PHONE_STATE", helpers["READ_PHONE_STATE"])
-        assertEquals("pm grant $pkg android.permission.READ_LOGS", helpers["READ_LOGS"])
+        assertFalse(helpers.containsKey("READ_LOGS"))
+        assertTrue(helpers.values.none { "READ_LOGS" in it })
         assertEquals("appops set $pkg SCHEDULE_EXACT_ALARM allow", helpers["SCHEDULE_EXACT_ALARM"])
         assertEquals("appops set $pkg GET_USAGE_STATS allow", helpers["GET_USAGE_STATS"])
         assertEquals("cmd notification allow_listener $pkg/$pkg.NotificationService", helpers["NOTIFICATION_LISTENER"])
