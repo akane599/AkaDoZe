@@ -21,7 +21,7 @@ import java.util.List;
  * text and the user-confirmed dismiss, shared by the access card and the monitor.
  */
 public final class DamagedRecords {
-    private DamagedRecords() {}
+    private DamagedRecords() { throw new AssertionError(); }
 
     /** Card text: what was damaged and what the user can do about it. */
     public static String debtText(Context context, List<String> tokens) {

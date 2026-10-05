@@ -34,7 +34,7 @@ import java.util.Map;
 
 /** Presentation of monitor/journal/self-test data. Every user-visible word comes from resources. */
 final class MonitorFormat {
-    private MonitorFormat() {}
+    private MonitorFormat() { throw new AssertionError(); }
 
     static String duration(Context context, long ms) {
         long minutes = Math.max(0, ms) / 60_000L;

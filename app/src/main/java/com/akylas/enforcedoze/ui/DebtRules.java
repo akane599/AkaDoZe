@@ -18,7 +18,7 @@ import java.util.Set;
 
 /** Pure restoration-debt rules shared by the access card, the monitor and the debt notice (no android.*). */
 public final class DebtRules {
-    private DebtRules() {}
+    private DebtRules() { throw new AssertionError(); }
 
     /**
      * Debt is what a restore attempt has already failed on (debt flag or attempts &gt; 0), or a damaged

@@ -35,7 +35,7 @@ import java.util.concurrent.TimeUnit;
 final class MonitorData {
     private static final long JOURNAL_TIMEOUT_S = 5;
 
-    private MonitorData() {}
+    private MonitorData() { throw new AssertionError(); }
 
     /** Identifies one aggregated session: a sessionId can hold several screen-off segments. */
     static final class SessionKey {

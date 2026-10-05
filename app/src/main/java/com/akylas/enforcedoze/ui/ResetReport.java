@@ -24,7 +24,7 @@ import java.util.concurrent.Executor;
 
 /** Presentation and preference clearing for the Settings reset, after DozeRuntime.resetSystemState reports. */
 public final class ResetReport {
-    private ResetReport() {}
+    private ResetReport() { throw new AssertionError(); }
 
     /** What a remaining restore still needs: the runner that restores, and the sensor allow token. */
     static final Set<String> RESTORE_INTENT_KEYS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(

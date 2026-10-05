@@ -50,7 +50,7 @@ public final class AccessUi {
 
     public enum Action { GRANT_HELPERS, REQUEST_SHIZUKU, OPEN_SHIZUKU, ADB_INSTRUCTIONS }
 
-    private AccessUi() {}
+    private AccessUi() { throw new AssertionError(); }
 
     public static boolean isPrivileged(AccessState state) {
         return state.getLevel() == AccessLevel.SHELL || state.getLevel() == AccessLevel.ROOT;

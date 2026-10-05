@@ -37,7 +37,14 @@ android {
         }
     }
 
+    testCoverage {
+        jacocoVersion = '0.8.13'
+    }
+
     buildTypes {
+        debug {
+            enableUnitTestCoverage = project.hasProperty('crapCoverage')
+        }
         release {
             vcsInfo.include false
             if (useExternalSigning) {
