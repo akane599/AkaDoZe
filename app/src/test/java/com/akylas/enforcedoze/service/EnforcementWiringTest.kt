@@ -19,7 +19,9 @@ class EnforcementWiringTest {
         assertFalse("unresolved and APP access must not lose self-whitelisting to session admission",
             whitelist.contains("sessionMode()") || whitelist.contains("SessionMode.FORCE"))
         assertTrue(whitelist.contains("pm.isIgnoringBatteryOptimizations(packageName)"))
-        assertTrue(whitelist.contains("executeCommandWithRoot(\"dumpsys deviceidle whitelist +com.akylas.enforcedoze\")"))
+        assertTrue("privileged starts must honor the durable helper record",
+            whitelist.contains("AccessManager.getInstance(this).grantHelpersAutomatically()"))
+        assertFalse("no service-owned command may bypass the grant record", whitelist.contains("whitelist +"))
         assertTrue(whitelist.contains("RequestIgnoreBatteryActivity.class"))
     }
 

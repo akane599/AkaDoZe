@@ -34,8 +34,6 @@ import android.view.Display;
 import android.content.ComponentName;
 
 import java.io.File;
-import android.os.AsyncTask;
-import com.akylas.enforcedoze.access.AccessManager;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.text.SimpleDateFormat;
@@ -544,12 +542,6 @@ public class Utils {
     public static boolean isShizukuMode(Context context) {
         return PreferenceManager.getDefaultSharedPreferences(context)
                 .getString("executionMode", "root").equals("shizuku");
-    }
-
-    /** Schedule helper-permission grants through AccessManager. */
-    public static void grantPermissionsViaShizuku(Context context) {
-        AccessManager manager = AccessManager.getInstance(context);
-        AsyncTask.execute(manager::grantHelpers);
     }
 
     private static boolean preferencesRepaired;

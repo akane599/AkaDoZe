@@ -47,11 +47,11 @@ public final class ResetReport {
 
     /** Worker completion shared by Settings and its JVM regressions; callers provide the main dispatcher. */
     public static SystemResetCallback callback(
-            SharedPreferences prefs, Tracker tracker, Executor main) {
+            SharedPreferences prefs, SharedPreferences helperPrefs, Tracker tracker, Executor main) {
         return result -> {
             boolean cleared;
             try {
-                cleared = clearPreferences(prefs, result);
+                cleared = clearPreferences(prefs, helperPrefs, result);
             } catch (RuntimeException failed) {
                 cleared = false;
             }
@@ -64,7 +64,8 @@ public final class ResetReport {
      * Call off main. Failed jobs only record the service already stopped by Settings; master intent and
      * all other settings survive for retry. Otherwise clear everything except pending restore intent.
      */
-    public static boolean clearPreferences(SharedPreferences prefs, SystemResetResult result) {
+    public static boolean clearPreferences(
+            SharedPreferences prefs, SharedPreferences helperPrefs, SystemResetResult result) {
         if (result.getFailed()) {
             prefs.edit().putBoolean(Prefs.SERVICE_ENABLED, false).commit();
             return false;
@@ -79,7 +80,7 @@ public final class ResetReport {
             else if (value instanceof Long) editor.putLong(entry.getKey(), (Long) value);
             else if (value instanceof Float) editor.putFloat(entry.getKey(), (Float) value);
         }
-        return editor.commit();
+        return editor.commit() && helperPrefs.edit().clear().commit();
     }
 
     /** Steps that did not end readback-confirmed, in the order they ran. */

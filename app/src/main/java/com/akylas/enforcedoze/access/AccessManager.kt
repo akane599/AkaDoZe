@@ -26,8 +26,10 @@ data class ShizukuState(val level: AccessLevel, val reason: Reason?, val uid: In
 class AccessManager private constructor(context: Context) : com.akylas.enforcedoze.service.RecoveryAccess {
     private val app = context.applicationContext
     private val prefs = PreferenceManager.getDefaultSharedPreferences(app)
+    private val helperPrefs = app.getSharedPreferences(Prefs.HELPER_GRANTS, Context.MODE_PRIVATE)
     private val main = Handler(Looper.getMainLooper())
     private val lock = Any()
+    private val helperGrantLock = Any()
     private val listeners = CopyOnWriteArraySet<Listener>()
     private val shizukuListeners = CopyOnWriteArraySet<ShizukuListener>()
     private val probePending = AtomicBoolean(false)
@@ -157,15 +159,31 @@ class AccessManager private constructor(context: Context) : com.akylas.enforcedo
         }
     }
 
-    /** Returns one transport result per attempted helper, including failures; does not short-circuit. */
-    fun grantHelpers(): Map<String, CommandResult> {
+    /** Explicit user actions may retry every helper; results never imply effective grants. */
+    fun grantHelpers(): Map<String, CommandResult> = grantHelpers(HelperGrantPolicy.Trigger.EXPLICIT)
+
+    /** A specific user action must not retry unrelated helper access. */
+    fun grantHelper(item: String): Map<String, CommandResult> = grantHelpers(HelperGrantPolicy.Trigger.EXPLICIT, item)
+
+    /** Opening a screen or restarting the service must not undo a user's later revocation. */
+    fun grantHelpersAutomatically(): Map<String, CommandResult> = grantHelpers(HelperGrantPolicy.Trigger.AUTOMATIC)
+
+    private fun grantHelpers(trigger: HelperGrantPolicy.Trigger, item: String? = null): Map<String, CommandResult> = synchronized(helperGrantLock) {
         requireBackgroundThread()
-        val results = linkedMapOf<String, CommandResult>()
-        for ((item, command) in GrantCommands.forApp(Build.VERSION.SDK_INT, app.packageName, NotificationService::class.java.name)) {
-            results[item] = controlRunner.run(command)
-        }
+        val applied = helperPrefs.getStringSet(Prefs.APPLIED_HELPERS, emptySet()).orEmpty()
+        val commands = HelperGrantPolicy.commands(
+            GrantCommands.forApp(Build.VERSION.SDK_INT, app.packageName, NotificationService::class.java.name)
+                .filterKeys { item == null || it == item },
+            applied,
+            trigger,
+        )
+        val results = HelperGrantPolicy.runAttempts(commands, applied, persist = { record ->
+            val saved = helperPrefs.edit().putStringSet(Prefs.APPLIED_HELPERS, record).commit()
+            if (!saved) android.util.Log.e("EnforceDoze", "Unable to persist helper grant record; stopping grants")
+            saved
+        }, execute = controlRunner::run)
         publish() // Refresh actual DUMP/WSS grants after the commands, not based on their exit codes.
-        return Collections.unmodifiableMap(results)
+        Collections.unmodifiableMap(results)
     }
 
     private fun readGrants() = Grants(
