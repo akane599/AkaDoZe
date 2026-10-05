@@ -12,9 +12,9 @@ command -v java >/dev/null || fail 'java missing'
 [[ -z $(find "$QUARTERMASTER_COVERAGE_DIR" -mindepth 1 -print -quit) ]] || fail 'coverage directory must start empty'
 [[ -f app/build.gradle && -f .claude/kit/gradle-check.sh ]] || fail 'run from checkout root'
 export QUARTERMASTER_COVERAGE_DIR
-export CRAP_CAPTURE_STARTED_MS=$(python3 -c 'import time; print(time.time_ns() // 1000000)')
+export CRAP_CAPTURE_STARTED_MS=$(python3 -B -c 'import time; print(time.time_ns() // 1000000)')
 converter=.claude/kit/jacoco-to-lcov.py
-python3 "$converter" --snapshot "$QUARTERMASTER_COVERAGE_DIR/inputs.json"
+python3 -B "$converter" --snapshot "$QUARTERMASTER_COVERAGE_DIR/inputs.json"
 # Export the native report task's actual inputs, not guessed Kotlin class directories.
 cat >"$QUARTERMASTER_COVERAGE_DIR/native.gradle" <<'GRADLE'
 import groovy.json.JsonOutput
@@ -58,8 +58,8 @@ set -e
 printf 'coverage Gradle exit=%s duration=%ss\n' "$rc" "$((SECONDS - start))" >&2
 [[ $rc -eq 0 ]] || exit "$rc"
 [[ -s $xml && -s $QUARTERMASTER_COVERAGE_DIR/native.json ]] || fail 'native report/identity manifest missing'
-python3 "$converter" --check-snapshot "$QUARTERMASTER_COVERAGE_DIR/inputs.json"
-python3 "$converter" --native "$QUARTERMASTER_COVERAGE_DIR/native.json" \
+python3 -B "$converter" --check-snapshot "$QUARTERMASTER_COVERAGE_DIR/inputs.json"
+python3 -B "$converter" --native "$QUARTERMASTER_COVERAGE_DIR/native.json" \
     --xml "$xml" --source-root app/src/main/java --output "$QUARTERMASTER_COVERAGE_DIR/lcov.pending"
-python3 "$converter" --check-snapshot "$QUARTERMASTER_COVERAGE_DIR/inputs.json"
+python3 -B "$converter" --check-snapshot "$QUARTERMASTER_COVERAGE_DIR/inputs.json"
 mv "$QUARTERMASTER_COVERAGE_DIR/lcov.pending" "$QUARTERMASTER_COVERAGE_DIR/lcov.info"
