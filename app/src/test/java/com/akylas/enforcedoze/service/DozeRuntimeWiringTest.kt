@@ -11,6 +11,26 @@ import org.junit.Test
 import java.io.File
 
 class DozeRuntimeWiringTest {
+    @Test fun runtimeReceivesTheAppOwnedJournalAndClockWithoutAnotherSink() {
+        val runtime = File("src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt").readText()
+        assertTrue(runtime.contains("class DozeRuntime(context: Context, val clock: AndroidClock, val journal: JournalSink)"))
+        assertFalse(runtime.contains("JournalSink(app, clock)"))
+        val app = File("src/main/java/com/akylas/enforcedoze/MyApplication.java").readText()
+        assertTrue(app.contains("new DozeRuntime(app, CLOCK, getJournal(app))"))
+        assertTrue(app.contains("public static synchronized JournalSink getJournal(Context context)"))
+        val journal = app.substringAfter("public static synchronized JournalSink getJournal(")
+            .substringBefore("/**")
+        assertTrue(journal.contains("JOURNAL.get(() -> new JournalSink(app, CLOCK),"))
+        assertTrue(journal.contains("journal -> journal.addSink(NoticeSink.get(app))"))
+        assertFalse(journal.contains("getDozeRuntime("))
+        assertFalse(journal.contains("AccessManager"))
+        assertEquals(1, Regex("NoticeSink.get").findAll(app).count())
+        val notice = File("src/main/java/com/akylas/enforcedoze/ui/NoticeSink.java").readText()
+        val denied = notice.substringAfter("private void onExternalCall(").substringBefore("private void notifyStartDenied(")
+        assertFalse(denied.contains("getDozeRuntime"))
+        assertTrue(denied.contains("if (shown) notices.edit().putBoolean(key, true).apply()"))
+    }
+
     private fun shellReadState(): String =
         File("src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt").readText()
             .substringAfter("fun readState(): DozeStateReading {")
