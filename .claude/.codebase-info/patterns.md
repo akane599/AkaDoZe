@@ -42,15 +42,15 @@
 
 ## Testing
 
-`app/src/test/java/com/akylas/enforcedoze/` has 81 JVM sources with 697 `@Test` methods (JUnit 4.13.2, no mocking library):
+`app/src/test/java/com/akylas/enforcedoze/` has 84 JVM sources with 712 `@Test` methods (JUnit 4.13.2, no mocking library):
 
 | Package | Files | Tests |
 |---------|-------|-------|
 | root | 2 | 22 |
-| access | 15 | 82 |
-| doze | 11 | 138 |
+| access | 16 | 84 |
+| doze | 12 | 144 |
 | doze/parse | 7 | 36 |
-| monitor | 6 | 46 |
+| monitor | 7 | 53 |
 | service | 33 | 291 |
 | ui | 7 | 82 |
 
@@ -59,7 +59,15 @@ The suites use these styles:
   `doze/DozeControllerTest.kt`;
 - `*JavaApiTest.java` files, which pin the Kotlin API as Java callers see it;
 - source-text wiring tests in `service/` that assert `ForceDozeService` wiring. They break when a call moves, so update
-  the anchor in the same change.
+  the anchor in the same change;
+- characterization goldens. These are written before a behaviour-preserving split and must pass unchanged across it:
+  - `access/CommandCatalogReadbackGoldenTest.kt`: every Feature × API 23..36 × null/valid/invalid target readback, as
+    literal rows;
+  - `monitor/MonitorCharacterizationTest.kt`;
+  - `doze/RestoreCharacterizationTest.kt`: restore order, saves, events and settle waits; access lost mid-entry; the
+    single-command radio guard that keeps maintenance's mid-entry `lost` path unreachable.
+
+  A deliberate behaviour change updates the golden in the same commit.
 
 The parser fixture is `app/src/test/resources/doze/deviceidle.txt`, and `ParserFixtures.kt` holds inline samples.
 

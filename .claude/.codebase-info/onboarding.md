@@ -36,7 +36,7 @@ whitelist & settings" is on. Every call is journaled; see the Monitor.
 | Task | Start in |
 |------|----------|
 | Doze enter / verify / restore order | `doze/DozeController.kt` (+ `DozeControllerTest`, `DozeFeatureGroupsTest`) |
-| A command, or a new API band | `access/CommandCatalog.kt` + `docs/doze-feature-ledger.md` (+ `CommandCatalogTest`) |
+| A command, or a new API band | `access/CommandCatalog.kt` + `docs/doze-feature-ledger.md` (+ `CommandCatalogTest`; a readback change or a new API also updates the `CommandCatalogReadbackGoldenTest` matrix, and a multi-command radio restore needs a maintenance `lost`-path test, see `RestoreCharacterizationTest`) |
 | Which features a session applies | `service/FeatureSelection.kt`, `DeferredFeatureSelection.kt` |
 | What an access level may do | `access/CapabilityResolver.kt` (+ README "Shizuku vs root", `SettingsActivity` gating) |
 | Root / Shizuku plumbing | `access/AccessManager.kt`, `CommandLane.kt`, `RootCommandRunner.kt`, `ShellCommandRunner.kt` |

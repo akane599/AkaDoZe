@@ -55,6 +55,14 @@ against `Base`.
 - **Limitations.**
   - JaCoCo filters out empty private constructors, which leaves them unmeasured (exit 2). Utility classes use
     `private X() { throw new AssertionError(); }` instead.
-  - lizard's Kotlin parsing can merge a lambda with the code after it, or omit functions while still reporting
-    `unmeasured=0`.
+  - lizard 1.24.0's Kotlin parsing is unreliable, and Quartermaster scores only the rows lizard emits. It still
+    reports `unmeasured=0` when:
+    - it omits expression-body functions (`fun f() = ...`);
+    - it merges local or nested functions into one row (a local `fun admitted()` took its enclosing body);
+    - it truncates a function at an inline lambda;
+    - it gives an unchanged expression-body function a bogus span (`DozeController.enterGroupsSafely` 59–284, cc6).
+
+    US-7 practice: helpers a change adds use block bodies with explicit return types so they get real rows. Anything
+    still omitted or truncated is hand-scored in the ticket: cc by lizard's rules, line coverage from JaCoCo, then
+    `cc²(1−cov)³ + cc`.
   - Line coverage is not branch coverage.
