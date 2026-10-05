@@ -1,5 +1,7 @@
 package com.akylas.enforcedoze.service
 
+import com.akylas.enforcedoze.monitor.EventCodes
+
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -60,12 +62,12 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
     )
     val watchdog = WatchdogPolicy(clock)
     val session = SessionLifecycle()
-    var sessionActive: Boolean
-        get() = session.active
-        set(value) {
-            session.active = value
-            screenOffPending = false
-        }
+    val sessionActive: Boolean get() = session.active
+
+    fun deactivateSession() {
+        session.deactivate()
+        screenOffPending = false
+    }
     @Volatile private var screenOffPending = false
 
     fun screenOffReceived() {
@@ -73,6 +75,7 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
         bumpGeneration()
     }
     @Volatile var allowToken: String = app.packageName
+        private set
     private var thread: HandlerThread? = null
     private var handler: Handler? = null
     private val selfTests = SelfTestQueue(diagnosticLogger)
@@ -161,9 +164,9 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
             val result = access.reads().run("dumpsys deviceidle", 8_000)
             val now = clock.elapsedRealtime()
             if (result.ok) journal.importHistory(result.stdout, now)
-            else journal.emit(DozeEvent(EventType.ERROR, "HISTORY_READ_FAILED"))
+            else journal.emit(DozeEvent(EventType.ERROR, EventCodes.HISTORY_READ_FAILED))
         } catch (_: Exception) {
-            journal.emit(DozeEvent(EventType.ERROR, "HISTORY_READ_FAILED"))
+            journal.emit(DozeEvent(EventType.ERROR, EventCodes.HISTORY_READ_FAILED))
         } finally {
             try { afterHistoryImport?.run() } catch (_: Exception) { /* Presentation only. */ }
         }
@@ -213,8 +216,8 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
         if (!access.state.resolved) return
         try {
             val ledger = store.load()
-            if (AccessRecovery.hasShellDebt(ledger, Build.VERSION.SDK_INT)) journal.emit(DozeEvent(EventType.RECOVERY_DEBT, "ACCESS_LOST"))
-        } catch (_: Exception) { journal.emit(DozeEvent(EventType.RECOVERY_DEBT, "LEDGER_LOAD_FAILED")) }
+            if (AccessRecovery.hasShellDebt(ledger, Build.VERSION.SDK_INT)) journal.emit(DozeEvent(EventType.RECOVERY_DEBT, EventCodes.ACCESS_LOST))
+        } catch (_: Exception) { journal.emit(DozeEvent(EventType.RECOVERY_DEBT, EventCodes.LEDGER_LOAD_FAILED)) }
     }
 
     fun readState(): DozeStateReading {
@@ -243,8 +246,8 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
 
     fun recordExit(result: ExitResult) {
         for (error in result.errors) {
-            journal.emit(DozeEvent(EventType.RESTORE_FAILED, error.name))
-            journal.emit(DozeEvent(EventType.ERROR, error.name))
+            journal.emit(DozeEvent(EventType.RESTORE_FAILED, error.detail))
+            journal.emit(DozeEvent(EventType.ERROR, error.detail))
         }
     }
 
@@ -288,10 +291,10 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
             try {
                 val onError: (Throwable) -> Unit = { error ->
                     diagnosticLogger("System reset failed", error)
-                    journal.emit(DozeEvent(EventType.ERROR, "RESET_FAILED"))
+                    journal.emit(DozeEvent(EventType.ERROR, EventCodes.RESET_FAILED))
                 }
                 val result = SystemReset.runJob({
-                    sessionActive = false
+                    deactivateSession()
                     session.recordExit()
                     SystemReset.run(control, Build.VERSION.SDK_INT, app.packageName,
                         permissionGranted = { permission ->
@@ -430,7 +433,7 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
                     }
                 },
                 shared,
-                { journal.emit(DozeEvent(EventType.RECOVERY_DEBT, "RESTORE_WINDOW_STARVED")) },
+                { journal.emit(DozeEvent(EventType.RECOVERY_DEBT, EventCodes.RESTORE_WINDOW_STARVED)) },
                 ::hasPendingRestore,
             ).start(deadline)
         }
@@ -446,7 +449,7 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
         try {
             store.recordCorruptionDebt()
         } catch (_: Exception) {
-            journal.emit(DozeEvent(EventType.RECOVERY_DEBT, "LEDGER_RECOVERY_COMMIT_FAILED"))
+            journal.emit(DozeEvent(EventType.RECOVERY_DEBT, EventCodes.LEDGER_RECOVERY_COMMIT_FAILED))
         }
     }
 
@@ -462,7 +465,7 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
             != FeatureStatus.Available
         ) {
             recordCorruptionDebt()
-            if (recoveryNeeded || ledger.entries.isNotEmpty()) journal.emit(DozeEvent(EventType.RECOVERY_DEBT, "SAFETY_READ_UNAVAILABLE"))
+            if (recoveryNeeded || ledger.entries.isNotEmpty()) journal.emit(DozeEvent(EventType.RECOVERY_DEBT, EventCodes.SAFETY_READ_UNAVAILABLE))
             return
         }
         val token = ledger.entries.firstOrNull { it.feature == Feature.MOTION_SENSORS }?.target ?: allowToken
@@ -478,11 +481,11 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
                     recoveryNeeded, ledger, allowToken,
                 )) continue
             when (action) {
-                Action.RAISE_DEBT -> journal.emit(DozeEvent(EventType.RECOVERY_DEBT, action.name))
+                Action.RAISE_DEBT -> journal.emit(DozeEvent(EventType.RECOVERY_DEBT, action.detail))
                 Action.RESTORE_SENSORS, Action.UNFORCE -> {
                     val feature = if (action == Action.RESTORE_SENSORS) Feature.MOTION_SENSORS else Feature.FORCE_DOZE
                     if (CapabilityResolver.status(feature, control.level, Build.VERSION.SDK_INT, grants()) != FeatureStatus.Available) {
-                        journal.emit(DozeEvent(EventType.RECOVERY_DEBT, action.name))
+                        journal.emit(DozeEvent(EventType.RECOVERY_DEBT, action.detail))
                         continue
                     }
                     bumpGeneration()
@@ -492,7 +495,7 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
                             control.run(it, 8_000)
                         }
                     } catch (_: Exception) {
-                        journal.emit(DozeEvent(EventType.ERROR, "SAFETY_COMMAND_FAILED"))
+                        journal.emit(DozeEvent(EventType.ERROR, EventCodes.SAFETY_COMMAND_FAILED))
                     }
                     val verified = if (action == Action.RESTORE_SENSORS) {
                         SensorModeParser.parse(runRead("dumpsys sensorservice")).mode == SensorMode.NORMAL
@@ -501,9 +504,9 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
                     journal.emit(DozeEvent(
                         if (!verified) EventType.RESTORE_FAILED else if (action == Action.RESTORE_SENSORS)
                             EventType.SENSORS_RESTORED else EventType.VERIFY,
-                        action.name, feature = feature,
+                        action.detail, feature = feature,
                     ))
-                    if (!verified) journal.emit(DozeEvent(EventType.RECOVERY_DEBT, action.name, feature = feature))
+                    if (!verified) journal.emit(DozeEvent(EventType.RECOVERY_DEBT, action.detail, feature = feature))
                 }
             }
         }
@@ -517,7 +520,7 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
                 try {
                     store.clearCorruptionAfterRecovery()
                 } catch (_: Exception) {
-                    journal.emit(DozeEvent(EventType.RECOVERY_DEBT, "LEDGER_RECOVERY_COMMIT_FAILED"))
+                    journal.emit(DozeEvent(EventType.RECOVERY_DEBT, EventCodes.LEDGER_RECOVERY_COMMIT_FAILED))
                 }
             }
         }

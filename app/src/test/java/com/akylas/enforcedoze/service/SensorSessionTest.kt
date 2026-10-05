@@ -100,7 +100,7 @@ class SensorSessionTest {
                         void checkSafety() { actions.add("safety"); }
                         void announceAccess() {}
                         boolean getSessionActive() { return true; }
-                        void setSessionActive(boolean active) {}
+                        void deactivateSession() {}
                         void importHistory() {}
                     }
                     $methods
@@ -194,7 +194,7 @@ class SensorSessionTest {
         val clock = FakeClock()
         val core = DozeController(runner, CommandCatalog, CapabilityResolver, store, clock,
             DozeEventSink { events += it }, 36, Grants(true, false))
-        val lifecycle = SessionLifecycle().apply { active = true }
+        val lifecycle = SessionLifecycle().apply { assertTrue(activate(0, { 0 }, { false })) }
         val watchdog = WatchdogPolicy(clock)
         val state = AccessState(AccessLevel.APP, null, Grants(true, false), null)
         val readiness = AccessReadiness()

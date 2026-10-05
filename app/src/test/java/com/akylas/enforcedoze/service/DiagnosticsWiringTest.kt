@@ -63,7 +63,7 @@ class DiagnosticsWiringTest {
         val idle = service.substringAfter("private void idleChanged()")
             .substringBefore("private void forceOnly")
         assertTrue(idle.contains("enterGroupsSafely(selectedGroups"))
-        assertTrue(idle.contains("this::forceAdmitted, \"FEATURE_SELECTION_FAILED\""))
+        assertTrue(idle.contains("this::forceAdmitted, EventCodes.FEATURE_SELECTION_FAILED"))
         assertTrue(idle.indexOf("recordVerifiedEnter();") < idle.indexOf("enterGroupsSafely(selectedGroups"))
     }
 }

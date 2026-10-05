@@ -9,6 +9,19 @@ class ExternalControlWiringTest {
     private fun service() = File("src/main/java/com/akylas/enforcedoze/ForceDozeService.java").readText()
     private fun receiver() = File("src/main/java/com/akylas/enforcedoze/ExternalControlReceiver.java").readText()
 
+    @Test fun settingWriteAndVerifiedOutcomeOnlyRunThroughParsedValueAdmission() {
+        val source = receiver()
+        val change = source.substringAfter("case CHANGE_SETTING:").substringBefore("case ENABLE_SERVICE:")
+        assertTrue(change.contains("Admission.setting(current,"))
+        assertTrue(change.contains("complete(Permission.DENIED, ExternalCallOutcome.DENIED, reason)"))
+        assertTrue(change.contains("this::writeSetting"))
+        assertFalse(change.contains("prefs.edit()"))
+        val write = source.substringAfter("private void writeSetting(").substringBefore("private void editWhitelist(")
+        assertTrue(write.contains("editor.putBoolean"))
+        assertTrue(write.contains("editor.putInt"))
+        assertTrue(write.indexOf("editor.commit()") in 0 until write.indexOf("ExternalCallOutcome.VERIFIED"))
+    }
+
     @Test fun preAdmissionDenialsCannotConstructRuntime() {
         val entry = receiver().substringAfter("public final void onReceive(")
             .substringBefore("private static String stringExtra(")
@@ -240,7 +253,7 @@ class ExternalControlWiringTest {
         val skip = source.substringAfter("static void journalReapplySkipped(").substringBefore("private void journal(")
         assertTrue("service rejections are rate-limited under REAPPLY_DOZE",
             skip.contains("admitJournal(runtime::getJournal, Action.REAPPLY_DOZE)"))
-        assertTrue("SKIPPED details come from a typed enum", skip.contains("EventType.SKIPPED, reason.name()"))
+        assertTrue("SKIPPED details come from a typed enum", skip.contains("EventType.SKIPPED, reason.getDetail()"))
     }
 
     @Test fun bootReceiverRejectsUnrelatedAndNullActionsBeforePreferenceOrServiceWork() {

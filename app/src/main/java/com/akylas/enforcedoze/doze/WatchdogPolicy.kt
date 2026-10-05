@@ -1,5 +1,7 @@
 package com.akylas.enforcedoze.doze
 
+import com.akylas.enforcedoze.monitor.EventCodes
+
 import com.akylas.enforcedoze.doze.parse.DozeStateReading
 
 sealed interface Decision {
@@ -10,13 +12,13 @@ sealed interface Decision {
 }
 
 /** Typed journal details, not user-visible text or new event types. */
-enum class ReapplySkip {
-    EXTERNAL_REAPPLY_ENTER_PENDING,
-    EXTERNAL_REAPPLY_NOT_ADMITTED,
-    EXTERNAL_REAPPLY_MAINTENANCE,
-    EXTERNAL_REAPPLY_STATE_UNKNOWN,
-    EXTERNAL_REAPPLY_SPACING,
-    EXTERNAL_REAPPLY_BUDGET,
+enum class ReapplySkip(val detail: String) {
+    EXTERNAL_REAPPLY_ENTER_PENDING(EventCodes.EXTERNAL_REAPPLY_ENTER_PENDING),
+    EXTERNAL_REAPPLY_NOT_ADMITTED(EventCodes.EXTERNAL_REAPPLY_NOT_ADMITTED),
+    EXTERNAL_REAPPLY_MAINTENANCE(EventCodes.EXTERNAL_REAPPLY_MAINTENANCE),
+    EXTERNAL_REAPPLY_STATE_UNKNOWN(EventCodes.EXTERNAL_REAPPLY_STATE_UNKNOWN),
+    EXTERNAL_REAPPLY_SPACING(EventCodes.EXTERNAL_REAPPLY_SPACING),
+    EXTERNAL_REAPPLY_BUDGET(EventCodes.EXTERNAL_REAPPLY_BUDGET),
 }
 
 /** Caller owns a single deferred callback and cancels it at every generation/session change. */

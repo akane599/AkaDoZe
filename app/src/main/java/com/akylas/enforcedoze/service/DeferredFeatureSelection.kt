@@ -1,5 +1,7 @@
 package com.akylas.enforcedoze.service
 
+import com.akylas.enforcedoze.monitor.EventCodes
+
 /** Worker-confined, one-shot selection. Null means timed out/failed: preserve network access. */
 class DeferredFeatureSelection(
     private val generation: Long,
@@ -23,7 +25,7 @@ class DeferredFeatureSelection(
 
     fun noListener(sink: com.akylas.enforcedoze.doze.DozeEventSink) {
         sink.emit(com.akylas.enforcedoze.doze.DozeEvent(
-            com.akylas.enforcedoze.doze.EventType.ERROR, "MUSIC_SELECTION_UNAVAILABLE",
+            com.akylas.enforcedoze.doze.EventType.ERROR, EventCodes.MUSIC_SELECTION_UNAVAILABLE,
         ))
         complete(false)
     }

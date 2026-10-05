@@ -9,6 +9,14 @@ import org.junit.Test;
 
 public class JavaApiTest {
     @Test
+    public void isPrivilegedRetainsShellThresholdWithoutPromotingSensorOnlyApp() {
+        for (AccessLevel level : AccessLevel.values()) {
+            assertEquals(level.compareTo(AccessLevel.SHELL) >= 0, level.isPrivileged());
+        }
+        assertEquals(false, AccessLevel.APP.isPrivileged());
+    }
+
+    @Test
     public void javaCallersCanUsePinnedCoreSurfaceAndDefaultTimeout() {
         CommandBackend backend = new CommandBackend() {
             @Override public AccessLevel getLevel() { return AccessLevel.SHELL; }

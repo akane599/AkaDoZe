@@ -1,5 +1,7 @@
 package com.akylas.enforcedoze;
 
+import com.akylas.enforcedoze.monitor.EventCodes;
+
 import android.annotation.SuppressLint;
 import android.app.ActivityManager;
 import android.app.Notification;
@@ -290,7 +292,7 @@ public class ForceDozeService extends Service {
         runtime.configureAllowToken(sensorWhitelistPackage);
         previousAccess = runtime.getAccess().getLevel();
         updateAccessFlags(previousAccess);
-        if (previousAccess.compareTo(AccessLevel.SHELL) >= 0) {
+        if (previousAccess.isPrivileged()) {
             if (!Utils.isDumpPermissionGranted(this)) grantDumpPermission();
             if (!Utils.isSecureSettingsPermissionGranted(this)) grantSecureSettingsPermission();
             if (!Utils.isReadPhoneStatePermissionGranted(this)) grantReadPhoneStatePermission();
@@ -357,7 +359,7 @@ public class ForceDozeService extends Service {
             if (recoveryNeeded) {
                 if (Utils.isScreenOn(this)) {
                     if (!waitForUnlock) {
-                        runtime.setSessionActive(false);
+                        runtime.deactivateSession();
                         handleScreenOn(this, 0, 0);
                         runtime.importHistory();
                     }
@@ -395,7 +397,7 @@ public class ForceDozeService extends Service {
         destroyed = true;
         runtime.setForwardAdmission(null);
         exitEpoch.incrementAndGet();
-        runtime.setSessionActive(false);
+        runtime.deactivateSession();
         runtime.bumpGeneration();
         if (accessListener != null) runtime.getAccess().removeListener(accessListener);
         if (pendingRootRetry != null) worker.removeCallbacks(pendingRootRetry);
@@ -422,7 +424,7 @@ public class ForceDozeService extends Service {
                 });
             } catch (Exception error) {
                 complete.set(false);
-                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "TEARDOWN_FAILED"));
+                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.TEARDOWN_FAILED));
             } finally {
                 try {
                     if (!complete.get()) queueTeardownRestore();
@@ -437,7 +439,7 @@ public class ForceDozeService extends Service {
         try {
             if (!stopped.await(SessionLifecycle.TEARDOWN_WAIT_MS, TimeUnit.MILLISECONDS)
                     && TeardownTimeout.shouldReport(stopped.getCount() == 0)) {
-                runtime.getJournal().emit(new DozeEvent(EventType.RECOVERY_DEBT, "TEARDOWN_TIMEOUT"));
+                runtime.getJournal().emit(new DozeEvent(EventType.RECOVERY_DEBT, EventCodes.TEARDOWN_TIMEOUT));
             }
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
@@ -479,7 +481,7 @@ public class ForceDozeService extends Service {
             try {
                 if (showPersistentNotif) showPersistentNotification(); else showSilentNotification();
             } catch (IllegalStateException denied) {
-                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "FOREGROUND_START_DENIED"));
+                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.FOREGROUND_START_DENIED));
                 return START_NOT_STICKY;
             }
         }
@@ -566,7 +568,7 @@ public class ForceDozeService extends Service {
         try {
             enterDoze(disableMotionSensors, generation, completion);
         } catch (Exception error) {
-            runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "EXTERNAL_REAPPLY_FAILED"));
+            runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.EXTERNAL_REAPPLY_FAILED));
             completion.complete(true);
         }
     }
@@ -717,7 +719,7 @@ public class ForceDozeService extends Service {
                 !Boolean.FALSE.equals(playingMusic), playingMusic != null && Utils.isWiFiEnabled(this));
         FocusedApps focused = new FocusedApps.Known(java.util.Collections.emptySet());
         if (whitelistCurrentApp) {
-            if (runtime.getAccess().getLevel().compareTo(AccessLevel.SHELL) >= 0) focused = getFocusedApps();
+            if (runtime.getAccess().getLevel().isPrivileged()) focused = getFocusedApps();
             else {
                 String pkg = getNonRootFocusedPackageName();
                 focused = pkg != null && com.akylas.enforcedoze.access.PackageNames.isValid(pkg)
@@ -839,7 +841,7 @@ public class ForceDozeService extends Service {
 
     private void enterDoze(boolean sensors, long generation, EnterCompletion completion) {
         if (!admitted() || generation != runtime.getController().getCurrentGeneration()) {
-            runtime.getJournal().emit(new DozeEvent(EventType.SKIPPED, "ADMISSION"));
+            runtime.getJournal().emit(new DozeEvent(EventType.SKIPPED, EventCodes.ADMISSION));
             completion.complete(true);
             return;
         }
@@ -865,7 +867,7 @@ public class ForceDozeService extends Service {
             }
             recordVerifiedEnter();
         } catch (Exception error) {
-            runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "ENTER_FAILED"));
+            runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.ENTER_FAILED));
             completion.complete(true);
             return;
         }
@@ -878,7 +880,7 @@ public class ForceDozeService extends Service {
         featureSelection = selection;
         if (whitelistMusicAppNetwork) {
             selectionTimeout = () -> {
-                if (selection.complete(null)) runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "MUSIC_SELECTION_TIMEOUT"));
+                if (selection.complete(null)) runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.MUSIC_SELECTION_TIMEOUT));
                 else completion.complete(true);
             };
             worker.postDelayed(selectionTimeout, MUSIC_SELECTION_TIMEOUT_MS);
@@ -890,14 +892,14 @@ public class ForceDozeService extends Service {
                             try {
                                 if (selection.complete(pkg != null) && selectionTimeout != null) worker.removeCallbacks(selectionTimeout);
                             } catch (Exception error) {
-                                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "MUSIC_SELECTION_FAILED"));
+                                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.MUSIC_SELECTION_FAILED));
                             }
                         });
                         return null;
                     }, error -> {
                         postWork(() -> {
                             if (selection.complete(null)) {
-                                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "MUSIC_SELECTION_FAILED"));
+                                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.MUSIC_SELECTION_FAILED));
                             }
                         });
                         return null;
@@ -907,7 +909,7 @@ public class ForceDozeService extends Service {
                 selection.noListener(runtime.getJournal());
                 if (selectionTimeout != null) worker.removeCallbacks(selectionTimeout);
             } catch (Exception error) {
-                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "MUSIC_SELECTION_FAILED"));
+                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.MUSIC_SELECTION_FAILED));
                 selection.complete(null);
             }
             return;
@@ -920,9 +922,9 @@ public class ForceDozeService extends Service {
         try {
             selectedGroups = config(false, playingMusic);
             return runtime.getController().enterGroupsSafely(selectedGroups, generation, this::forceAdmitted,
-                    "FEATURE_SELECTION_FAILED");
+                    EventCodes.FEATURE_SELECTION_FAILED);
         } catch (Exception error) {
-            runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "FEATURE_SELECTION_FAILED"));
+            runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.FEATURE_SELECTION_FAILED));
             return null;
         }
     }
@@ -1120,13 +1122,13 @@ public class ForceDozeService extends Service {
         }
         DozeStateReading reading = runtime.readState();
         lastKnownState = reading.getDeep() == null ? "UNKNOWN" : reading.getDeep().name();
-        runtime.getJournal().emit(new DozeEvent(EventType.IDLE_CHANGED, "IDLE_CHANGED",
+        runtime.getJournal().emit(new DozeEvent(EventType.IDLE_CHANGED, EventCodes.IDLE_CHANGED,
                 reading.getDeep() == null ? DeepState.UNKNOWN : reading.getDeep(),
                 reading.getLight() == null ? LightState.UNKNOWN : reading.getLight()));
         if (!runtime.getSessionActive() || sessionMode() != SessionMode.FORCE) return;
         Boolean maintenanceReading = SessionLifecycle.maintenanceState(reading.getDeep(), reading.getLight());
         if (Boolean.TRUE.equals(maintenanceReading) && !maintenance) {
-            runtime.getJournal().emit(new DozeEvent(EventType.MAINT_START, "MAINT_START", reading.getDeep(), reading.getLight()));
+            runtime.getJournal().emit(new DozeEvent(EventType.MAINT_START, EventCodes.MAINT_START, reading.getDeep(), reading.getLight()));
             if (!disableStats && runtime.getSession().getHasEnter()) {
                 dozeUsageData.add(System.currentTimeMillis() + "," + Float.toString((float) Utils.getBatteryLevel(this)) + ",EXIT_MAINTENANCE");
                 saveDozeDataStats();
@@ -1134,7 +1136,7 @@ public class ForceDozeService extends Service {
             runtime.getController().maintenance(true, runtime.getController().getCurrentGeneration(), this::forceAdmitted);
             maintenance = true;
         } else if (Boolean.FALSE.equals(maintenanceReading) && maintenance) {
-            runtime.getJournal().emit(new DozeEvent(EventType.MAINT_END, "MAINT_END", reading.getDeep(), reading.getLight()));
+            runtime.getJournal().emit(new DozeEvent(EventType.MAINT_END, EventCodes.MAINT_END, reading.getDeep(), reading.getLight()));
             if (!disableStats && runtime.getSession().getHasEnter()) {
                 dozeUsageData.add(System.currentTimeMillis() + "," + Float.toString((float) Utils.getBatteryLevel(this)) + ",ENTER_MAINTENANCE");
                 saveDozeDataStats();
@@ -1145,7 +1147,7 @@ public class ForceDozeService extends Service {
         if (!maintenance && reading.getDeep() == DeepState.IDLE && !verifiedIdleSeen && admitted()) {
             recordVerifiedEnter();
             if (selectedGroups != null) runtime.getController().enterGroupsSafely(selectedGroups,
-                    runtime.getController().getCurrentGeneration(), this::forceAdmitted, "FEATURE_SELECTION_FAILED");
+                    runtime.getController().getCurrentGeneration(), this::forceAdmitted, EventCodes.FEATURE_SELECTION_FAILED);
         }
         if (maintenance) return;
         if (!getDefaultSharedPreferences(this).getBoolean(Prefs.KEEP_DOZE_ENFORCED, Prefs.DEFAULT_KEEP_DOZE_ENFORCED)) return;
@@ -1160,7 +1162,7 @@ public class ForceDozeService extends Service {
             try {
                 forceOnly(generation);
             } catch (Exception error) {
-                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, "REFORCE_FAILED"));
+                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.REFORCE_FAILED));
             }
         }
     }
@@ -1168,7 +1170,7 @@ public class ForceDozeService extends Service {
     /** Reuse the durable force step without sensors, battery saver or deferred feature selection. */
     private void forceOnly(long generation) {
         if (generation != runtime.getController().getCurrentGeneration() || !forceAdmitted()) return;
-        runtime.getJournal().emit(new DozeEvent(EventType.REFORCE, "REFORCE"));
+        runtime.getJournal().emit(new DozeEvent(EventType.REFORCE, EventCodes.REFORCE));
         DozeConfig force = new DozeConfig(Build.VERSION.SDK_INT, runtime.getAccess().getLevel(), runtime.grants(),
                 false, runtime.getAllowToken(), false);
         runtime.getController().enterCore(force, generation, this::forceAdmitted);
@@ -1176,7 +1178,7 @@ public class ForceDozeService extends Service {
         boolean firstVerified = !verifiedIdleSeen;
         recordVerifiedEnter();
         if (firstVerified && verifiedIdleSeen && selectedGroups != null) {
-            runtime.getController().enterGroupsSafely(selectedGroups, generation, this::forceAdmitted, "REFORCE_FAILED");
+            runtime.getController().enterGroupsSafely(selectedGroups, generation, this::forceAdmitted, EventCodes.REFORCE_FAILED);
         }
     }
 
@@ -1242,7 +1244,7 @@ public class ForceDozeService extends Service {
             // This MUST happen here, not behind an in-flight enter on the worker queue.
             if (exitTrigger) {
                 exitEpoch.incrementAndGet();
-                runtime.setSessionActive(false);
+                runtime.deactivateSession();
                 runtime.bumpGeneration();
             }
             // Cancel an in-flight self-test at its next admission boundary, before worker dispatch.

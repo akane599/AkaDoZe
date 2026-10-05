@@ -1,5 +1,7 @@
 package com.akylas.enforcedoze.service
 
+import com.akylas.enforcedoze.monitor.EventCodes
+
 import android.content.Context
 import android.util.Log
 import com.akylas.enforcedoze.access.Feature
@@ -64,7 +66,7 @@ class JournalSink(context: Context, private val clock: Clock) : DozeEventSink {
             val merged = HistoryMerger.merge(events, history, start.elapsedRealtime, bootId)
             db.insertAll(merged.events).get(2, TimeUnit.SECONDS)
         } catch (error: Exception) {
-            emit(DozeEvent(EventType.ERROR, "HISTORY_IMPORT_FAILED"))
+            emit(DozeEvent(EventType.ERROR, EventCodes.HISTORY_IMPORT_FAILED))
             Log.e("DozeJournal", "History import failed", error)
         }
     }

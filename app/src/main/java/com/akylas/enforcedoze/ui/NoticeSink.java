@@ -1,5 +1,7 @@
 package com.akylas.enforcedoze.ui;
 
+import com.akylas.enforcedoze.monitor.EventCodes;
+
 import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -57,7 +59,6 @@ public final class NoticeSink implements DozeEventSink {
     private static final String NOTICES = "notices";
     private static final String SHOWN_BASIC = "externalBasicRejectedShown";
     private static final String SHOWN_PRIVILEGED = "externalPrivilegedRejectedShown";
-    private static final String ACCESS_LOST = "ACCESS_LOST";
 
     private static final String DEBT_NOTIFIED = "debtNotified";
 
@@ -128,7 +129,7 @@ public final class NoticeSink implements DozeEventSink {
                 onExternalCall(detail);
                 break;
             case ERROR:
-                if ("FOREGROUND_START_DENIED".equals(detail)) notifyStartDenied();
+                if (EventCodes.FOREGROUND_START_DENIED.equals(detail)) notifyStartDenied();
                 break;
             case SCREEN_ON:
                 armSummary();
@@ -148,7 +149,7 @@ public final class NoticeSink implements DozeEventSink {
         Boolean previous = lastPrivileged;
         lastPrivileged = privileged;
         // Losing access again later is a new ACCESS_LOST debt worth announcing.
-        if (privileged) debtGate.clear(ACCESS_LOST);
+        if (privileged) debtGate.clear(EventCodes.ACCESS_LOST);
         if (previous == null) return;
         if (previous && !privileged && MyApplication.getDozeRuntime(app).getSessionActive()) {
             boolean shizuku = Utils.isShizukuMode(app);
@@ -201,7 +202,7 @@ public final class NoticeSink implements DozeEventSink {
 
     /** Every safety check re-emits outstanding debt; only a debt item not yet announced posts. */
     private void notifyDebt(String detail, String target) {
-        boolean accessLost = ACCESS_LOST.equals(detail);
+        boolean accessLost = EventCodes.ACCESS_LOST.equals(detail);
         debtGate.offer(DebtRules.key(detail, target), debtViews.get() > 0, () -> post(ID_DEBT,
                 builder(R.string.notice_debt_title,
                         accessLost ? R.string.notice_debt_access_lost_text : R.string.notice_debt_generic_text)
@@ -233,7 +234,7 @@ public final class NoticeSink implements DozeEventSink {
 
     private void onExternalCall(String detail) {
         if (detail == null) return;
-        if (detail.contains("reason=FOREGROUND_START_DENIED")) {
+        if (detail.contains("reason=" + EventCodes.FOREGROUND_START_DENIED)) {
             notifyStartDenied();
             return;
         }

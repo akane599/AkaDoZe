@@ -22,11 +22,14 @@ object CapabilityResolver {
             return FeatureStatus.Unavailable(Reason.API_TOO_OLD)
         }
         if (level == AccessLevel.NONE) return FeatureStatus.Unavailable(Reason.NO_ACCESS)
-        val privileged = level == AccessLevel.SHELL || level == AccessLevel.ROOT
+        val privileged = level.isPrivileged
         val rootOnly = when (feature) {
             Feature.SENSOR_PRIVACY_ALL, Feature.SETPROP_DOZE, Feature.PM_DISABLE -> true
             Feature.NOTIFICATION_BLOCK -> apiLevel < 33
-            else -> false
+            Feature.FORCE_DOZE, Feature.DOZE_STATE_READ, Feature.TUNABLES, Feature.MOTION_SENSORS,
+            Feature.BATTERY_SAVER, Feature.WIFI, Feature.MOBILE_DATA, Feature.BLUETOOTH,
+            Feature.AIRPLANE, Feature.LOCATION, Feature.BIOMETRICS, Feature.APP_SUSPEND,
+            Feature.WHITELIST_EDIT, Feature.FOCUSED_APP -> false
         }
         if (rootOnly) {
             return if (level == AccessLevel.ROOT) FeatureStatus.Available
@@ -39,7 +42,10 @@ object CapabilityResolver {
             Feature.TUNABLES, Feature.BIOMETRICS ->
                 if (privileged || grants.writeSecureSettings) FeatureStatus.Available
                 else FeatureStatus.Unavailable(Reason.NEEDS_WRITE_SECURE_SETTINGS)
-            else -> if (privileged) FeatureStatus.Available
+            Feature.FORCE_DOZE, Feature.BATTERY_SAVER, Feature.WIFI, Feature.MOBILE_DATA,
+            Feature.BLUETOOTH, Feature.AIRPLANE, Feature.LOCATION, Feature.APP_SUSPEND,
+            Feature.NOTIFICATION_BLOCK, Feature.WHITELIST_EDIT, Feature.FOCUSED_APP,
+            Feature.SENSOR_PRIVACY_ALL, Feature.SETPROP_DOZE, Feature.PM_DISABLE -> if (privileged) FeatureStatus.Available
                 else FeatureStatus.Unavailable(Reason.NO_ACCESS)
         }
     }
