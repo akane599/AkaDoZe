@@ -7,24 +7,25 @@ import com.akylas.enforcedoze.service.DozeRuntime;
 import com.akylas.enforcedoze.service.JournalSink;
 import com.akylas.enforcedoze.ui.NoticeSink;
 
-import java.util.function.Consumer;
-import java.util.function.Supplier;
-
 public class MyApplication extends android.app.Application {
     private static Context context;
     private static DozeRuntime dozeRuntime;
     private static final AndroidClock CLOCK = new AndroidClock();
     private static final LazyJournal<JournalSink> JOURNAL = new LazyJournal<>();
 
-    /** Pure ownership seam: construction and notice registration happen once under the same lock. */
+    // Own SAM types: java.util.function is API 24+, minSdk is 23.
+    public interface Factory<T> { T get(); }
+    public interface Callback<T> { void accept(T value); }
+
+    /** Pure ownership seam: construction and notice registration are attempted once under the same lock. */
     public static final class LazyJournal<T> {
         private T journal;
 
-        public synchronized T get(Supplier<T> factory, Consumer<T> registerNotice) {
+        public synchronized T get(Factory<T> factory, Callback<T> registerNotice) {
             if (journal == null) {
-                T created = factory.get();
-                registerNotice.accept(created);
-                journal = created;
+                // Keep the process-owned sink even if notice registration throws.
+                journal = factory.get();
+                registerNotice.accept(journal);
             }
             return journal;
         }

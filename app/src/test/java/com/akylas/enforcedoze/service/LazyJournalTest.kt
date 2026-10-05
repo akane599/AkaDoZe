@@ -126,6 +126,22 @@ class LazyJournalTest {
         }
     }
 
+    @Test fun noticeRegistrationFailureKeepsTheFirstJournal() {
+        val lazy = LazyJournal<Journal>()
+        val journals = mutableListOf<Journal>()
+        var registrations = 0
+        fun journal(): Journal = lazy.get({ Journal().also { journals += it } }, {
+            registrations++
+            if (registrations == 1) error("notice registration failed")
+        })
+
+        assertThrows(IllegalStateException::class.java) { journal() }
+        assertSame("registration failure must not replace the published journal", journals[0], journal())
+        assertSame(journals[0], journal())
+        assertEquals("the factory must run once even if registration throws", 1, journals.size)
+        assertEquals("notice registration is attempted once", 1, registrations)
+    }
+
     @Test fun concurrentJournalAndRuntimeCallsConstructAndRegisterOnce() {
         val owner = Owner()
         val start = CountDownLatch(1)

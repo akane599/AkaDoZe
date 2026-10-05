@@ -12,6 +12,8 @@ import android.preference.PreferenceManager;
 
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
+import com.akylas.enforcedoze.MyApplication.Callback;
+import com.akylas.enforcedoze.MyApplication.Factory;
 import com.akylas.enforcedoze.access.AccessManager;
 import com.akylas.enforcedoze.access.CapabilityResolver;
 import com.akylas.enforcedoze.access.CommandCatalog;
@@ -33,10 +35,6 @@ import com.akylas.enforcedoze.service.DozeRuntime;
 import com.akylas.enforcedoze.service.JournalSink;
 
 import java.util.List;
-import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.function.ObjLongConsumer;
-import java.util.function.Supplier;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
@@ -69,8 +67,12 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
 
     /** Pure admission/ownership seam; denied calls never invoke the admitted-work factory. */
     public static final class Admission {
-        public static <T> void run(Decision gates, Supplier<T> decode, Function<T, Decision> policy,
-                                   Consumer<DenialReason> denied, Consumer<T> admitted) {
+        // Own SAM types: java.util.function is API 24+, minSdk is 23.
+        public interface Policy<T> { Decision apply(T input); }
+        public interface Summary<T> { void accept(T journal, long suppressed); }
+
+        public static <T> void run(Decision gates, Factory<T> decode, Policy<T> policy,
+                                   Callback<DenialReason> denied, Callback<T> admitted) {
             if (gates.getReason() == DenialReason.BASIC_CONTROL_DISABLED
                     || gates.getReason() == DenialReason.PRIVILEGED_CONTROL_DISABLED) {
                 denied.accept(gates.getReason());
@@ -93,7 +95,7 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
         }
 
         public static <T> T journal(ExternalCallRateLimiter limiter, Action action,
-                                    Supplier<T> factory, ObjLongConsumer<T> summary) {
+                                    Factory<T> factory, Summary<T> summary) {
             ExternalCallRateLimiter.Admission admission = limiter.record(action);
             if (!admission.getAdmitted()) return null;
             T journal = factory.get();
@@ -160,7 +162,7 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
                 key, value, pkg);
     }
 
-    private static JournalSink admitJournal(Supplier<JournalSink> factory, Action action) {
+    private static JournalSink admitJournal(Factory<JournalSink> factory, Action action) {
         return Admission.journal(JOURNAL_LIMIT, action, factory, (journal, suppressed) ->
                 journal.emit(new DozeEvent(EventType.EXTERNAL_CALL,
                         "action=" + action.name() + " suppressed=" + suppressed)));
