@@ -64,6 +64,8 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
     private AccessCard accessCard;
     /** Last published access, null until the first callback. */
     private AccessState lastAccess;
+    /** Root, Shizuku or DUMP in the last published access; false until the first callback. */
+    private boolean accessUsable;
     private boolean helpersRequested;
     private final AccessManager.Listener accessListener = this::onAccessChanged;
     private UpdateForceDozeEnabledState updateStateFromTile;
@@ -106,12 +108,9 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
     }
 
     /** Forcing, sensor-only (Android keeps the idle timing), passive or still checking: say which. */
-    private AccessUi.ServiceStatus serviceStatus() {
-        return AccessUi.serviceStatus(serviceEnabled, lastAccess, AccessUi.sensorsEnabled(this));
-    }
-
     private void renderServiceStatus() {
-        switch (serviceStatus()) {
+        toggleForceDozeSwitch.setEnabled(AccessUi.mainSwitchEnabled(serviceEnabled, accessUsable));
+        switch (AccessUi.mainStatus(serviceEnabled, accessUsable, lastAccess, AccessUi.sensorsEnabled(this))) {
             case FORCING:
                 textViewStatus.setText(R.string.service_active);
                 break;
@@ -123,6 +122,12 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
                 break;
             case CHECKING:
                 textViewStatus.setText(R.string.service_checking);
+                break;
+            case UNAVAILABLE:
+                textViewStatus.setText(R.string.service_disabled);
+                break;
+            case RESOLVING:
+                textViewStatus.setText(R.string.access_status_checking);
                 break;
             default:
                 textViewStatus.setText(R.string.service_inactive);
@@ -316,10 +321,9 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         } else {
             helpersRequested = false;
         }
-        boolean usable = isSuAvailable || isShizukuAvailable || isDumpPermGranted;
-        toggleForceDozeSwitch.setEnabled(usable);
-        if (usable) doAfterSuCheckSetup();
-        else textViewStatus.setText(state.getResolved() ? R.string.service_disabled : R.string.access_status_checking);
+        accessUsable = isSuAvailable || isShizukuAvailable || isDumpPermGranted;
+        if (accessUsable) doAfterSuCheckSetup();
+        else renderServiceStatus();
     }
 
     public void doAfterSuCheckSetup() {

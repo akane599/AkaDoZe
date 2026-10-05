@@ -161,6 +161,9 @@ before, and nothing should be reset.
 - *Cold-start "checking" status (SQ-126).* Root mode, with the su prompt left pending for a few seconds after a
   cold start (force-stop, then open). The status and access card read "checking" with no access-repair
   prompt, then resolve to the real state. Deny su: the repair action appears only after that definitive answer.
+- *Main status with no access while on (F6, SQ-143).* Service on, Shizuku stopped, DUMP revoked: Main reads "on, but
+  not enforcing anything", the switch stays enabled and turns the service off (then reads disabled and greys out);
+  TalkBack reads the status and the switch's enabled state.
 
 **If something fails:** Doze monitor → "Share report", plus
 `adb logcat -d --pid=$(adb shell pidof -s com.akylas.enforcedoze) | tail -200`.

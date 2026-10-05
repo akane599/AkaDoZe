@@ -73,6 +73,32 @@ public class HonestUiTest {
     }
 
     @Test
+    public void mainStatusNeverCallsARunningServiceOffWithoutAccess() {
+        // F6: Shizuku stopped, DUMP revoked, service enabled and running.
+        AccessState none = state(AccessLevel.NONE, false);
+        assertEquals("enabled without access is on but not enforcing", AccessUi.ServiceStatus.PASSIVE,
+                AccessUi.mainStatus(true, false, none, true));
+        assertTrue("an enabled service can always be switched off", AccessUi.mainSwitchEnabled(true, false));
+
+        assertEquals("off without access still reads disabled", AccessUi.ServiceStatus.UNAVAILABLE,
+                AccessUi.mainStatus(false, false, none, true));
+        assertFalse("off without access can't be switched on", AccessUi.mainSwitchEnabled(false, false));
+
+        AccessState unresolved = new AccessState(AccessLevel.NONE, null, new Grants(false, false), null, false);
+        assertEquals(AccessUi.ServiceStatus.RESOLVING, AccessUi.mainStatus(false, false, unresolved, true));
+        assertEquals(AccessUi.ServiceStatus.RESOLVING, AccessUi.mainStatus(false, false, null, true));
+        assertEquals(AccessUi.ServiceStatus.CHECKING, AccessUi.mainStatus(true, false, unresolved, true));
+        assertEquals(AccessUi.ServiceStatus.CHECKING, AccessUi.mainStatus(true, false, null, true));
+
+        AccessState dumpOnly = state(AccessLevel.APP, true);
+        assertEquals(AccessUi.ServiceStatus.SENSORS_ONLY, AccessUi.mainStatus(true, true, dumpOnly, true));
+        assertEquals(AccessUi.ServiceStatus.PASSIVE, AccessUi.mainStatus(true, true, dumpOnly, false));
+        assertEquals(AccessUi.ServiceStatus.INACTIVE, AccessUi.mainStatus(false, true, dumpOnly, true));
+        assertTrue(AccessUi.mainSwitchEnabled(false, true));
+        assertTrue(AccessUi.mainSwitchEnabled(true, true));
+    }
+
+    @Test
     public void mainScreenRendersEveryStatusAndPicksTheSwitchOnDialogFromIt() throws IOException {
         String main = source("src/main/java/com/akylas/enforcedoze/MainActivity.java");
         String render = between(main, "private void renderServiceStatus()", "protected void onCreate(");
