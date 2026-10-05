@@ -61,7 +61,7 @@ public class DozeEngineJavaApiTest {
             assertEquals(int.class, constructor.getParameterTypes()[6]);
             assertEquals(Grants.class, constructor.getParameterTypes()[7]);
             if (!constructor.isSynthetic()) {
-                assertTrue("only diagnostics and readiness are optional", constructor.getParameterCount() <= 10);
+                assertTrue("only diagnostics, readiness, budget and sleeper are optional", constructor.getParameterCount() <= 12);
             }
         }
         LedgerEntry entry = new LedgerEntry(com.akylas.enforcedoze.access.Feature.LOCATION,
