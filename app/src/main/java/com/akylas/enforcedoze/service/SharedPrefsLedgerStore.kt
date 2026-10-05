@@ -1,5 +1,7 @@
 package com.akylas.enforcedoze.service
 
+import com.akylas.enforcedoze.monitor.EventCodes
+
 import android.content.Context
 import android.content.SharedPreferences
 import com.akylas.enforcedoze.access.Prefs
@@ -41,14 +43,14 @@ class SharedPrefsLedgerStore internal constructor(
                 .distinctBy { it.line }
             if (corruptLines.isNotEmpty()) {
                 // Raw damaged lines can contain package names: journal their locations, not payloads.
-                sink.emit(DozeEvent(EventType.ERROR, "LEDGER_CORRUPT_LINES=${corruptLines.size}"))
-                corruptLines.forEach { sink.emit(DozeEvent(EventType.ERROR, "LEDGER_CORRUPT_LINE=${it.lineNumber}")) }
+                sink.emit(DozeEvent(EventType.ERROR, "${EventCodes.LEDGER_CORRUPT_LINES}=${corruptLines.size}"))
+                corruptLines.forEach { sink.emit(DozeEvent(EventType.ERROR, "${EventCodes.LEDGER_CORRUPT_LINE}=${it.lineNumber}")) }
             }
             loadFailed = false
             decoded.ledger.also { committedLedger = it }
         } catch (error: Exception) {
             loadFailed = true
-            sink.emit(DozeEvent(EventType.ERROR, "LEDGER_LOAD_FAILED"))
+            sink.emit(DozeEvent(EventType.ERROR, EventCodes.LEDGER_LOAD_FAILED))
             throw error
         }
     }
@@ -72,7 +74,7 @@ class SharedPrefsLedgerStore internal constructor(
         val recoveredCount = corruptLines.size - retained.size
         if (recoveredCount == 0) return
         persistCorruption(ledger, retained)
-        sink.emit(DozeEvent(EventType.ERROR, "LEDGER_CORRUPT_RECOVERED_LINES=$recoveredCount"))
+        sink.emit(DozeEvent(EventType.ERROR, "${EventCodes.LEDGER_CORRUPT_RECOVERED_LINES}=$recoveredCount"))
     }
 
     /** Explicit user-confirmed dismiss of retained evidence; never discards sensor/force recovery intent. */

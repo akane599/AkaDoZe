@@ -94,6 +94,19 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
             admitted.accept(input);
         }
 
+        /** Only a parsed scalar can authorize a preference write and VERIFIED outcome. */
+        public static void setting(Decision decision, Callback<DenialReason> denied,
+                                   Callback<SettingValue> write) {
+            if (!decision.getAllowed()) {
+                denied.accept(decision.getReason());
+            } else if (!(decision.getValue() instanceof SettingValue.BooleanValue)
+                    && !(decision.getValue() instanceof SettingValue.IntegerValue)) {
+                denied.accept(DenialReason.UNVERIFIED_SETTING_VALUE);
+            } else {
+                write.accept(decision.getValue());
+            }
+        }
+
         public static <T> T journal(ExternalCallRateLimiter limiter, Action action,
                                     Factory<T> factory, Summary<T> summary) {
             ExternalCallRateLimiter.Admission admission = limiter.record(action);
@@ -171,7 +184,7 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
     static void journalReapplySkipped(DozeRuntime runtime, ReapplySkip reason) {
         JournalSink journal = admitJournal(runtime::getJournal, Action.REAPPLY_DOZE);
         if (journal == null) return;
-        journal.emit(new DozeEvent(EventType.SKIPPED, reason.name()));
+        journal.emit(new DozeEvent(EventType.SKIPPED, reason.getDetail()));
     }
 
     private void journal(Context app, String caller, Permission permission, ExternalCallOutcome outcome, Enum<?> reason) {
@@ -231,16 +244,9 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
                         break;
                     case CHANGE_SETTING:
                         if (!admitted()) { complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.ADMISSION_CHANGED); return; }
-                        SharedPreferences.Editor editor = prefs.edit();
-                        SettingValue setting = current.getValue();
-                        if (setting instanceof SettingValue.BooleanValue) {
-                            editor.putBoolean(key, ((SettingValue.BooleanValue) setting).getValue());
-                        } else if (setting instanceof SettingValue.IntegerValue) {
-                            editor.putInt(key, ((SettingValue.IntegerValue) setting).getValue());
-                        }
-                        if (!editor.commit()) { complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.PREFERENCE_WRITE_FAILED); return; }
-                        LocalBroadcastManager.getInstance(app).sendBroadcast(new Intent("reload-settings"));
-                        complete(Permission.ALLOWED, ExternalCallOutcome.VERIFIED, ExecutionReason.PREFERENCE_WRITTEN);
+                        Admission.setting(current,
+                                reason -> complete(Permission.DENIED, ExternalCallOutcome.DENIED, reason),
+                                this::writeSetting);
                         break;
                     case ENABLE_SERVICE:
                         if (!admitted()) { complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.ADMISSION_CHANGED); return; }
@@ -278,6 +284,18 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
             } catch (Exception error) {
                 complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.EXECUTION_FAILED);
             }
+        }
+
+        private void writeSetting(SettingValue setting) {
+            SharedPreferences.Editor editor = prefs.edit();
+            if (setting instanceof SettingValue.BooleanValue) {
+                editor.putBoolean(key, ((SettingValue.BooleanValue) setting).getValue());
+            } else if (setting instanceof SettingValue.IntegerValue) {
+                editor.putInt(key, ((SettingValue.IntegerValue) setting).getValue());
+            }
+            if (!editor.commit()) { complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.PREFERENCE_WRITE_FAILED); return; }
+            LocalBroadcastManager.getInstance(app).sendBroadcast(new Intent("reload-settings"));
+            complete(Permission.ALLOWED, ExternalCallOutcome.VERIFIED, ExecutionReason.PREFERENCE_WRITTEN);
         }
 
         private void editWhitelist() {

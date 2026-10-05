@@ -1,5 +1,7 @@
 package com.akylas.enforcedoze.ui;
 
+import com.akylas.enforcedoze.monitor.EventCodes;
+
 import com.akylas.enforcedoze.access.Feature;
 import com.akylas.enforcedoze.doze.CorruptLedgerLine;
 import com.akylas.enforcedoze.doze.LedgerEntry;
@@ -124,6 +126,6 @@ public final class DebtRules {
 
     /** Runtime debts a clean ledger read disproves (MonitorData.checkDebt fails closed on load errors). */
     private static final Set<String> LEDGER_KEYS = new HashSet<>(Arrays.asList(
-            "TEARDOWN_TIMEOUT", "LEDGER_DAMAGED", "SAFETY_READ_UNAVAILABLE",
-            "LEDGER_LOAD_FAILED", "LEDGER_RECOVERY_COMMIT_FAILED"));
+            EventCodes.TEARDOWN_TIMEOUT, EventCodes.LEDGER_DAMAGED, EventCodes.SAFETY_READ_UNAVAILABLE,
+            EventCodes.LEDGER_LOAD_FAILED, EventCodes.LEDGER_RECOVERY_COMMIT_FAILED));
 }

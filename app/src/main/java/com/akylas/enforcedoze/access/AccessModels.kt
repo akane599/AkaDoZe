@@ -2,7 +2,11 @@ package com.akylas.enforcedoze.access
 
 import java.util.Collections
 
-enum class AccessLevel { NONE, APP, SHELL, ROOT }
+enum class AccessLevel {
+    NONE, APP, SHELL, ROOT;
+
+    val isPrivileged: Boolean get() = this >= SHELL
+}
 
 data class CommandResult(
     val exitCode: Int,

@@ -1,5 +1,7 @@
 package com.akylas.enforcedoze.service
 
+import com.akylas.enforcedoze.monitor.EventCodes
+
 import com.akylas.enforcedoze.access.Feature
 import com.akylas.enforcedoze.doze.CorruptLedgerLine
 import com.akylas.enforcedoze.doze.DozeEvent
@@ -56,11 +58,11 @@ internal class LedgerDamageDebt(
         current.forEach { (token, lines) ->
             if (announced[token] != lines) {
                 val feature = Feature.values().firstOrNull { it.name == token }
-                sink.emit(DozeEvent(EventType.RECOVERY_DEBT, "LEDGER_DAMAGED", feature = feature, target = token))
+                sink.emit(DozeEvent(EventType.RECOVERY_DEBT, EventCodes.LEDGER_DAMAGED, feature = feature, target = token))
             }
         }
         if (loadFailed && !announcedLoadFailure) {
-            sink.emit(DozeEvent(EventType.RECOVERY_DEBT, "LEDGER_DAMAGED"))
+            sink.emit(DozeEvent(EventType.RECOVERY_DEBT, EventCodes.LEDGER_DAMAGED))
         }
         announced = current
         announcedLoadFailure = loadFailed

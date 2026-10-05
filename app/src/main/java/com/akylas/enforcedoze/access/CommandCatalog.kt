@@ -47,7 +47,10 @@ object CommandCatalog {
                 require(originalValue in listOf("0", "1", "2", "3")) { "Invalid location mode" }
                 listOf("settings put secure location_mode $originalValue")
             } else setEnabled(feature, apiLevel, booleanValue(originalValue), target)
-            else -> setEnabled(feature, apiLevel, booleanValue(originalValue), target)
+            Feature.FORCE_DOZE, Feature.DOZE_STATE_READ, Feature.BATTERY_SAVER, Feature.WIFI,
+            Feature.MOBILE_DATA, Feature.BLUETOOTH, Feature.AIRPLANE, Feature.BIOMETRICS,
+            Feature.APP_SUSPEND, Feature.WHITELIST_EDIT, Feature.FOCUSED_APP,
+            Feature.SENSOR_PRIVACY_ALL, Feature.SETPROP_DOZE -> setEnabled(feature, apiLevel, booleanValue(originalValue), target)
         }
     }
 
@@ -60,7 +63,9 @@ object CommandCatalog {
             Feature.MOTION_SENSORS -> if (enabled) PackageNames.requireValid(target) else null
             Feature.APP_SUSPEND, Feature.NOTIFICATION_BLOCK, Feature.WHITELIST_EDIT, Feature.PM_DISABLE ->
                 PackageNames.requireValid(target)
-            else -> null
+            Feature.FORCE_DOZE, Feature.DOZE_STATE_READ, Feature.TUNABLES, Feature.BATTERY_SAVER,
+            Feature.WIFI, Feature.MOBILE_DATA, Feature.BLUETOOTH, Feature.AIRPLANE, Feature.LOCATION,
+            Feature.BIOMETRICS, Feature.FOCUSED_APP, Feature.SENSOR_PRIVACY_ALL, Feature.SETPROP_DOZE -> null
         }
         if (apiLevel < 23) return null
         val state = if (enabled) "enable" else "disable"
@@ -101,7 +106,10 @@ object CommandCatalog {
         if (target != null) PackageNames.requireValid(target)
         val pkg = when (feature) {
             Feature.APP_SUSPEND, Feature.NOTIFICATION_BLOCK, Feature.PM_DISABLE -> PackageNames.requireValid(target)
-            else -> null
+            Feature.FORCE_DOZE, Feature.DOZE_STATE_READ, Feature.TUNABLES, Feature.MOTION_SENSORS,
+            Feature.BATTERY_SAVER, Feature.WIFI, Feature.MOBILE_DATA, Feature.BLUETOOTH,
+            Feature.AIRPLANE, Feature.LOCATION, Feature.BIOMETRICS, Feature.WHITELIST_EDIT,
+            Feature.FOCUSED_APP, Feature.SENSOR_PRIVACY_ALL, Feature.SETPROP_DOZE -> null
         }
         if (apiLevel < 23) return null
         return when (feature) {
@@ -133,7 +141,10 @@ object CommandCatalog {
         return when (feature) {
             Feature.FORCE_DOZE -> "dumpsys deviceidle" // mForceIdle, not the current deep-state token.
             Feature.TUNABLES -> "settings get global device_idle_constants"
-            else -> readback(feature, apiLevel, target)
+            Feature.DOZE_STATE_READ, Feature.MOTION_SENSORS, Feature.BATTERY_SAVER, Feature.WIFI,
+            Feature.MOBILE_DATA, Feature.BLUETOOTH, Feature.AIRPLANE, Feature.LOCATION,
+            Feature.BIOMETRICS, Feature.APP_SUSPEND, Feature.NOTIFICATION_BLOCK, Feature.WHITELIST_EDIT,
+            Feature.FOCUSED_APP, Feature.SENSOR_PRIVACY_ALL, Feature.SETPROP_DOZE, Feature.PM_DISABLE -> readback(feature, apiLevel, target)
         }
     }
 

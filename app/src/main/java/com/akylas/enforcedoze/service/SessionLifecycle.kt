@@ -6,6 +6,9 @@ import com.akylas.enforcedoze.doze.LightState
 /** Pure decisions extracted from the service, shared by worker and receiver. */
 class SessionLifecycle {
     @Volatile var active = false
+        private set
+
+    fun deactivate() { active = false }
     private var entered = false
     val hasEnter: Boolean get() = entered
 

@@ -6,6 +6,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SessionLifecycleTest {
+    @Test fun onlyEpochCheckedActivationCanStartADeactivatedSession() {
+        val session = SessionLifecycle()
+        assertTrue(session.activate(3, { 3 }, { false }))
+        session.deactivate()
+        assertFalse(session.active)
+        assertFalse(session.activate(3, { 4 }, { false }))
+        assertTrue(session.activate(4, { 4 }, { false }))
+        assertFalse(SessionLifecycle::class.java.methods.any { it.name == "setActive" })
+    }
+
     @Test fun chargerOnScreenWithNoSessionCannotUndoUserAirplaneMode() {
         assertFalse(SessionLifecycle.shouldExit(true, true, false, true))
         assertFalse(SessionLifecycle.shouldExit(true, false, false, true))
@@ -19,7 +29,7 @@ class SessionLifecycleTest {
         assertFalse(session.activate(0, { epoch }, {
             // Receiver invalidates between the last admission read and the worker's set.
             epoch++
-            session.active = false
+            session.deactivate()
             false
         }))
         assertFalse(session.active)

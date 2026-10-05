@@ -1,5 +1,7 @@
 package com.akylas.enforcedoze.doze
 
+import com.akylas.enforcedoze.monitor.EventCodes
+
 import com.akylas.enforcedoze.service.SessionMode
 
 import com.akylas.enforcedoze.access.AccessLevel
@@ -67,7 +69,10 @@ data class StepResult(
 )
 
 data class EnterResult(val status: EnterStatus, val steps: List<StepResult>)
-enum class ExitError { LEDGER_LOAD_FAILED, LEDGER_SAVE_FAILED }
+enum class ExitError(val detail: String) {
+    LEDGER_LOAD_FAILED(EventCodes.LEDGER_LOAD_FAILED),
+    LEDGER_SAVE_FAILED(EventCodes.LEDGER_SAVE_FAILED),
+}
 
 /** Store failures remain observable even when the diagnostic sink is unavailable. */
 data class ExitResult @JvmOverloads constructor(

@@ -1,5 +1,7 @@
 package com.akylas.enforcedoze.service
 
+import com.akylas.enforcedoze.monitor.EventCodes
+
 import com.akylas.enforcedoze.access.Feature
 import com.akylas.enforcedoze.access.Prefs
 import com.akylas.enforcedoze.doze.DozeEvent
@@ -26,7 +28,7 @@ object FeatureSelection {
         if (whitelistCurrentApp && focused is FocusedApps.Unknown) {
             for ((feature, targets) in listOf(Feature.APP_SUSPEND to apps, Feature.NOTIFICATION_BLOCK to notifications)) {
                 if ((targets - ownPackage).isNotEmpty()) {
-                    sink.emit(DozeEvent(EventType.SKIPPED, "FOCUSED_APP_UNVERIFIED", feature = feature, reason = focused.reason))
+                    sink.emit(DozeEvent(EventType.SKIPPED, EventCodes.FOCUSED_APP_UNVERIFIED, feature = feature, reason = focused.reason))
                 }
             }
             return PackageSelection(emptySet(), emptySet())
