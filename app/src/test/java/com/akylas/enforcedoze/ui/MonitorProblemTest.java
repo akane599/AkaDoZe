@@ -102,6 +102,20 @@ public class MonitorProblemTest {
     }
 
     @Test
+    public void summaryNotificationRendersTheAggregatedSensorVerdict() throws IOException {
+        String notice = source("src/main/java/com/akylas/enforcedoze/ui/NoticeSink.java");
+        String post = between(notice, "private void postSummary(", "private boolean summaryEnabled()");
+        assertTrue(post.contains("SessionAggregator.summarize(segment)"));
+        assertTrue(post.contains("MonitorFormat.summaryLine(app, summary)"));
+        String format = source("src/main/java/com/akylas/enforcedoze/ui/MonitorFormat.java");
+        String line = between(format, "static String summaryLine(", "// --- Self-tests ---");
+        assertTrue(line.contains("switch (summary.getSensorsRestricted())"));
+        assertTrue(line.contains("case YES: parts.add(context.getString(R.string.notice_summary_sensors_yes))"));
+        assertTrue(line.contains("case NO: parts.add(context.getString(R.string.notice_summary_sensors_no))"));
+        assertTrue(line.contains("default: parts.add(context.getString(R.string.notice_summary_sensors_unverified))"));
+    }
+
+    @Test
     public void verifiedReadbacksAreNotProblems() {
         assertFalse(MonitorFormat.isProblem(verify("FORCE_DOZE", DeepState.IDLE, null)));
         assertFalse(MonitorFormat.isProblem(verify("MOTION_SENSORS", null, SensorMode.RESTRICTED)));
