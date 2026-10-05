@@ -391,15 +391,12 @@ class DozeRuntime(context: Context) {
                     }.start()
                     ({ timer.cancel() })
                 },
-                { deadline, finished ->
-                    worker.post {
-                        try {
-                            withDeadline(deadline, Runnable {
-                                announceAccess()
-                                reconcileAndCheck()
-                            })
-                        } finally { finished() }
-                    }
+                { action -> worker.post { action() } },
+                { deadline ->
+                    withDeadline(deadline, Runnable {
+                        announceAccess()
+                        reconcileAndCheck()
+                    })
                 },
                 {
                     synchronized(this@DozeRuntime) { pendingRecoveries-- }

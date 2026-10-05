@@ -15,13 +15,15 @@ interface RecoveryAccess {
  * Main-thread-owned receiver window. It always drops its own subscription when it ends; a window that
  * could not restore at SHELL/ROOT hands the later restore to the runtime's single [continuation].
  * A null continuation marks the continuation's own follow-up window, which never arms another.
+ * [dispatchRestore] queues worker work; [restore] runs synchronously only after worker-time admission.
  */
 class RestoreOnlyRequest(
     private val access: RecoveryAccess,
     private val now: () -> Long,
     private val post: (() -> Unit) -> Unit,
     private val schedule: (Long, () -> Unit) -> (() -> Unit),
-    private val restore: (Long, () -> Unit) -> Unit,
+    private val dispatchRestore: (() -> Unit) -> Unit,
+    private val restore: (Long) -> Unit,
     private val completed: () -> Unit,
     private val continuation: RestoreContinuation?,
 ) {
@@ -50,13 +52,23 @@ class RestoreOnlyRequest(
             return
         }
         restoring = true
-        if (ready) restoredReady = true
-        // The active restore announces and records no-access debt through the normal runtime path.
-        else announcedNoAccess = true
-        restore(deadline) {
-            post {
-                restoring = false
-                if (access.state.resolved) finish()
+        dispatchRestore {
+            // Worker backlog can consume the budget after changed() admits this window.
+            val admitted = deadline - now() >= MIN_READY_BUDGET_MS
+            try {
+                if (admitted) {
+                    post {
+                        if (ready) restoredReady = true
+                        // The active restore announces no-access debt through the runtime path.
+                        else announcedNoAccess = true
+                    }
+                    restore(deadline)
+                }
+            } finally {
+                post {
+                    restoring = false
+                    if (!admitted || access.state.resolved) finish()
+                }
             }
         }
     }
