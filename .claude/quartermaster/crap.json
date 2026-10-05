@@ -1,0 +1,1 @@
+{"coverageCommand":"bash .claude/kit/crap-coverage.sh","sources":["app/src/main/java"],"exclude":[],"base":"Base"}

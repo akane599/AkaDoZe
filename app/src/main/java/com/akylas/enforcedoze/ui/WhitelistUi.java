@@ -8,7 +8,7 @@ import com.akylas.enforcedoze.access.WhitelistParseReason;
 
 /** Whitelist screen outcomes as user text; the decisions are pure so they can be JVM-tested. */
 public final class WhitelistUi {
-    private WhitelistUi() {}
+    private WhitelistUi() { throw new AssertionError(); }
 
     public enum Problem { READ_FAILED, READ_TIMED_OUT, PARTIAL, NOT_APPLIED, ACCESS, INVALID_PACKAGE, NOT_INSTALLED, ERROR }
 

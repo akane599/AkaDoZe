@@ -5,7 +5,7 @@ import com.akylas.enforcedoze.access.Reason;
 
 /** Pure decisions for the Settings execution-mode switch (no android.*), so they can be JVM-tested. */
 public final class ModeSwitchRules {
-    private ModeSwitchRules() {}
+    private ModeSwitchRules() { throw new AssertionError(); }
 
     public enum ShizukuWait { NONE, KEEP, GRANTED, REVERT_DENIED, REVERT_NOT_RUNNING }
 
