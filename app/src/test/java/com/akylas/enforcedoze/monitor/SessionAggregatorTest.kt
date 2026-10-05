@@ -202,13 +202,13 @@ class SessionAggregatorTest {
         assertTrue(Problem.ACCESS_LOST in summary.problems)
     }
 
-    @Test fun truncatedHistoryFlagsProblemAndUncoveredPrefix() {
+    @Test fun freshHistoryKeepsUncoveredPrefixWithoutTruncation() {
         val app = listOf(event(0, EventType.SCREEN_OFF), event(100_000, EventType.SCREEN_ON))
         val merge = HistoryMerger.merge(app, listOf(
             com.akylas.enforcedoze.doze.parse.HistoryEvent(HistoryKind.DEEP_IDLE, 10_000, null),
         ), 0, 1)
         val summary = SessionAggregator.summarize(merge.events).single()
-        assertTrue(Problem.HISTORY_TRUNCATED in summary.problems)
+        assertFalse(Problem.HISTORY_TRUNCATED in summary.problems)
         assertEquals(10_000L, summary.coverageMs.getValue(Coverage.UNKNOWN))
         assertEquals(90_000L, summary.coverageMs.getValue(Coverage.DEEP_IDLE))
     }

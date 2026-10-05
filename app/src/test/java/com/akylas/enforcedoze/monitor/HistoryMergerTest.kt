@@ -13,6 +13,14 @@ class HistoryMergerTest {
         JournalEvent(boot, time, 1_000_000 + time, session, Source.APP, type)
     private val session = listOf(app(10_000, EventType.SCREEN_OFF), app(100_000, EventType.SCREEN_ON))
 
+    private fun fullHistory(firstElapsed: Long) = IdlingHistoryParser.parse(
+        "Idling history:\n" + (0 until 100).joinToString("\n") {
+            val kind = if (it % 2 == 0) "deep-idle" else "deep-maint"
+            "  $kind: -${200_000 - firstElapsed - it * 500}ms"
+        },
+        200_000,
+    )
+
     @Test fun parserOutputImportsStatesWallTimeAndReason() {
         val history = IdlingHistoryParser.parse("""
             Idling history:
@@ -63,19 +71,56 @@ class HistoryMergerTest {
         assertEquals(mapOf("motion" to 1), SessionAggregator.summarize(withAppNormal.events).single().exitsByReason)
     }
 
-    @Test fun truncationFlagLivesOnAnchorAndEmptyHistoryClaimsNoEvidence() {
-        val merge = HistoryMerger.merge(session,
-            listOf(HistoryEvent(HistoryKind.DEEP_IDLE, 11_000, null)), 10_000, 7)
+    @Test fun freshBootFirstDeepIdleAfterDelayDoesNotClaimTruncation() {
+        // F3: screen-off, then the first OS history entry 30 seconds later.
+        val history = IdlingHistoryParser.parse("""
+            Idling history:
+              deep-idle: -60s
+        """.trimIndent(), 100_000)
+        val merge = HistoryMerger.merge(session, history, 10_000, 7)
+        assertFalse("a first idle transition does not prove history loss", merge.truncated)
+        assertFalse(merge.events.single { it.type == EventType.SCREEN_OFF }.historyTruncated)
+        val summary = SessionAggregator.summarize(merge.events).single()
+        assertFalse(Problem.HISTORY_TRUNCATED in summary.problems)
+        assertEquals(30_000L, summary.coverageMs.getValue(Coverage.UNKNOWN))
+        assertEquals(60_000L, summary.coverageMs.getValue(Coverage.DEEP_IDLE))
+    }
+
+    @Test fun fullCapacityHistoryStartingAfterScreenOffFlagsAnchorAndUncoveredPrefix() {
+        val history = fullHistory(11_000)
+        assertEquals(100, history.events.size)
+        val merge = HistoryMerger.merge(session, history, 10_000, 7)
         assertTrue(merge.truncated)
         assertTrue(merge.events.single { it.type == EventType.SCREEN_OFF }.historyTruncated)
-        val empty = HistoryMerger.merge(session, emptyList<HistoryEvent>(), 10_000, 7)
-        assertFalse(empty.truncated)
-        assertEquals(session, empty.events)
-        val overwritten = HistoryMerger.merge(session,
-            listOf(HistoryEvent(HistoryKind.DEEP_IDLE, 110_000, null)), 10_000, 7)
+        val summary = SessionAggregator.summarize(merge.events).single()
+        assertTrue(Problem.HISTORY_TRUNCATED in summary.problems)
+        assertEquals(1_000L, summary.coverageMs.getValue(Coverage.UNKNOWN))
+
+        val overwritten = HistoryMerger.merge(session, fullHistory(110_000), 10_000, 7)
         assertTrue(overwritten.truncated)
         assertTrue(overwritten.importedEvents.isEmpty())
         assertTrue(Problem.HISTORY_TRUNCATED in SessionAggregator.summarize(overwritten.events).single().problems)
+    }
+
+    @Test fun fullCapacityWithCarryInOrTransitionAtScreenOffIsNotTruncated() {
+        for (firstElapsed in listOf(5_000L, 10_000L)) {
+            val merge = HistoryMerger.merge(session, fullHistory(firstElapsed).events, 10_000, 7)
+            assertFalse(merge.truncated)
+            assertFalse(merge.events.single { it.type == EventType.SCREEN_OFF }.historyTruncated)
+            assertEquals(0L, SessionAggregator.summarize(merge.events).single()
+                .coverageMs.getValue(Coverage.UNKNOWN))
+        }
+    }
+
+    @Test fun almostFullOrEmptyHistoryClaimsNoTruncationEvidence() {
+        val almostFull = HistoryMerger.merge(session, fullHistory(11_000).events.dropLast(1), 10_000, 7)
+        assertFalse(almostFull.truncated)
+        val invalid = fullHistory(11_000).events.toMutableList()
+        invalid[0] = invalid[0].copy(elapsedRealtime = -1)
+        assertFalse(HistoryMerger.merge(session, invalid, 10_000, 7).truncated)
+        val empty = HistoryMerger.merge(session, emptyList<HistoryEvent>(), 10_000, 7)
+        assertFalse(empty.truncated)
+        assertEquals(session, empty.events)
     }
 
     @Test fun differentBootDoesNotDeduplicateAndWrongOrUnknownBootDoesNotImport() {

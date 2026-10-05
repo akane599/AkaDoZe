@@ -22,10 +22,10 @@ class HistoryImportWiringTest {
         ), 100_000)
         val merged = HistoryMerger.merge(listOf(start, end), history, start.elapsedRealtime, 7)
         assertEquals(3, merged.importedEvents.size)
-        assertTrue(merged.truncated)
+        assertFalse(merged.truncated)
         val anchor = merged.events.single { it.type == EventType.SCREEN_OFF }
         assertEquals(41L, anchor.id)
-        assertTrue(anchor.historyTruncated)
+        assertFalse(anchor.historyTruncated)
         assertEquals(42L, merged.events.single { it.type == EventType.SCREEN_ON }.id)
         assertTrue(merged.importedEvents.all { it.sessionId == 20L && it.bootId == 7 && it.source == Source.OS_HISTORY })
         val idle = merged.importedEvents.single { it.historyKind == HistoryKind.DEEP_IDLE }
