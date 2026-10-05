@@ -560,7 +560,7 @@
     <string name="reset_outcome_unverified">couldn\'t be checked</string>
     <string name="reset_prefs_cleared">Settings were reset.</string>
     <string name="reset_prefs_cleared_kept">Other settings were reset.</string>
-    <string name="reset_failed_not_run">The reset did not run. Nothing was changed and your settings were left as they were. You can try again.</string>
+    <string name="reset_failed_not_run">The reset didn\'t finish, so your settings were left as they were. You can try again.</string>
     <string name="reset_prefs_failed">Settings couldn\'t be reset.</string>
     <string name="reset_restart_text">The app will restart now.</string>
     <string name="reset_deferred_text">Last step: revoke %1$s. Android closes EnforceDoze when it revokes a permission the app holds, so this runs only when you tap OK. The app then closes or restarts; if it closes, open it again.</string>

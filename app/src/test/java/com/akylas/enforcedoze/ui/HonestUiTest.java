@@ -275,7 +275,7 @@ public class HonestUiTest {
         String report = source("src/main/java/com/akylas/enforcedoze/ui/ResetReport.java");
         String message = between(report, "public static String message(", "private static String step(");
         String failedReturn = "if (result.getFailed()) return context.getString(R.string.reset_failed_not_run);";
-        assertTrue("a failed report says the reset did not run and returns before any restart text",
+        assertTrue("a failed report says the reset did not finish and returns before any restart text",
                 message.indexOf(failedReturn) >= 0
                         && message.indexOf(failedReturn) < message.indexOf("R.string.reset_restart_text"));
         assertTrue("a failed job must not show the debt line, the unconfirmed steps or the prefs-failed line",
