@@ -196,6 +196,9 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         accessManager.addListener(accessListener);
         accessCard.start();
         accessManager.refresh();
+        // Foreground return: exact-alarm access may have changed meanwhile. Requery and re-arm the next
+        // boundary through the shared seam (never after master-off, never applying the current window).
+        Utils.requeryExactAlarmAccess(this);
         ForceDozeService.requestSafetyCheck(this);
         updateToggleState();
         // Show disabled notification if EnforceDoze is disabled
