@@ -382,9 +382,7 @@ public class ForceDozeService extends Service {
         cancelEnter();
         if (pendingNotification != null) worker.removeCallbacks(pendingNotification);
         CountDownLatch stopped = new CountDownLatch(1);
-        AtomicBoolean started = new AtomicBoolean();
         runtime.detachService(() -> {
-            started.set(true);
             long deadline = runtime.getClock().elapsedRealtime() + SessionLifecycle.TEARDOWN_COMMAND_MS;
             AtomicBoolean complete = new AtomicBoolean();
             try {
@@ -411,7 +409,7 @@ public class ForceDozeService extends Service {
         });
         try {
             if (!stopped.await(SessionLifecycle.TEARDOWN_WAIT_MS, TimeUnit.MILLISECONDS)
-                    && TeardownTimeout.shouldReport(started.get(), stopped.getCount() == 0)) {
+                    && TeardownTimeout.shouldReport(stopped.getCount() == 0)) {
                 runtime.getJournal().emit(new DozeEvent(EventType.RECOVERY_DEBT, "TEARDOWN_TIMEOUT"));
             }
         } catch (InterruptedException error) {

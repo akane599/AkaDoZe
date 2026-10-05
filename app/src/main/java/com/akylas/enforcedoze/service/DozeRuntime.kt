@@ -538,5 +538,5 @@ internal class ServiceResetQueue(private val post: (Runnable) -> Unit) {
 /** Pure timeout decision shared by the service and JVM regressions. */
 object TeardownTimeout {
     @JvmStatic
-    fun shouldReport(started: Boolean, finished: Boolean): Boolean = started && !finished
+    fun shouldReport(finished: Boolean): Boolean = !finished
 }
