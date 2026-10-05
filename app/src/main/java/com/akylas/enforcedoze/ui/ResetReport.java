@@ -9,6 +9,7 @@ import com.akylas.enforcedoze.service.ResetCommandId;
 import com.akylas.enforcedoze.service.ResetCommandOutcome;
 import com.akylas.enforcedoze.service.ResetCommandResult;
 import com.akylas.enforcedoze.service.ResetRestoreOutcome;
+import com.akylas.enforcedoze.service.SystemResetCallback;
 import com.akylas.enforcedoze.service.SystemResetResult;
 
 import java.util.ArrayList;
@@ -19,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Executor;
 
 /** Presentation and preference clearing for the Settings reset, after DozeRuntime.resetSystemState reports. */
 public final class ResetReport {
@@ -43,9 +45,30 @@ public final class ResetReport {
         return kept;
     }
 
-    /** Clears every preference except what a remaining restore needs, in one commit. Call off main. */
+    /** Worker completion shared by Settings and its JVM regressions; callers provide the main dispatcher. */
+    public static SystemResetCallback callback(
+            SharedPreferences prefs, Tracker tracker, Executor main) {
+        return result -> {
+            boolean cleared;
+            try {
+                cleared = clearPreferences(prefs, result);
+            } catch (RuntimeException failed) {
+                cleared = false;
+            }
+            tracker.deliver(result, cleared);
+            main.execute(tracker::notifyListener);
+        };
+    }
+
+    /**
+     * Call off main. Failed jobs only record the service already stopped by Settings; master intent and
+     * all other settings survive for retry. Otherwise clear everything except pending restore intent.
+     */
     public static boolean clearPreferences(SharedPreferences prefs, SystemResetResult result) {
-        if (result.getFailed()) return false;
+        if (result.getFailed()) {
+            prefs.edit().putBoolean(Prefs.SERVICE_ENABLED, false).commit();
+            return false;
+        }
         Map<String, Object> kept = retained(prefs.getAll(), keysToKeep(result));
         SharedPreferences.Editor editor = prefs.edit().clear();
         for (Map.Entry<String, Object> entry : kept.entrySet()) {

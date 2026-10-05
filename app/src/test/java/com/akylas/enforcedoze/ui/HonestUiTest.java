@@ -264,8 +264,8 @@ public class HonestUiTest {
                 "public void resetForceDoze()", "private void dismissResetProgress()");
         assertFalse("an isAdded() gate drops the result (prefs already cleared) when the screen was recreated",
                 reset.contains("isAdded()"));
-        assertTrue("the result is kept process-wide for whichever Settings screen is showing",
-                reset.contains("ResetReport.TRACKER.deliver("));
+        assertTrue("Settings uses the same completion callback as the retry regressions",
+                reset.contains("ResetReport.callback(") && reset.contains("ResetReport.TRACKER,"));
         assertFalse("the fragment's own handler is cleared in onDestroy, so it can't carry the result",
                 reset.contains("mainHandler.post"));
         String settings = source("src/main/java/com/akylas/enforcedoze/SettingsActivity.java");
@@ -282,12 +282,14 @@ public class HonestUiTest {
     }
 
     @Test
-    public void finishResetPostsUnderTheSameRuntimeLockAsResetSystemState() throws IOException {
-        String runtime = source("src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt");
+    public void finishResetPostsUnderTheSameRuntimeLockAsResetSystemState() throws NoSuchMethodException {
+        Class<?> runtime = com.akylas.enforcedoze.service.DozeRuntime.class;
         assertTrue("resetSystemState queues atomically with worker retirement",
-                runtime.contains("@Synchronized\n    fun resetSystemState("));
+                java.lang.reflect.Modifier.isSynchronized(runtime.getDeclaredMethod("resetSystemState",
+                        com.akylas.enforcedoze.service.SystemResetCallback.class).getModifiers()));
         assertTrue("finishReset must hold the runtime lock from worker() through post()",
-                runtime.contains("@Synchronized\n    fun finishReset("));
+                java.lang.reflect.Modifier.isSynchronized(runtime.getDeclaredMethod("finishReset",
+                        List.class, Runnable.class).getModifiers()));
     }
 
     @Test
@@ -296,7 +298,8 @@ public class HonestUiTest {
                 Collections.emptyList(), Collections.emptyList(), true);
         assertFalse(failed.getComplete());
         assertFalse(ResetReport.complete(failed, true));
-        assertFalse("a failed job must not even access the preference store", ResetReport.clearPreferences(null, failed));
+        // The actual callback regression checks the sole permitted write: effective service-off.
+        assertFalse("failed jobs never claim a preference clear", ResetReport.complete(failed, false));
     }
 
     @Test

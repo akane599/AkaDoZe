@@ -810,18 +810,9 @@ public class SettingsActivity extends AppCompatActivity {
             context.stopService(new Intent(context, ForceDozeService.class));
             renderReset();
             // Restores through the ledger first, then the reset steps; the callback runs on doze-worker.
-            MyApplication.getDozeRuntime(context).resetSystemState(result -> {
-                // Only after the result, and never the restore intent that remaining debt still needs.
-                boolean cleared;
-                try {
-                    cleared = ResetReport.clearPreferences(PreferenceManager.getDefaultSharedPreferences(context), result);
-                } catch (RuntimeException failed) {
-                    cleared = false;
-                }
-                // Kept past this screen: rotation or a theme change may have replaced it by now.
-                ResetReport.TRACKER.deliver(result, cleared);
-                new Handler(Looper.getMainLooper()).post(ResetReport.TRACKER::notifyListener);
-            });
+            MyApplication.getDozeRuntime(context).resetSystemState(ResetReport.callback(
+                    PreferenceManager.getDefaultSharedPreferences(context), ResetReport.TRACKER,
+                    task -> new Handler(Looper.getMainLooper()).post(task)));
         }
 
         private void dismissResetProgress() {
