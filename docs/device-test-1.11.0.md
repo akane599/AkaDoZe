@@ -45,7 +45,18 @@ before, and nothing should be reset.
     and check that a summary appears after a session. With the permission denied, nothing should be posted.
 11. **Update/boot.** Reboot with the service enabled, and install an update over it. The service should
     come back, and no leftover RESTRICTED or forced state should remain.
-12. **Honest UI (SQ-51).**
+12. **Fresh root discovery after detached boot/update recovery (SQ-95).** On a rooted phone, select
+    root mode, stop the service and leave a pending restore-ledger entry. Reboot (or update the app)
+    while delaying the su grant until the restore-only probe times out and its window closes.
+    - Keep the same app process alive and do not open MainActivity, Settings or Doze tunables. Verify
+      the detached window does not repeatedly prompt for su.
+    - Enable the service from the quick tile, the disabled notification or external ENABLE. Grant su
+      on its fresh probe: expect ROOT access, pending state restored and verified Doze on screen-off,
+      without needing an Activity refresh. Repeat for each enable entry point.
+    - Withhold the grant instead: the new service gets at most one initial probe plus three retries
+      (1/2/4 s backoff while session/restore work needs them), then settles NO_ACCESS without looping.
+    - Pending real-device QA; no device was attached during the JVM verification.
+13. **Honest UI (SQ-51).**
     - DUMP only (no root, Shizuku off or not permitted, DUMP granted over ADB): turning the main switch on
       shows "Not enforcing yet", and the status line reads "…on, but not enforcing: Doze sessions need
       Shizuku or root". It never shows "That's it".
