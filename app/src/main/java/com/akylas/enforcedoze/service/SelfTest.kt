@@ -156,15 +156,15 @@ class SelfTest(
         if (!admission()) return SelfTestResult(kind, SelfTestOutcome.CANCELLED)
         // Never race the real session: a pending enter or an admitted screen-off session owns the system.
         if (sessionActive()) return SelfTestResult(kind, SelfTestOutcome.BUSY)
-        if (!SessionAccess.canRunSessions(config.level)) {
+        val feature = if (kind == SelfTestKind.DOZE) Feature.FORCE_DOZE else Feature.MOTION_SENSORS
+        val mode = SessionAccess.mode(config.level, config.grants, kind == SelfTestKind.SENSORS, resolved = true)
+        if (!SessionAccess.canRunFeature(mode, feature)) {
             return SelfTestResult(kind, SelfTestOutcome.UNAVAILABLE, Reason.NO_ACCESS)
         }
-        val feature = if (kind == SelfTestKind.DOZE) Feature.FORCE_DOZE else Feature.MOTION_SENSORS
         val status = resolver.status(feature, config.level, config.apiLevel, config.grants)
         if (status is FeatureStatus.Unavailable) return SelfTestResult(kind, SelfTestOutcome.UNAVAILABLE, status.reason)
 
         var applying = true
-        var concluded = false
         var deep: DeepState? = null
         var sensor: SensorMode? = null
         val sink = DozeEventSink { event ->
@@ -172,9 +172,6 @@ class SelfTest(
                 if (event.type == EventType.VERIFY) {
                     event.deep?.let { deep = it }
                     event.sensor?.let { sensor = it }
-                    concluded = true
-                } else if (event.type == EventType.SKIPPED) {
-                    concluded = true
                 }
             }
         }
@@ -186,11 +183,12 @@ class SelfTest(
         var restoreErrors = emptyList<ExitError>()
         try {
             val generation = controller.bumpGeneration()
-            // Core enter without battery saver; the sensor test stops before the force-idle step.
+            // Explicit sensor mode cannot select force-idle, even after successful readback.
             val result = controller.enterCore(
-                config.copy(restrictSensors = kind == SelfTestKind.SENSORS, batterySaver = false),
+                config.copy(restrictSensors = kind == SelfTestKind.SENSORS, batterySaver = false,
+                    mode = if (kind == SelfTestKind.SENSORS) SessionMode.SENSOR_ONLY else SessionMode.FORCE),
                 generation,
-            ) { admission() && (kind == SelfTestKind.DOZE || !concluded) }
+            ) { admission() }
             cancelled = !admission() || generation != controller.currentGeneration
             step = result.steps.lastOrNull { it.feature == feature }
         } catch (error: Exception) {

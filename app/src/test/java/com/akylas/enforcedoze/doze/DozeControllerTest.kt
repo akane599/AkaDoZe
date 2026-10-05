@@ -1,5 +1,7 @@
 package com.akylas.enforcedoze.doze
 
+import com.akylas.enforcedoze.service.SessionMode
+
 import com.akylas.enforcedoze.access.AccessLevel
 import com.akylas.enforcedoze.access.CapabilityResolver
 import com.akylas.enforcedoze.access.CommandCatalog
@@ -82,6 +84,58 @@ class DozeControllerTest {
         runner.replies("cmd deviceidle get deep", "IDLE")
     }
     private fun sensorCycle() = runner.replies(SENSORS, "Mode : NORMAL", "Mode : RESTRICTED : $TOKEN", "Mode : NORMAL")
+
+    @Test fun sensorOnlyEnterAndCoreOwnOnlyDurableSensorsAndEmitNoForcedIdle() {
+        runner.level = AccessLevel.APP
+        sensorCycle()
+        // Natural idle is available, but sensor-only must not even consult it for group admission.
+        runner.replies("cmd deviceidle get deep", "IDLE")
+        runner.beforeMutation = { assertEquals(Feature.MOTION_SENSORS, store.load().entries.single().feature) }
+        val sensors = config.copy(level = AccessLevel.APP, batterySaver = true,
+            features = setOf(Feature.BIOMETRICS, Feature.WIFI, Feature.SENSOR_PRIVACY_ALL),
+            appsToSuspend = setOf(PKG), packagesToBlockNotifications = setOf(PKG),
+            mode = SessionMode.SENSOR_ONLY)
+        val result = enter(sensors)
+        assertEquals(listOf(Feature.MOTION_SENSORS), result.steps.map { it.feature })
+        assertEquals(StepStatus.VERIFIED, result.steps.single().status)
+        assertEquals("NORMAL", store.load().entries.single().originalValue)
+        assertEquals(listOf(RESTRICT), runner.mutations())
+        assertTrue(events.any { it.type == EventType.VERIFY && it.sensor == SensorMode.RESTRICTED })
+        assertTrue(events.none { it.feature == Feature.FORCE_DOZE || it.deep != null })
+        assertTrue(controller.exit().complete)
+        assertEquals(listOf(RESTRICT, ENABLE), runner.mutations())
+        assertTrue(store.load().entries.isEmpty())
+
+        sensorCycle()
+        val core = controller.enterCore(sensors, controller.currentGeneration) { true }
+        assertEquals(listOf(Feature.MOTION_SENSORS), core.steps.map { it.feature })
+        assertTrue(controller.exit().complete)
+        assertTrue(runner.commands.all { "sensorservice" in it })
+    }
+
+    @Test fun sensorOnlyAlreadyRestrictedByPriorOwnerNeverRecordsOrRestoresIt() {
+        runner.level = AccessLevel.APP
+        runner.replies(SENSORS, "Mode : RESTRICTED : $TOKEN")
+        val result = enter(config.copy(level = AccessLevel.APP,
+            mode = SessionMode.SENSOR_ONLY))
+        assertEquals(StepStatus.UNVERIFIED, result.steps.single().status)
+        assertTrue(store.load().entries.isEmpty())
+        assertTrue(controller.exit().complete)
+        assertTrue(runner.mutations().isEmpty())
+    }
+
+    @Test fun restoreOnlyAndSensorsOffModesNeverReadOrMutateForwardState() {
+        val restoreOnly = config.copy(mode = SessionMode.RESTORE_ONLY)
+        val sensorsOff = config.copy(restrictSensors = false,
+            mode = SessionMode.SENSOR_ONLY)
+        for (requested in listOf(restoreOnly, sensorsOff)) {
+            assertTrue(enter(requested).steps.isEmpty())
+            assertTrue(controller.enterCore(requested, controller.currentGeneration) { true }.steps.isEmpty())
+            assertTrue(controller.enterGroups(requested, controller.currentGeneration) { true }.steps.isEmpty())
+        }
+        assertTrue(runner.commands.isEmpty())
+        assertTrue(store.load().entries.isEmpty())
+    }
 
     @Test fun happyEnterAndExitDurablyRecordAndRestoreSensorsFirst() {
         sensorCycle()
