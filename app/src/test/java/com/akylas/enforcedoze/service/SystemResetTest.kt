@@ -548,8 +548,8 @@ class SystemResetTest {
         val checked = mutableListOf<String>()
         val result = SystemReset.run(runner, 36, PACKAGE, permissionGranted = readback@{ permission ->
             if (runner.commands.isEmpty()) {
-                // The one read before any command: is the self-killing permission held? No, so it runs in place.
-                assertEquals(PHONE_STATE, permission)
+                // These preflight reads decide whether self-killing permissions can run in place.
+                assertTrue(permission == READ_LOGS || permission == PHONE_STATE)
                 return@readback false
             }
             assertEquals("permission readback must follow its mutation", "pm revoke $PACKAGE $permission", runner.commands.last())
@@ -574,9 +574,11 @@ class SystemResetTest {
                 else -> false
             }
         }) { ResetRestoreOutcome.COMPLETE }
-        assertEquals(listOf(ResetCommandOutcome.UNVERIFIED, ResetCommandOutcome.UNVERIFIED,
+        assertEquals(listOf(ResetCommandOutcome.UNVERIFIED,
             ResetCommandOutcome.OK, ResetCommandOutcome.OK, ResetCommandOutcome.OK),
             result.commands.drop(2).map { it.outcome })
+        assertEquals("an unavailable READ_LOGS grant check must avoid an inline uid kill",
+            listOf(ResetCommandId.REVOKE_READ_LOGS), result.deferred)
         assertFalse(result.complete)
     }
 
@@ -612,17 +614,67 @@ class SystemResetTest {
     /** Stands in for Android killing this app's uid: an Error, so no catch (Exception) in the reset absorbs it. */
     private class ProcessKilled(command: String) : Error(command)
 
-    /** Own-app grants as the platform holds them: revoking a granted runtime permission kills the uid. */
+    /** Own-app grants: revoking a held runtime or gid-mapped permission kills the uid. */
     private fun platformGrants(vararg held: String): MutableMap<String, Boolean> {
         val granted = held.associateWith { true }.toMutableMap()
         runner.beforeMutation = { command ->
             if (command.startsWith("pm revoke $PACKAGE ")) {
                 val permission = command.substringAfterLast(' ')
-                if (granted[permission] == true && permission == PHONE_STATE) throw ProcessKilled(command)
+                if (granted[permission] == true && permission in listOf(READ_LOGS, PHONE_STATE)) throw ProcessKilled(command)
                 granted[permission] = false
             }
         }
         return granted
+    }
+
+    @Test fun grantedReadLogsIsDeferredUntilAfterReportConfirmation() {
+        confirmingDeviceIdleReadbacks()
+        val granted = platformGrants(READ_LOGS)
+        val result = try {
+            SystemReset.run(runner, 36, PACKAGE, permissionGranted = { granted[it] ?: false }) {
+                ResetRestoreOutcome.COMPLETE
+            }
+        } catch (killed: ProcessKilled) {
+            fail("READ_LOGS must not kill the app before report delivery: ${killed.message}")
+            return
+        }
+        assertEquals(listOf(ResetCommandId.REVOKE_READ_LOGS), result.deferred)
+        assertFalse(runner.commands.contains("pm revoke $PACKAGE $READ_LOGS"))
+        assertTrue(result.commands.none { it.id == ResetCommandId.REVOKE_READ_LOGS })
+        assertTrue("later inline steps remain readback-confirmed", result.complete)
+        val tracker = ResetReport.Tracker()
+        assertTrue(tracker.begin())
+        tracker.deliver(result, true)
+        assertEquals(ResetReport.Tracker.Phase.REPORTED, tracker.phase())
+        assertEquals(result.deferred, tracker.confirm())
+    }
+
+    @Test fun deferredRevokesAreOnePrivilegedCommandEvenIfFirstRevokeKillsApp() {
+        runner.beforeMutation = { throw ProcessKilled(it) }
+        val killed = try {
+            SystemReset.runDeferred(runner, 36, PACKAGE,
+                listOf(ResetCommandId.REVOKE_READ_LOGS, ResetCommandId.REVOKE_READ_PHONE_STATE))
+            null
+        } catch (killed: ProcessKilled) { killed }
+        val expected = "pm revoke $PACKAGE $READ_LOGS; pm revoke $PACKAGE $PHONE_STATE"
+        assertEquals("both revokes must be submitted before app death", listOf(expected), runner.commands)
+        assertEquals(expected, killed?.message)
+    }
+
+    @Test fun notGrantedReadLogsRunsAndIsReadBackInline() {
+        confirmingDeviceIdleReadbacks()
+        val checks = mutableListOf<String>()
+        val result = SystemReset.run(runner, 36, PACKAGE, permissionGranted = { permission ->
+            if (permission == READ_LOGS) checks += runner.commands.lastOrNull().orEmpty()
+            false
+        }) { ResetRestoreOutcome.COMPLETE }
+        assertTrue(result.deferred.isEmpty())
+        assertEquals("pm revoke $PACKAGE $READ_LOGS", checks.last())
+        assertEquals("the revoke has a confirming readback", 1,
+            checks.count { it == "pm revoke $PACKAGE $READ_LOGS" })
+        assertEquals(ResetCommandOutcome.OK,
+            result.commands.single { it.id == ResetCommandId.REVOKE_READ_LOGS }.outcome)
+        assertTrue(result.complete)
     }
 
     @Test fun heldRuntimePermissionRevokeNeverRunsBeforeTheResultIsDelivered() {
@@ -653,16 +705,16 @@ class SystemResetTest {
 
     @Test fun deferredStepIsNeverCountedAsConfirmed() {
         confirmingDeviceIdleReadbacks()
-        platformGrants(PHONE_STATE)
+        val granted = platformGrants(READ_LOGS, PHONE_STATE)
         // Held before, and never revoked here: a readback would say granted.
-        val result = SystemReset.run(runner, 36, PACKAGE, permissionGranted = { it == PHONE_STATE }) {
+        val result = SystemReset.run(runner, 36, PACKAGE, permissionGranted = { granted[it] ?: false }) {
             ResetRestoreOutcome.COMPLETE
         }
-        assertEquals(6, result.commands.size)
+        assertEquals(5, result.commands.size)
         assertTrue(result.commands.all { it.outcome == ResetCommandOutcome.OK })
-        assertEquals(listOf(ResetCommandId.REVOKE_READ_PHONE_STATE), result.deferred)
-        assertFalse("the deferred step did not run, so it cannot be readback-confirmed",
-            runner.commands.any { it.endsWith(PHONE_STATE) })
+        assertEquals(listOf(ResetCommandId.REVOKE_READ_LOGS, ResetCommandId.REVOKE_READ_PHONE_STATE), result.deferred)
+        assertFalse("the deferred steps did not run, so they cannot be readback-confirmed",
+            runner.commands.any { it.endsWith(PHONE_STATE) || it.endsWith(READ_LOGS) })
         assertFalse("a step that has not run is not OK",
             result.commands.any { it.id in result.deferred && it.outcome == ResetCommandOutcome.OK })
     }
@@ -676,14 +728,15 @@ class SystemResetTest {
         confirmingDeviceIdleReadbacks()
         confirmingWriteSettingsReadback(runner)
         val unknown = SystemReset.run(runner, 36, PACKAGE) { ResetRestoreOutcome.COMPLETE }
-        assertEquals("unknown grant state is treated as held", listOf(ResetCommandId.REVOKE_READ_PHONE_STATE), unknown.deferred)
+        assertEquals("unknown grant state is treated as held",
+            listOf(ResetCommandId.REVOKE_READ_LOGS, ResetCommandId.REVOKE_READ_PHONE_STATE), unknown.deferred)
         val throwing = resetRunner()
         throwing.replies("cmd deviceidle enabled deep", "0", "1")
         throwing.replies("cmd deviceidle enabled light", "0", "1")
         val failedCheck = SystemReset.run(throwing, 36, PACKAGE, permissionGranted = { throw IllegalStateException("gone") }) {
             ResetRestoreOutcome.COMPLETE
         }
-        assertEquals(listOf(ResetCommandId.REVOKE_READ_PHONE_STATE), failedCheck.deferred)
+        assertEquals(listOf(ResetCommandId.REVOKE_READ_LOGS, ResetCommandId.REVOKE_READ_PHONE_STATE), failedCheck.deferred)
     }
 
     @Test fun deferredStepsNeedSessionAccessAndRunOnlyWhatWasDeferred() {
@@ -709,5 +762,6 @@ class SystemResetTest {
     companion object {
         private const val PACKAGE = "com.akylas.enforcedoze"
         private const val PHONE_STATE = "android.permission.READ_PHONE_STATE"
+        private const val READ_LOGS = "android.permission.READ_LOGS"
     }
 }

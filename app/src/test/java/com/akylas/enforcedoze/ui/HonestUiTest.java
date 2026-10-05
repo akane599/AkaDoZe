@@ -381,10 +381,25 @@ public class HonestUiTest {
         List<ResetCommandResult> ok = Collections.singletonList(
                 new ResetCommandResult(ResetCommandId.REVOKE_DUMP, ResetCommandOutcome.OK));
         SystemResetResult pending = new SystemResetResult(ResetRestoreOutcome.COMPLETE, ok,
-                Collections.singletonList(ResetCommandId.REVOKE_READ_PHONE_STATE));
+                Arrays.asList(ResetCommandId.REVOKE_READ_LOGS, ResetCommandId.REVOKE_READ_PHONE_STATE));
         assertEquals(com.akylas.enforcedoze.R.string.reset_almost_done_title, ResetReport.title(pending, true));
         SystemResetResult done = new SystemResetResult(ResetRestoreOutcome.COMPLETE, ok, Collections.emptyList());
         assertEquals(com.akylas.enforcedoze.R.string.reset_complete_dialog_title, ResetReport.title(done, true));
+    }
+
+    @Test
+    public void reportNamesEveryDeferredPermissionIncludingReadLogs() throws Exception {
+        // Plain JVM: exercise the real name mapping; Context string rendering is an Android-only seam.
+        java.lang.reflect.Method permission = ResetReport.class.getDeclaredMethod("permission", ResetCommandId.class);
+        permission.setAccessible(true);
+        assertEquals("READ_LOGS", permission.invoke(null, ResetCommandId.REVOKE_READ_LOGS));
+        assertEquals("READ_PHONE_STATE", permission.invoke(null, ResetCommandId.REVOKE_READ_PHONE_STATE));
+        String message = between(source("src/main/java/com/akylas/enforcedoze/ui/ResetReport.java"),
+                "public static String message(", "private static String step(");
+        assertTrue("the report enumerates every deferred permission, not only the first",
+                message.contains("for (ResetCommandId id : deferred)")
+                        && message.contains("names.append(permission(id))")
+                        && message.contains("R.string.reset_deferred_text, names.toString()"));
     }
 
     // --- 4. Re-picking the active execution mode is not a switch ---

@@ -19,10 +19,10 @@ enum class ResetCommandId {
 data class ResetCommandResult(val id: ResetCommandId, val outcome: ResetCommandOutcome)
 
 /**
- * [commands] are the steps that ran. [deferred] steps have not run: revoking a runtime permission this app
- * holds makes Android kill its process, so they wait for [SystemReset.runDeferred] after the user has seen
- * this result. They are never counted as OK, so [complete] covers only the steps that ran; the dialog
- * does not call the reset finished while [deferred] is non-empty.
+ * [commands] are the steps that ran. [deferred] steps have not run: revoking a runtime or gid-mapped
+ * permission this app holds makes Android kill its process, so they wait for [SystemReset.runDeferred]
+ * after the user has seen this result. They are never counted as OK, so [complete] covers only the steps
+ * that ran; the dialog does not call the reset finished while [deferred] is non-empty.
  */
 data class SystemResetResult @JvmOverloads constructor(
     val restoreOutcome: ResetRestoreOutcome,
@@ -106,20 +106,25 @@ object SystemReset {
     }
 
     /**
-     * doze-worker only, after the user confirmed the reported result and preferences were cleared. Android
-     * normally kills this process during the first revoke, so nothing here is reported or read back.
+     * doze-worker only, after the user confirmed the reported result and preferences were cleared. Submit
+     * every revoke to the privileged shell together: it can finish even if the first revoke kills this
+     * app. Use ';', not '&&', so a failed revoke cannot skip the rest. Nothing is reported or read back.
      */
     fun runDeferred(control: CommandRunner, apiLevel: Int, packageName: String, deferred: List<ResetCommandId>) {
         val pkg = PackageNames.requireValid(packageName)
-        for ((id, command) in commands(apiLevel, pkg)) {
-            if (id !in deferred || id !in PROCESS_KILLING) continue
-            if (!SessionAccess.canRunSessions(control.level)) return
-            try { control.run(command) } catch (_: Exception) {}
-        }
+        if (!SessionAccess.canRunSessions(control.level)) return
+        val command = commands(apiLevel, pkg)
+            .filter { (id, _) -> id in deferred && id in PROCESS_KILLING }
+            .joinToString("; ") { it.second }
+        if (command.isEmpty()) return
+        try { control.run(command) } catch (_: Exception) {}
     }
 
-    /** Revokes of dangerous (runtime) permissions: when one is granted, revoking it kills this app's uid. */
-    private val PROCESS_KILLING = setOf(ResetCommandId.REVOKE_READ_PHONE_STATE)
+    /** Runtime READ_PHONE_STATE, plus READ_LOGS's log/update_engine_log gids in AOSP platform.xml. */
+    private val PROCESS_KILLING = setOf(
+        ResetCommandId.REVOKE_READ_LOGS,
+        ResetCommandId.REVOKE_READ_PHONE_STATE,
+    )
 
     private fun commands(apiLevel: Int, pkg: String): List<Pair<ResetCommandId, String>> {
         val suffix = if (apiLevel >= 24) " all" else ""
