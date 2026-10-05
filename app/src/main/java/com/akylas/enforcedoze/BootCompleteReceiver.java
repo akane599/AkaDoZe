@@ -29,10 +29,10 @@ public class BootCompleteReceiver extends BroadcastReceiver {
         } else {
             // Show disabled notification if EnforceDoze is disabled on startup
             Utils.stopForceDozeService(context);
-            if (BootRestore.hasPending(context)) {
+            BootRestore.restoreIfPending(context, () -> {
                 PendingResult pending = goAsync();
                 MyApplication.getDozeRuntime(context).requestRestoreOnly(pending::finish);
-            }
+            });
         }
         Utils.scheduleNextCustomDozePeriodBoundary(context);
     }

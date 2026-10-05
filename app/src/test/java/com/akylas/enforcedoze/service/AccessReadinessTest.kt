@@ -221,8 +221,14 @@ class AccessReadinessTest {
             else File("app/src/main/java/com/akylas/enforcedoze")
         for (name in listOf("BootCompleteReceiver.java", "AutoRestartOnUpdate.java")) {
             val source = File(root, name).readText()
-            assertTrue("$name must check pending ledger before constructing runtime", source.contains("BootRestore.hasPending(context)"))
-            assertTrue("$name must retain broadcast for bounded restore-only work", source.contains("requestRestoreOnly") && source.contains("goAsync()"))
+            val callbackStart = "BootRestore.restoreIfPending(context, () -> {"
+            assertTrue("$name must delegate to the shared preflight", source.contains(callbackStart))
+            val callback = source.substringAfter(callbackStart).substringBefore("});")
+            assertTrue("$name must construct runtime only in the admitted callback", callback.contains("MyApplication.getDozeRuntime(context)"))
+            assertEquals("$name must not construct runtime outside the callback", 1,
+                Regex("""MyApplication\.getDozeRuntime\(context\)""").findAll(source).count())
+            assertTrue("$name must retain broadcast for bounded restore-only work",
+                callback.contains("requestRestoreOnly(pending::finish)") && callback.contains("goAsync()"))
         }
     }
 }

@@ -25,10 +25,10 @@ public class AutoRestartOnUpdate extends BroadcastReceiver {
                 Utils.startForceDozeService(context);
             } else {
                 log("Service not enabled, skip restarting");
-                if (BootRestore.hasPending(context)) {
+                BootRestore.restoreIfPending(context, () -> {
                     PendingResult pending = goAsync();
                     MyApplication.getDozeRuntime(context).requestRestoreOnly(pending::finish);
-                }
+                });
             }
         }
     }
