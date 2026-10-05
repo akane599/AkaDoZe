@@ -8,7 +8,8 @@ class AccessResolution {
     private var rootAvailable = false
     private var rootTimedOut = false
     private var rootAttempts = 0
-    private var rootDiscoveryClosed = false
+    private enum class RootDiscoveryClose { OPEN, DETACHED, DETACHED_TIMEOUT, SERVICE }
+    private var rootDiscoveryClose = RootDiscoveryClose.OPEN
     private var rootProbeInFlight = false
 
     @Synchronized fun startDiscovery(now: Long) {
@@ -34,26 +35,32 @@ class AccessResolution {
     @Synchronized fun rootProbeFinished(available: Boolean, timedOut: Boolean) {
         rootProbeInFlight = false
         rootAvailable = available
-        rootCompleted = rootCompleted || !timedOut || rootAttempts >= 4 || rootDiscoveryClosed
+        rootCompleted = rootCompleted || !timedOut || rootAttempts >= 4
         rootTimedOut = timedOut && !rootCompleted
+        // A detached close may precede its probe result; classify that timeout before settling it.
+        if (rootDiscoveryClose != RootDiscoveryClose.OPEN) {
+            finishRootDiscovery(detached = rootDiscoveryClose != RootDiscoveryClose.SERVICE)
+        }
     }
 
     @Synchronized fun canRetryRoot(): Boolean = rootTimedOut && !rootCompleted && rootAttempts < 4
 
-    /** A detached receiver does not repeatedly prompt for su; its first timeout settles discovery. */
-    @Synchronized fun finishRootDiscovery() {
-        rootDiscoveryClosed = true
+    /** A detached receiver settles on its first timeout; a service-owned close is terminal. */
+    @Synchronized fun finishRootDiscovery(detached: Boolean = true) {
+        if (!detached) rootDiscoveryClose = RootDiscoveryClose.SERVICE
+        else if (rootDiscoveryClose == RootDiscoveryClose.OPEN) rootDiscoveryClose = RootDiscoveryClose.DETACHED
         if (rootTimedOut) {
+            if (rootDiscoveryClose == RootDiscoveryClose.DETACHED) rootDiscoveryClose = RootDiscoveryClose.DETACHED_TIMEOUT
             rootCompleted = true
             rootTimedOut = false
         }
     }
 
-    /** A service owns a fresh bounded discovery after a previous owner closed it. */
+    /** Only discovery cut short by a detached timeout gives an attached service a fresh 1+3 budget. */
     @Synchronized fun startServiceRootDiscovery(): Boolean {
-        if (!rootDiscoveryClosed) return false
-        rootDiscoveryClosed = false
-        rootCompleted = rootAvailable // Do not withdraw a root grant while refreshing it.
+        if (rootAvailable || rootDiscoveryClose != RootDiscoveryClose.DETACHED_TIMEOUT) return false
+        rootDiscoveryClose = RootDiscoveryClose.OPEN
+        rootCompleted = false
         rootTimedOut = false
         rootAttempts = if (rootProbeInFlight) 1 else 0
         return true
