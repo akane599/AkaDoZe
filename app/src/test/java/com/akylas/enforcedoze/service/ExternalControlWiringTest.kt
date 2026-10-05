@@ -137,7 +137,8 @@ class ExternalControlWiringTest {
         val skipped = start.substringAfter("if (decision instanceof Decision.SKIP)").substringBefore("reapplyEnter(generation, epoch);")
         assertTrue("a typed policy rejection is journaled and returns before enter", skipped.contains("journalReapplySkipped(runtime, ((Decision.SKIP) decision).getReason())") && skipped.contains("return;"))
         val enterCore = service().substringAfter("private void enterDoze(boolean sensors, long generation,").substringBefore("private EnterResult enterConfiguredDoze(")
-        assertTrue("every ordinary enter starts watchdog spacing before mutation", enterCore.indexOf("runtime.getWatchdog().recordEnter();") in 0 until enterCore.indexOf("runtime.getController().enterCore("))
+        assertTrue("only force entries start watchdog spacing", enterCore.contains("if (mode == SessionMode.FORCE) runtime.getWatchdog().recordEnter();"))
+        assertTrue("every force enter starts watchdog spacing before mutation", enterCore.indexOf("runtime.getWatchdog().recordEnter();") in 0 until enterCore.indexOf("runtime.getController().enterCore("))
         val call = receiver().substringAfter("case REAPPLY_DOZE:").substringBefore("break;")
         assertTrue("broadcast remains REQUESTED, never claims a completed reforce", call.contains("Outcome.REQUESTED, ExecutionReason.REAPPLY_REQUESTED"))
     }
@@ -153,7 +154,7 @@ class ExternalControlWiringTest {
             assertTrue("generation must be checked $phase", block.contains("generation != runtime.getController().getCurrentGeneration()"))
             assertTrue("exit epoch must be checked $phase", block.contains("epoch != exitEpoch.get()"))
             assertTrue("deadline must be checked $phase", block.contains("now >= deadline"))
-            assertTrue("session admission must be checked $phase", block.contains("!admitted()"))
+            assertTrue("session admission must be checked $phase", block.contains("!forceAdmitted()"))
             assertTrue("basic-control consent must be checked $phase", block.contains("!getDefaultSharedPreferences(this).getBoolean(")
                 && block.contains("Prefs.ALLOW_EXTERNAL_BASIC_CONTROL, Prefs.DEFAULT_ALLOW_EXTERNAL_BASIC_CONTROL"))
             val rejection = block.substringAfter("Prefs.DEFAULT_ALLOW_EXTERNAL_BASIC_CONTROL)) {")
@@ -166,7 +167,9 @@ class ExternalControlWiringTest {
 
     @Test fun externalSpacingAndBudgetPrecheckReturnsBeforeAnyStateRead() {
         val start = service().substringAfter("if (reapply) {").substringBefore("private void reapplyEnter(")
+        val mode = start.indexOf("SessionAccess.reapplySkip(sessionMode())")
         val precheck = start.indexOf("runtime.getWatchdog().precheckExternalReapply()")
+        assertTrue("sensor-only returns typed non-admission before watchdog budget checks", mode >= 0 && mode < precheck)
         val read = start.indexOf("runtime.readState()")
         assertTrue("spacing and budget must be checked before shell reads", precheck >= 0 && precheck < read)
         val rejection = start.substring(precheck, read)
