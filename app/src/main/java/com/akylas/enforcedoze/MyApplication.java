@@ -1,6 +1,8 @@
 package com.akylas.enforcedoze;
 
 import android.content.Context;
+import android.os.Build;
+import android.os.UserManager;
 
 import com.akylas.enforcedoze.service.AndroidClock;
 import com.akylas.enforcedoze.service.DozeRuntime;
@@ -54,6 +56,14 @@ public class MyApplication extends android.app.Application {
     public void onCreate() {
         super.onCreate();
         MyApplication.context = getApplicationContext();
+        // Default preferences are credential-protected; don't read them during locked direct boot.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
+                && !((UserManager) getSystemService(Context.USER_SERVICE)).isUserUnlocked()) {
+            return;
+        }
+        // Exact-alarm revocation kills the process without a revoke broadcast. Re-arm only the
+        // next boundary on restart; this shared seam never constructs the runtime or starts service.
+        Utils.requeryExactAlarmAccess(MyApplication.context);
     }
 
     public static Context getAppContext() {
