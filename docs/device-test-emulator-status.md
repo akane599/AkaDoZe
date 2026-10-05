@@ -2,7 +2,7 @@
 
 Live status of the emulator-runnable parts of the device checklist. This file is updated and pushed as the run goes on.
 
-**Last update:** 2026-10-05 21:00 (+03) · **Run state:** IN PROGRESS
+**Last update:** 2026-10-05 21:10 (+03) · **Run state:** IN PROGRESS
 
 ## Setup
 - Build: `akadoze-2.0` @ 896e778, `:app:assembleDebug`
@@ -18,9 +18,9 @@ Legend: ✅ pass · ❌ fail (finding below) · ⚠️ partial / emulator-limite
 |---|------|--------|-------|
 | 0 | Install over old version, settings preserved | ✅ | 1.10.2 (Base 42f8e73) → 1.11.0. 11 seeded non-default prefs (mode, delay, Wi-Fi, saver, period, tunable…) byte-identical after upgrade; Shizuku grant kept |
 | 1 | Self-tests under Shizuku | ✅ | buttons disabled with reason while stopped; Test Doze → PASSED; Test sensors → PASSED; afterwards `Mode : NORMAL`, `mForceIdle=false` |
-| 2 | 30+ min screen-off session with movement | ⏳ | movement simulated through emulator sensors |
+| 2 | 30+ min screen-off session with movement | 🔄 | started 21:08 (2nd attempt), on battery (`dumpsys battery unplug`), acceleration changed every 2 min via emulator console |
 | 3 | Kill Shizuku mid-doze | ⏳ | |
-| 4 | Honest settings (Shizuku) | ⏳ | |
+| 4 | Honest settings (Shizuku) | 🔄 | "Disable all sensors" disabled: "Requires root — not available with Shizuku". Notification blocklist enabled (correct, API 36 ≥ 13). Auto-rotate fix disabled as "No longer used…". No setprop item in main Settings. Value-preservation on switch back to root pending |
 | 5 | Restore system state | ⏳ | |
 | 6 | Mode switch root → Shizuku | ⏳ | no app root here, so it may only be partial |
 | 7 | Process death mid-session | ⏳ | |
@@ -34,7 +34,7 @@ Legend: ✅ pass · ❌ fail (finding below) · ⚠️ partial / emulator-limite
 | A3 | Dual-SIM mobile data | ⏭️ | needs two SIMs |
 | A4 | Interrupted root command | ⏭️ | needs app root |
 | SQ-115 | Exact-alarm access lifecycle | ⏳ | |
-| SQ-117 | Exact-alarm row in Settings | ⏳ | TalkBack sub-item skipped |
+| SQ-117 | Exact-alarm row in Settings | 🔄 | with a period + access granted: "Exact period timing — Exact alarms are available…" ✅; after removing the last period the row hides and the boundary alarm is cancelled ✅. Denied state pending. TalkBack skipped |
 | SQ-114/116/118 | Sensor-only sessions | ⏳ | TalkBack sub-item skipped |
 | SQ-126 | Cold-start "checking" (root) | ⏭️ | needs app root |
 
@@ -46,3 +46,5 @@ Legend: ✅ pass · ❌ fail (finding below) · ⚠️ partial / emulator-limite
 - 20:50 emulator booted, debug APK built.
 - 20:51 old 1.10.2 installed, prefs seeded, Shizuku 13.6.0 started over adb, upgraded to 1.11.0.
 - 20:58 service on, both self-tests passed.
+- 21:00 first item-2 attempt: forced IDLE + sensors RESTRICTED + Wi-Fi off + saver on, all within the 30 s delay ✅. Then a 2nd emulator was booted for parallel work and **both emulators hung and died** (host contention; QEMU hanging-thread errors). Not an app problem. Back to one emulator and serial runs; read-only AVD so it was re-provisioned from scratch (`install -g`, Shizuku over adb, QA prefs).
+- 21:08 item 2 restarted.
