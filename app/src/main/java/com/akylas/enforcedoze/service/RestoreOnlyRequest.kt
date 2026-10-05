@@ -14,8 +14,9 @@ interface RecoveryAccess {
 /**
  * Main-thread-owned receiver window. It always drops its own subscription when it ends; a window that
  * could not restore at SHELL/ROOT hands the later restore to the runtime's single [continuation].
- * A null continuation marks the continuation's own follow-up window, which never arms another.
- * [dispatchRestore] queues worker work; [restore] runs synchronously only after worker-time admission.
+ * A null continuation marks the terminal follow-up window: it never arms another and calls [skipped]
+ * if it ends without an admitted restore. [dispatchRestore] queues worker work; [restore] runs
+ * synchronously only after worker-time admission with at least [MIN_READY_BUDGET_MS] remaining.
  */
 class RestoreOnlyRequest(
     private val access: RecoveryAccess,
@@ -26,6 +27,7 @@ class RestoreOnlyRequest(
     private val restore: (Long) -> Unit,
     private val completed: () -> Unit,
     private val continuation: RestoreContinuation?,
+    private val skipped: () -> Unit,
 ) {
     private var finished = false
     private var announcedNoAccess = false
@@ -46,8 +48,8 @@ class RestoreOnlyRequest(
         if (finished || restoring || !state.resolved) return
         val ready = state.level >= AccessLevel.SHELL
         val remaining = deadline - now()
-        // A late ready gets the continuation's fresh window instead of a sliver of this one.
-        if (remaining <= 0 || (ready && continuation != null && remaining < MIN_READY_BUDGET_MS)) {
+        // Late ready hands off; terminal windows skip rather than dispatch below the worker floor.
+        if (remaining <= 0 || ((ready || continuation == null) && remaining < MIN_READY_BUDGET_MS)) {
             finish()
             return
         }
@@ -82,6 +84,7 @@ class RestoreOnlyRequest(
         access.removeListener(listener)
         cancelTimeout?.invoke()
         completed()
+        if (continuation == null && !restoredReady && !announcedNoAccess) skipped()
         if (later) continuation?.arm(announcedNoAccess)
     }
 
