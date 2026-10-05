@@ -70,6 +70,7 @@ object SystemReset {
         // Own-app platform permission check: true = granted, false = denied, null = unknown.
         permissionGranted: (String) -> Boolean? = { null },
         onError: (Throwable) -> Unit = {},
+        forgetHelpers: (Set<String>) -> Boolean,
         restore: () -> ResetRestoreOutcome,
     ): SystemResetResult {
         val pkg = PackageNames.requireValid(packageName)
@@ -85,20 +86,11 @@ object SystemReset {
                 (try { permissionGranted(command.substringAfterLast(' ')) } catch (_: Exception) { null }) != false
         }
         val results = now.map { (id, command) ->
-            val outcome = if (!sessions) ResetCommandOutcome.UNVERIFIED else try {
-                val result = control.run(command)
-                when {
-                    result.timedOut -> ResetCommandOutcome.TIMEOUT
-                    result.ok -> when (id) {
-                        ResetCommandId.DISABLE_DEVICE_IDLE -> verifyDeviceIdle(control, apiLevel, false)
-                        ResetCommandId.ENABLE_DEVICE_IDLE -> verifyDeviceIdle(control, apiLevel, true)
-                        ResetCommandId.REVOKE_WRITE_SETTINGS -> verifyWriteSettings(control, pkg)
-                        else -> verifiedOutcome(permissionGranted(command.substringAfterLast(' '))?.not())
-                    }
-                    result.exitCode < 0 -> ResetCommandOutcome.UNVERIFIED
-                    else -> ResetCommandOutcome.FAILED
-                }
-            } catch (_: Exception) { ResetCommandOutcome.UNVERIFIED }
+            val outcome = when {
+                !sessions -> ResetCommandOutcome.UNVERIFIED
+                !forgetBeforeRevoke(id, forgetHelpers) -> ResetCommandOutcome.FAILED
+                else -> runInline(control, apiLevel, pkg, id, command, permissionGranted)
+            }
             ResetCommandResult(id, outcome)
         }
         return SystemResetResult(restoreOutcome, Collections.unmodifiableList(results),
@@ -106,18 +98,76 @@ object SystemReset {
     }
 
     /**
-     * doze-worker only, after the user confirmed the reported result and preferences were cleared. Submit
-     * every revoke to the privileged shell together: it can finish even if the first revoke kills this
-     * app. Use ';', not '&&', so a failed revoke cannot skip the rest. Nothing is reported or read back.
+     * doze-worker only, after the user confirmed the reported result. Durably forget matching helpers
+     * again here: a service start may have re-recorded them since the report's preference clear.
+     * Submit eligible revokes together: the shell can finish even if the first revoke kills this app.
+     * Use ';', not '&&', so a failed revoke cannot skip the rest. No deferred step is readback-confirmed.
      */
-    fun runDeferred(control: CommandRunner, apiLevel: Int, packageName: String, deferred: List<ResetCommandId>) {
+    fun runDeferred(
+        control: CommandRunner,
+        apiLevel: Int,
+        packageName: String,
+        deferred: List<ResetCommandId>,
+        forgetHelpers: (Set<String>) -> Boolean,
+    ): List<ResetCommandResult> {
         val pkg = PackageNames.requireValid(packageName)
-        if (!SessionAccess.canRunSessions(control.level)) return
-        val command = commands(apiLevel, pkg)
-            .filter { (id, _) -> id in deferred && id in PROCESS_KILLING }
+        val selected = commands(apiLevel, pkg).filter { (id, _) -> id in deferred && id in PROCESS_KILLING }
+        if (!SessionAccess.canRunSessions(control.level)) {
+            return selected.map { ResetCommandResult(it.first, ResetCommandOutcome.UNVERIFIED) }
+        }
+        val results = selected.map { (id, _) ->
+            ResetCommandResult(id, if (forgetBeforeRevoke(id, forgetHelpers))
+                ResetCommandOutcome.UNVERIFIED else ResetCommandOutcome.FAILED)
+        }
+        val command = selected.filterIndexed { index, _ -> results[index].outcome != ResetCommandOutcome.FAILED }
             .joinToString("; ") { it.second }
-        if (command.isEmpty()) return
-        try { control.run(command) } catch (_: Exception) {}
+        if (command.isNotEmpty()) {
+            try { control.run(command) } catch (_: Exception) {}
+        }
+        return results
+    }
+
+    /** Only reset permissions that are also automatic GrantCommands helpers have a record key. */
+    private val helperKeys = mapOf(
+        ResetCommandId.REVOKE_DUMP to "DUMP",
+        ResetCommandId.REVOKE_WRITE_SECURE_SETTINGS to "WRITE_SECURE_SETTINGS",
+        ResetCommandId.REVOKE_READ_PHONE_STATE to "READ_PHONE_STATE",
+    )
+
+    private fun forgetBeforeRevoke(id: ResetCommandId, forgetHelpers: (Set<String>) -> Boolean): Boolean {
+        val key = helperKeys[id] ?: return true
+        return try { forgetHelpers(setOf(key)) } catch (_: Exception) { false }
+    }
+
+    private fun runInline(
+        control: CommandRunner,
+        apiLevel: Int,
+        pkg: String,
+        id: ResetCommandId,
+        command: String,
+        permissionGranted: (String) -> Boolean?,
+    ): ResetCommandOutcome = try {
+        val result = control.run(command)
+        when {
+            result.timedOut -> ResetCommandOutcome.TIMEOUT
+            result.ok -> readback(control, apiLevel, pkg, id, command, permissionGranted)
+            result.exitCode < 0 -> ResetCommandOutcome.UNVERIFIED
+            else -> ResetCommandOutcome.FAILED
+        }
+    } catch (_: Exception) { ResetCommandOutcome.UNVERIFIED }
+
+    private fun readback(
+        control: CommandRunner,
+        apiLevel: Int,
+        pkg: String,
+        id: ResetCommandId,
+        command: String,
+        permissionGranted: (String) -> Boolean?,
+    ): ResetCommandOutcome = when (id) {
+        ResetCommandId.DISABLE_DEVICE_IDLE -> verifyDeviceIdle(control, apiLevel, false)
+        ResetCommandId.ENABLE_DEVICE_IDLE -> verifyDeviceIdle(control, apiLevel, true)
+        ResetCommandId.REVOKE_WRITE_SETTINGS -> verifyWriteSettings(control, pkg)
+        else -> verifiedOutcome(permissionGranted(command.substringAfterLast(' '))?.not())
     }
 
     /** Runtime READ_PHONE_STATE, plus READ_LOGS's log/update_engine_log gids in AOSP platform.xml. */

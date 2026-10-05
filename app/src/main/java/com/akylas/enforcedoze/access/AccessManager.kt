@@ -186,6 +186,14 @@ class AccessManager private constructor(context: Context) : com.akylas.enforcedo
         Collections.unmodifiableMap(results)
     }
 
+    /** Reset worker: commit under the same lock as grants, before any matching permission revoke. */
+    fun forgetHelpers(keys: Set<String>): Boolean = synchronized(helperGrantLock) {
+        requireBackgroundThread()
+        HelperGrantPolicy.forget(helperPrefs.getStringSet(Prefs.APPLIED_HELPERS, emptySet()).orEmpty(), keys) { record ->
+            helperPrefs.edit().putStringSet(Prefs.APPLIED_HELPERS, record).commit()
+        }
+    }
+
     private fun readGrants() = Grants(
         app.checkSelfPermission(Manifest.permission.DUMP) == PackageManager.PERMISSION_GRANTED,
         app.checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED,

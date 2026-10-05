@@ -15,6 +15,13 @@ class HelperGrantStorageTest {
         assertTrue(manager.contains("app.getSharedPreferences(Prefs.HELPER_GRANTS, Context.MODE_PRIVATE)"))
         assertFalse(manager.contains("prefs.getStringSet(Prefs.APPLIED_HELPERS"))
         assertFalse(manager.contains("prefs.edit().putStringSet(Prefs.APPLIED_HELPERS"))
+        assertTrue(manager.contains("fun forgetHelpers(keys: Set<String>): Boolean = synchronized(helperGrantLock)"))
+        val forget = manager.substringAfter("fun forgetHelpers(").substringBefore("private fun readGrants")
+        assertTrue(forget.contains("requireBackgroundThread()"))
+        assertTrue(forget.contains("helperPrefs.edit().putStringSet(Prefs.APPLIED_HELPERS, record).commit()"))
+        val runtime = source("service/DozeRuntime.kt")
+        assertEquals("inline and deferred revokes both use the locked adapter", 2,
+            Regex("forgetHelpers = access::forgetHelpers").findAll(runtime).count())
         val settings = source("SettingsActivity.java").substringAfter("public void resetForceDoze()")
         assertTrue(settings.contains("context.getSharedPreferences(Prefs.HELPER_GRANTS, Context.MODE_PRIVATE), ResetReport.TRACKER"))
         val report = source("ui/ResetReport.java")

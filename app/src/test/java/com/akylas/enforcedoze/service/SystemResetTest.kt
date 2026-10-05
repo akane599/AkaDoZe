@@ -21,11 +21,15 @@ private class ResetPreferences(initial: Map<String, Any?>) : android.content.Sha
     private var durable = initial.toMap()
     var commitSucceeds = true
     var throwOnEdit = false
+    var failClearCommit = false
+    val commits = mutableListOf<Boolean>()
     fun afterProcessRestart() = ResetPreferences(durable)
     override fun getAll(): Map<String, *> = memory.toMap()
     override fun getBoolean(key: String, defValue: Boolean) = memory[key] as? Boolean ?: defValue
     override fun getString(key: String, defValue: String?) = memory[key] as? String ?: defValue
-    override fun getStringSet(key: String, defValues: MutableSet<String>?) = error("Unused")
+    @Suppress("UNCHECKED_CAST")
+    override fun getStringSet(key: String, defValues: MutableSet<String>?) =
+        (memory[key] as? Set<String>)?.toMutableSet() ?: defValues
     override fun getInt(key: String, defValue: Int) = error("Unused")
     override fun getLong(key: String, defValue: Long) = error("Unused")
     override fun getFloat(key: String, defValue: Float) = error("Unused")
@@ -43,15 +47,17 @@ private class ResetPreferences(initial: Map<String, Any?>) : android.content.Sha
             override fun putInt(key: String, value: Int) = apply { updates[key] = value }
             override fun putLong(key: String, value: Long) = apply { updates[key] = value }
             override fun putFloat(key: String, value: Float) = apply { updates[key] = value }
-            override fun putStringSet(key: String, values: MutableSet<String>?) = error("Unused")
+            override fun putStringSet(key: String, values: MutableSet<String>?) = apply { updates[key] = values?.toSet() }
             override fun remove(key: String) = apply { removed += key }
             override fun clear() = apply { clear = true }
             override fun commit(): Boolean {
                 if (clear) memory.clear()
                 removed.forEach(memory::remove)
                 memory.putAll(updates)
-                if (commitSucceeds) durable = memory.toMap()
-                return commitSucceeds
+                val saved = commitSucceeds && !(clear && failClearCommit)
+                commits += saved
+                if (saved) durable = memory.toMap()
+                return saved
             }
             override fun apply() = error("Reset must commit before delivering its result")
         }
@@ -59,6 +65,25 @@ private class ResetPreferences(initial: Map<String, Any?>) : android.content.Sha
 }
 
 class SystemResetTest {
+    // Unrelated reset regressions use a successful fake record store; production must supply its store.
+    private fun runReset(
+        control: com.akylas.enforcedoze.access.CommandRunner,
+        apiLevel: Int,
+        packageName: String,
+        permissionGranted: (String) -> Boolean? = { null },
+        onError: (Throwable) -> Unit = {},
+        forgetHelpers: (Set<String>) -> Boolean = { true },
+        restore: () -> ResetRestoreOutcome,
+    ) = SystemReset.run(control, apiLevel, packageName, permissionGranted, onError, forgetHelpers, restore)
+
+    private fun runDeferredReset(
+        control: com.akylas.enforcedoze.access.CommandRunner,
+        apiLevel: Int,
+        packageName: String,
+        deferred: List<ResetCommandId>,
+        forgetHelpers: (Set<String>) -> Boolean = { true },
+    ) = SystemReset.runDeferred(control, apiLevel, packageName, deferred, forgetHelpers)
+
     private fun outcome(
         exitComplete: Boolean = true,
         remaining: RestoreLedger = RestoreLedger(),
@@ -80,7 +105,7 @@ class SystemResetTest {
         val exception = IllegalStateException("restore failed")
         val reported = mutableListOf<Throwable>()
 
-        val result = SystemReset.run(resetRunner(), 36, PACKAGE, restore = { throw exception },
+        val result = runReset(resetRunner(), 36, PACKAGE, restore = { throw exception },
             onError = reported::add)
 
         assertTrue(result.failed)
@@ -219,7 +244,7 @@ class SystemResetTest {
             fake.replies("appops set $PACKAGE WRITE_SETTINGS default", "")
             fake.replies("appops get $PACKAGE WRITE_SETTINGS", "WRITE_SETTINGS: default")
 
-            val result = SystemReset.run(fake, apiLevel, PACKAGE, permissionGranted = { false }) {
+            val result = runReset(fake, apiLevel, PACKAGE, permissionGranted = { false }) {
                 ResetRestoreOutcome.COMPLETE
             }
             assertEquals("WRITE_SETTINGS must be reset through its app-op on API $apiLevel",
@@ -236,7 +261,7 @@ class SystemResetTest {
         val fake = resetRunner("OEM unknown")
         fake.replies("cmd deviceidle enabled deep", "0", "1")
         fake.replies("cmd deviceidle enabled light", "0", "1")
-        val result = SystemReset.run(fake, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
+        val result = runReset(fake, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
         assertEquals("unknown app-op output is never confirmed", ResetCommandOutcome.UNVERIFIED,
             result.commands.last().outcome)
         assertFalse(result.complete)
@@ -261,7 +286,7 @@ class SystemResetTest {
             val fake = resetRunner(output)
             fake.replies("cmd deviceidle enabled deep", "0", "1")
             fake.replies("cmd deviceidle enabled light", "0", "1")
-            val result = SystemReset.run(fake, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
+            val result = runReset(fake, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
             assertEquals(output, ResetCommandOutcome.UNVERIFIED, result.commands.last().outcome)
             assertFalse(result.complete)
         }
@@ -269,14 +294,14 @@ class SystemResetTest {
             val fake = resetRunner("WRITE_SETTINGS: $mode")
             fake.replies("cmd deviceidle enabled deep", "0", "1")
             fake.replies("cmd deviceidle enabled light", "0", "1")
-            val result = SystemReset.run(fake, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
+            val result = runReset(fake, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
             assertEquals(mode, ResetCommandOutcome.FAILED, result.commands.last().outcome)
             assertFalse(result.complete)
         }
         val fake = resetRunner("\n  WRITE_SETTINGS: default  \n")
         fake.replies("cmd deviceidle enabled deep", "0", "1")
         fake.replies("cmd deviceidle enabled light", "0", "1")
-        val result = SystemReset.run(fake, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
+        val result = runReset(fake, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
         assertTrue("blank lines and surrounding whitespace do not change an exact mode", result.complete)
     }
 
@@ -293,7 +318,7 @@ class SystemResetTest {
             fake.replies("cmd deviceidle enabled light", "0", "1")
             fake.replies("appops set $PACKAGE WRITE_SETTINGS default", "")
             fake.answer("appops get $PACKAGE WRITE_SETTINGS") { reply }
-            val result = SystemReset.run(fake, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
+            val result = runReset(fake, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
             assertEquals(expected, result.commands.last().outcome)
             assertFalse(result.complete)
         }
@@ -310,7 +335,7 @@ class SystemResetTest {
             fake.replies("cmd deviceidle enabled deep", "0", "1")
             fake.replies("cmd deviceidle enabled light", "0", "1")
             fake.answer("appops set $PACKAGE WRITE_SETTINGS default") { reply }
-            val result = SystemReset.run(fake, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
+            val result = runReset(fake, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
             assertEquals(expected, result.commands.last().outcome)
             assertFalse(fake.commands.contains("appops get $PACKAGE WRITE_SETTINGS"))
             assertFalse(result.complete)
@@ -323,7 +348,7 @@ class SystemResetTest {
 
     @Test fun exceptionInsideSystemResetDeliversFailureAndAllowsRetry() {
         assertFailedJobCanBeRetried {
-            SystemReset.run(runner, 36, "com.example;id") { ResetRestoreOutcome.COMPLETE }
+            runReset(runner, 36, "com.example;id") { ResetRestoreOutcome.COMPLETE }
         }
         assertTrue("no command ran after the failed validation", runner.commands.isEmpty())
     }
@@ -335,7 +360,7 @@ class SystemResetTest {
             override fun save(ledger: RestoreLedger) { saves++ }
         }
         assertFailedJobCanBeRetried {
-            SystemReset.run(runner, 36, PACKAGE) {
+            runReset(runner, 36, PACKAGE) {
                 unreadable.load()
                 ResetRestoreOutcome.COMPLETE
             }
@@ -493,7 +518,7 @@ class SystemResetTest {
                 assertTrue("restore readback and durable cleanup precede revocations", store.load().entries.isEmpty())
             }
         }
-        val result = SystemReset.run(runner, 36, PACKAGE, permissionGranted = { false }) {
+        val result = runReset(runner, 36, PACKAGE, permissionGranted = { false }) {
             val exit = controller.reconcile()
             restored = true
             if (exit.complete) ResetRestoreOutcome.COMPLETE else ResetRestoreOutcome.REMAINING_DEBT
@@ -511,7 +536,7 @@ class SystemResetTest {
         runner.answer("dumpsys deviceidle enable all") { FakeRunner.result("", exit = 0, timeout = true) }
         runner.answer("pm revoke $PACKAGE android.permission.DUMP") { FakeRunner.result("", exit = -1) }
         runner.answer("pm revoke $PACKAGE android.permission.READ_LOGS") { throw IllegalStateException("transport gone") }
-        val result = SystemReset.run(runner, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.REMAINING_DEBT }
+        val result = runReset(runner, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.REMAINING_DEBT }
         assertEquals(ResetRestoreOutcome.REMAINING_DEBT, result.restoreOutcome)
         assertEquals(listOf(ResetCommandId.DISABLE_DEVICE_IDLE, ResetCommandId.ENABLE_DEVICE_IDLE,
             ResetCommandId.REVOKE_DUMP, ResetCommandId.REVOKE_READ_LOGS, ResetCommandId.REVOKE_READ_PHONE_STATE,
@@ -524,7 +549,7 @@ class SystemResetTest {
 
     @Test fun failedRestoreIsDebtAndNeverClaimsCompletion() {
         confirmingDeviceIdleReadbacks(23)
-        val result = SystemReset.run(runner, 23, PACKAGE, permissionGranted = { false }) { throw IllegalStateException("unreadable ledger") }
+        val result = runReset(runner, 23, PACKAGE, permissionGranted = { false }) { throw IllegalStateException("unreadable ledger") }
         assertEquals(ResetRestoreOutcome.REMAINING_DEBT, result.restoreOutcome)
         assertTrue("the throwing restore is a failed job, not just returned remaining debt", result.failed)
         assertTrue("no reset mutations follow a throwing restore", runner.commands.isEmpty())
@@ -541,7 +566,7 @@ class SystemResetTest {
         }
         val core = DozeController(runner, CommandCatalog, CapabilityResolver, unreadable,
             FakeClock(), DozeEventSink {}, 36, Grants(true, true))
-        val result = SystemReset.run(runner, 36, PACKAGE, permissionGranted = { false }) {
+        val result = runReset(runner, 36, PACKAGE, permissionGranted = { false }) {
             if (core.reconcile().complete) ResetRestoreOutcome.COMPLETE else ResetRestoreOutcome.REMAINING_DEBT
         }
         assertEquals(ResetRestoreOutcome.REMAINING_DEBT, result.restoreOutcome)
@@ -553,7 +578,7 @@ class SystemResetTest {
         store.save(RestoreLedger(listOf(LedgerEntry(Feature.FORCE_DOZE, null, "0", 0, apiLevel = 36))))
         for (level in listOf(AccessLevel.NONE, AccessLevel.APP)) {
             runner.level = level
-            val result = SystemReset.run(runner, 36, PACKAGE, permissionGranted = { false }) {
+            val result = runReset(runner, 36, PACKAGE, permissionGranted = { false }) {
                 if (controller.reconcile(36, Grants(false, false)).complete) ResetRestoreOutcome.COMPLETE
                 else ResetRestoreOutcome.REMAINING_DEBT
             }
@@ -569,7 +594,7 @@ class SystemResetTest {
     @Test fun transportSuccessWithContradictingDeviceIdleReadbackIsFailed() {
         runner.replies("cmd deviceidle enabled deep", "1", "0")
         runner.replies("cmd deviceidle enabled light", "0", "1")
-        val result = SystemReset.run(runner, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
+        val result = runReset(runner, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
         assertEquals("disable all must confirm both modes disabled", ResetCommandOutcome.FAILED,
             result.commands[0].outcome)
         assertEquals("enable all must confirm both modes enabled", ResetCommandOutcome.FAILED,
@@ -580,7 +605,7 @@ class SystemResetTest {
     @Test fun transportSuccessWithUnknownDeviceIdleReadbackIsUnverified() {
         runner.replies("cmd deviceidle enabled deep", "OEM unknown", "")
         runner.replies("cmd deviceidle enabled light", "0", "1")
-        val result = SystemReset.run(runner, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
+        val result = runReset(runner, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
         assertEquals(ResetCommandOutcome.UNVERIFIED, result.commands[0].outcome)
         assertEquals(ResetCommandOutcome.UNVERIFIED, result.commands[1].outcome)
         assertFalse(result.complete)
@@ -589,7 +614,7 @@ class SystemResetTest {
     @Test fun permissionReadbackRunsAfterRevocationAndContradictionsAreFailed() {
         confirmingDeviceIdleReadbacks()
         val checked = mutableListOf<String>()
-        val result = SystemReset.run(runner, 36, PACKAGE, permissionGranted = readback@{ permission ->
+        val result = runReset(runner, 36, PACKAGE, permissionGranted = readback@{ permission ->
             if (runner.commands.isEmpty()) {
                 // These preflight reads decide whether self-killing permissions can run in place.
                 assertTrue(permission == READ_LOGS || permission == PHONE_STATE)
@@ -612,7 +637,7 @@ class SystemResetTest {
         confirmingDeviceIdleReadbacks()
         val unavailableReadbacks = mutableListOf<String>()
         val secureSettings = "android.permission.WRITE_SECURE_SETTINGS"
-        val result = SystemReset.run(runner, 36, PACKAGE, permissionGranted = { permission ->
+        val result = runReset(runner, 36, PACKAGE, permissionGranted = { permission ->
             when {
                 permission == "android.permission.DUMP" -> null
                 runner.commands.lastOrNull() == "pm revoke $PACKAGE $secureSettings" -> {
@@ -637,7 +662,7 @@ class SystemResetTest {
 
     @Test fun missingPermissionPredicateNeverClaimsVerifiedRevocations() {
         confirmingDeviceIdleReadbacks()
-        val result = SystemReset.run(runner, 36, PACKAGE) { ResetRestoreOutcome.COMPLETE }
+        val result = runReset(runner, 36, PACKAGE) { ResetRestoreOutcome.COMPLETE }
         assertTrue(result.commands.drop(2).dropLast(1).all { it.outcome == ResetCommandOutcome.UNVERIFIED })
         assertEquals(ResetCommandOutcome.OK, result.commands.last().outcome)
         assertFalse(result.complete)
@@ -648,7 +673,7 @@ class SystemResetTest {
             val fake = resetRunner()
             fake.replies("cmd deviceidle enabled deep", unknown, " 1 ")
             fake.replies("cmd deviceidle enabled light", "0", "\n1\n")
-            val result = SystemReset.run(fake, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
+            val result = runReset(fake, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
             assertEquals(unknown, ResetCommandOutcome.UNVERIFIED, result.commands[0].outcome)
             assertEquals(ResetCommandOutcome.OK, result.commands[1].outcome)
         }
@@ -658,7 +683,7 @@ class SystemResetTest {
         runner.answer("cmd deviceidle enabled deep") { FakeRunner.result("0", timeout = true) }
         runner.answer("cmd deviceidle enabled deep") { FakeRunner.result("1", exit = 1) }
         runner.replies("cmd deviceidle enabled light", "0", "1")
-        val result = SystemReset.run(runner, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
+        val result = runReset(runner, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
         assertEquals(ResetCommandOutcome.TIMEOUT, result.commands[0].outcome)
         assertEquals(ResetCommandOutcome.UNVERIFIED, result.commands[1].outcome)
         assertFalse(result.complete)
@@ -684,7 +709,7 @@ class SystemResetTest {
         confirmingDeviceIdleReadbacks()
         val granted = platformGrants(READ_LOGS)
         val result = try {
-            SystemReset.run(runner, 36, PACKAGE, permissionGranted = { granted[it] ?: false }) {
+            runReset(runner, 36, PACKAGE, permissionGranted = { granted[it] ?: false }) {
                 ResetRestoreOutcome.COMPLETE
             }
         } catch (killed: ProcessKilled) {
@@ -705,7 +730,7 @@ class SystemResetTest {
     @Test fun deferredRevokesAreOnePrivilegedCommandEvenIfFirstRevokeKillsApp() {
         runner.beforeMutation = { throw ProcessKilled(it) }
         val killed = try {
-            SystemReset.runDeferred(runner, 36, PACKAGE,
+            runDeferredReset(runner, 36, PACKAGE,
                 listOf(ResetCommandId.REVOKE_READ_LOGS, ResetCommandId.REVOKE_READ_PHONE_STATE))
             null
         } catch (killed: ProcessKilled) { killed }
@@ -717,7 +742,7 @@ class SystemResetTest {
     @Test fun notGrantedReadLogsRunsAndIsReadBackInline() {
         confirmingDeviceIdleReadbacks()
         val checks = mutableListOf<String>()
-        val result = SystemReset.run(runner, 36, PACKAGE, permissionGranted = { permission ->
+        val result = runReset(runner, 36, PACKAGE, permissionGranted = { permission ->
             if (permission == READ_LOGS) checks += runner.commands.lastOrNull().orEmpty()
             false
         }) { ResetRestoreOutcome.COMPLETE }
@@ -734,7 +759,7 @@ class SystemResetTest {
         confirmingDeviceIdleReadbacks()
         val granted = platformGrants(PHONE_STATE)
         val result = try {
-            SystemReset.run(runner, 36, PACKAGE, permissionGranted = { granted[it] ?: false }) { ResetRestoreOutcome.COMPLETE }
+            runReset(runner, 36, PACKAGE, permissionGranted = { granted[it] ?: false }) { ResetRestoreOutcome.COMPLETE }
         } catch (killed: ProcessKilled) {
             fail("the process was killed before the reset result reached its callback: ${killed.message}")
             return
@@ -750,7 +775,7 @@ class SystemResetTest {
 
         // Only after the user's confirm: now the platform may kill the process.
         val killed = try {
-            SystemReset.runDeferred(runner, 36, PACKAGE, result.deferred)
+            runDeferredReset(runner, 36, PACKAGE, result.deferred)
             null
         } catch (killed: ProcessKilled) { killed }
         assertEquals("pm revoke $PACKAGE $PHONE_STATE", killed?.message)
@@ -760,7 +785,7 @@ class SystemResetTest {
         confirmingDeviceIdleReadbacks()
         val granted = platformGrants(READ_LOGS, PHONE_STATE)
         // Held before, and never revoked here: a readback would say granted.
-        val result = SystemReset.run(runner, 36, PACKAGE, permissionGranted = { granted[it] ?: false }) {
+        val result = runReset(runner, 36, PACKAGE, permissionGranted = { granted[it] ?: false }) {
             ResetRestoreOutcome.COMPLETE
         }
         assertEquals(5, result.commands.size)
@@ -775,40 +800,170 @@ class SystemResetTest {
     @Test fun notGrantedOrUnknownPhoneStateDecidesWhetherItWaits() {
         confirmingDeviceIdleReadbacks()
         platformGrants()
-        val notHeld = SystemReset.run(runner, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
+        val notHeld = runReset(runner, 36, PACKAGE, permissionGranted = { false }) { ResetRestoreOutcome.COMPLETE }
         assertTrue("revoking a permission not held kills nothing, so it runs and is read back in place",
             notHeld.deferred.isEmpty() && notHeld.commands.any { it.id == ResetCommandId.REVOKE_READ_PHONE_STATE })
         confirmingDeviceIdleReadbacks()
         confirmingWriteSettingsReadback(runner)
-        val unknown = SystemReset.run(runner, 36, PACKAGE) { ResetRestoreOutcome.COMPLETE }
+        val unknown = runReset(runner, 36, PACKAGE) { ResetRestoreOutcome.COMPLETE }
         assertEquals("unknown grant state is treated as held",
             listOf(ResetCommandId.REVOKE_READ_LOGS, ResetCommandId.REVOKE_READ_PHONE_STATE), unknown.deferred)
         val throwing = resetRunner()
         throwing.replies("cmd deviceidle enabled deep", "0", "1")
         throwing.replies("cmd deviceidle enabled light", "0", "1")
-        val failedCheck = SystemReset.run(throwing, 36, PACKAGE, permissionGranted = { throw IllegalStateException("gone") }) {
+        val failedCheck = runReset(throwing, 36, PACKAGE, permissionGranted = { throw IllegalStateException("gone") }) {
             ResetRestoreOutcome.COMPLETE
         }
         assertEquals(listOf(ResetCommandId.REVOKE_READ_LOGS, ResetCommandId.REVOKE_READ_PHONE_STATE), failedCheck.deferred)
     }
 
     @Test fun deferredStepsNeedSessionAccessAndRunOnlyWhatWasDeferred() {
-        SystemReset.runDeferred(runner, 36, PACKAGE, listOf(ResetCommandId.REVOKE_DUMP))
+        runDeferredReset(runner, 36, PACKAGE, listOf(ResetCommandId.REVOKE_DUMP))
         assertTrue("only self-killing revokes are ever deferred", runner.commands.isEmpty())
         runner.level = AccessLevel.APP
-        SystemReset.runDeferred(runner, 36, PACKAGE, listOf(ResetCommandId.REVOKE_READ_PHONE_STATE))
+        runDeferredReset(runner, 36, PACKAGE, listOf(ResetCommandId.REVOKE_READ_PHONE_STATE))
         assertTrue(runner.commands.isEmpty())
         runner.level = AccessLevel.SHELL
-        SystemReset.runDeferred(runner, 36, PACKAGE, listOf(ResetCommandId.REVOKE_READ_PHONE_STATE))
+        runDeferredReset(runner, 36, PACKAGE, listOf(ResetCommandId.REVOKE_READ_PHONE_STATE))
         assertEquals(listOf("pm revoke $PACKAGE $PHONE_STATE"), runner.commands)
     }
 
     @Test fun invalidPackageNeverReachesTheShell() {
         try {
-            SystemReset.run(runner, 36, "com.example;id") { ResetRestoreOutcome.COMPLETE }
+            runReset(runner, 36, "com.example;id") { ResetRestoreOutcome.COMPLETE }
             fail("reject invalid package")
         } catch (_: IllegalArgumentException) {
             assertTrue(runner.commands.isEmpty())
+        }
+    }
+
+    private fun helperRecord(prefs: ResetPreferences): Set<String> =
+        prefs.getStringSet(com.akylas.enforcedoze.access.Prefs.APPLIED_HELPERS, mutableSetOf()).orEmpty()
+
+    private fun forget(prefs: ResetPreferences, keys: Set<String>): Boolean =
+        com.akylas.enforcedoze.access.HelperGrantPolicy.forget(helperRecord(prefs), keys) { record ->
+            prefs.edit().putStringSet(com.akylas.enforcedoze.access.Prefs.APPLIED_HELPERS, record.toMutableSet()).commit()
+        }
+
+    private fun automaticHelpers(prefs: ResetPreferences): Map<String, String> =
+        com.akylas.enforcedoze.access.HelperGrantPolicy.commands(
+            com.akylas.enforcedoze.access.GrantCommands.forApp(36, PACKAGE, "$PACKAGE.NotificationService"),
+            helperRecord(prefs), com.akylas.enforcedoze.access.HelperGrantPolicy.Trigger.AUTOMATIC,
+        )
+
+    @Test fun failedHelperClearCannotLeaveRevokedHelpersRecordedAfterRestart() {
+        val helpers = ResetPreferences(mapOf(com.akylas.enforcedoze.access.Prefs.APPLIED_HELPERS to
+            setOf("DUMP", "WRITE_SECURE_SETTINGS", "READ_PHONE_STATE"))).apply { failClearCommit = true }
+        val defaults = ResetPreferences(mapOf("custom" to true))
+        confirmingDeviceIdleReadbacks()
+        val granted = platformGrants(PHONE_STATE)
+        val result = runReset(runner, 36, PACKAGE,
+            permissionGranted = { granted[it] ?: false }, forgetHelpers = { forget(helpers, it) },
+        ) { ResetRestoreOutcome.COMPLETE }
+        val tracker = ResetReport.Tracker()
+        assertTrue(tracker.begin())
+        ResetReport.callback(defaults, helpers, tracker, java.util.concurrent.Executor { it.run() }).onComplete(result)
+        assertEquals(listOf(true), defaults.commits)
+        assertEquals(false, helpers.commits.last())
+        assertFalse(tracker.prefsCleared())
+        val deferred = tracker.confirm()
+        assertEquals(listOf(ResetCommandId.REVOKE_READ_PHONE_STATE), deferred)
+        try { runDeferredReset(runner, 36, PACKAGE, deferred) { forget(helpers, it) } }
+        catch (_: ProcessKilled) { /* platform kills after accepting the revoke */ }
+        assertTrue("L1: restart must be able to automatically grant every reset-revoked helper",
+            automaticHelpers(helpers.afterProcessRestart()).keys.containsAll(
+                listOf("DUMP", "WRITE_SECURE_SETTINGS", "READ_PHONE_STATE")))
+    }
+
+    @Test fun serviceAutomaticGrantDuringReportedDialogIsForgottenBeforeDeferredRevoke() {
+        val helpers = ResetPreferences(mapOf(com.akylas.enforcedoze.access.Prefs.APPLIED_HELPERS to
+            setOf("DUMP", "WRITE_SECURE_SETTINGS", "READ_PHONE_STATE")))
+        confirmingDeviceIdleReadbacks()
+        val granted = platformGrants(PHONE_STATE)
+        val result = runReset(runner, 36, PACKAGE,
+            permissionGranted = { granted[it] ?: false }, forgetHelpers = { forget(helpers, it) },
+        ) { ResetRestoreOutcome.COMPLETE }
+        val tracker = ResetReport.Tracker()
+        assertTrue(tracker.begin())
+        ResetReport.callback(ResetPreferences(emptyMap()), helpers, tracker,
+            java.util.concurrent.Executor { it.run() }).onComplete(result)
+        assertTrue(tracker.prefsCleared())
+        assertEquals(ResetReport.Tracker.Phase.REPORTED, tracker.phase())
+        // QS service start takes the AUTOMATIC path while the report is still waiting for OK.
+        val serviceGrants = com.akylas.enforcedoze.access.HelperGrantPolicy.runAttempts(
+            automaticHelpers(helpers), helperRecord(helpers), persist = { record ->
+                helpers.edit().putStringSet(com.akylas.enforcedoze.access.Prefs.APPLIED_HELPERS, record.toMutableSet()).commit()
+            }, execute = { FakeRunner.result("") },
+        )
+        assertTrue(serviceGrants.containsKey("READ_PHONE_STATE"))
+        assertTrue("READ_PHONE_STATE" in helperRecord(helpers))
+        val deferred = tracker.confirm()
+        try { runDeferredReset(runner, 36, PACKAGE, deferred) { forget(helpers, it) } }
+        catch (_: ProcessKilled) { /* no further code in this process is needed for persistence */ }
+        assertTrue("L2: the phone helper re-recorded by service start must be grantable after reset restart",
+            automaticHelpers(helpers.afterProcessRestart()).containsKey("READ_PHONE_STATE"))
+        assertTrue("only the matching reset helper is forgotten", "SELF_WHITELIST" in helperRecord(helpers))
+    }
+
+    @Test fun failedHelperRecordCommitSkipsInlineRevokeAndReportsFailedStep() {
+        for (throws in listOf(false, true)) {
+            val helpers = ResetPreferences(mapOf(com.akylas.enforcedoze.access.Prefs.APPLIED_HELPERS to setOf("DUMP")))
+                .apply { commitSucceeds = false; throwOnEdit = throws }
+            val fake = resetRunner()
+            val result = runReset(fake, 36, PACKAGE, permissionGranted = { false },
+                forgetHelpers = { forget(helpers, it) },
+            ) { ResetRestoreOutcome.COMPLETE }
+            assertFalse("failed record persistence must skip DUMP revoke", fake.commands.contains("pm revoke $PACKAGE android.permission.DUMP"))
+            assertEquals(ResetCommandOutcome.FAILED, result.commands.single { it.id == ResetCommandId.REVOKE_DUMP }.outcome)
+            assertFalse(result.complete)
+            assertTrue(fake.commands.contains("appops set $PACKAGE WRITE_SETTINGS default"))
+        }
+    }
+
+    @Test fun failedDeferredRecordCommitSkipsPhoneButKeepsSingleShellForReadLogs() {
+        val helpers = ResetPreferences(mapOf(com.akylas.enforcedoze.access.Prefs.APPLIED_HELPERS to setOf("READ_PHONE_STATE")))
+            .apply { commitSucceeds = false }
+        val result = runDeferredReset(runner, 36, PACKAGE,
+            listOf(ResetCommandId.REVOKE_READ_LOGS, ResetCommandId.REVOKE_READ_PHONE_STATE),
+        ) { forget(helpers, it) }
+        assertEquals("only matching revoke is skipped; READ_LOGS has no GrantCommands key",
+            listOf("pm revoke $PACKAGE $READ_LOGS"), runner.commands)
+        assertEquals(ResetCommandOutcome.FAILED, result.single { it.id == ResetCommandId.REVOKE_READ_PHONE_STATE }.outcome)
+        assertTrue(result.none { it.outcome == ResetCommandOutcome.OK })
+    }
+
+    @Test fun eachMatchingInlineRevokeHasDurablyForgottenOnlyItsHelperFirst() {
+        val helpers = ResetPreferences(mapOf(com.akylas.enforcedoze.access.Prefs.APPLIED_HELPERS to
+            setOf("DUMP", "WRITE_SECURE_SETTINGS", "READ_PHONE_STATE", "SELF_WHITELIST", "READ_LOGS")))
+        val expectedKeys = setOf("DUMP", "WRITE_SECURE_SETTINGS", "READ_PHONE_STATE")
+        val observed = mutableListOf<String>()
+        runner.beforeMutation = { command ->
+            val key = command.substringAfterLast('.').takeIf { command.startsWith("pm revoke ") }
+            if (key in expectedKeys) {
+                observed += key.orEmpty()
+                assertFalse("$key must be absent on disk before revoke", key in helperRecord(helpers.afterProcessRestart()))
+                assertTrue("unrelated helpers stay recorded", "SELF_WHITELIST" in helperRecord(helpers))
+                assertTrue("READ_LOGS is not a GrantCommands helper", "READ_LOGS" in helperRecord(helpers))
+            }
+        }
+        confirmingDeviceIdleReadbacks()
+        val result = runReset(runner, 36, PACKAGE, permissionGranted = { false },
+            forgetHelpers = { forget(helpers, it) },
+        ) { ResetRestoreOutcome.COMPLETE }
+        assertEquals(listOf("DUMP", "READ_PHONE_STATE", "WRITE_SECURE_SETTINGS"), observed)
+        assertTrue(result.complete)
+        assertEquals(setOf("SELF_WHITELIST", "READ_LOGS"), helperRecord(helpers.afterProcessRestart()))
+    }
+
+    @Test fun failedPhoneOnlyDeferredCommitRunsNoShellEvenWhenPersistenceThrows() {
+        for (throws in listOf(false, true)) {
+            val helpers = ResetPreferences(emptyMap()).apply { commitSucceeds = false; throwOnEdit = throws }
+            val fake = resetRunner()
+            val result = runDeferredReset(fake, 36, PACKAGE, listOf(ResetCommandId.REVOKE_READ_PHONE_STATE)) {
+                forget(helpers, it)
+            }
+            assertTrue("no shell submission without a durable record removal", fake.commands.isEmpty())
+            assertEquals(listOf(ResetCommandResult(ResetCommandId.REVOKE_READ_PHONE_STATE, ResetCommandOutcome.FAILED)), result)
         }
     }
 

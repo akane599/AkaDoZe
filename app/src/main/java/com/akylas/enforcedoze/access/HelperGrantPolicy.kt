@@ -10,6 +10,10 @@ object HelperGrantPolicy {
         trigger: Trigger,
     ): Map<String, String> = helpers.filterKeys { trigger == Trigger.EXPLICIT || it !in applied }
 
+    /** A reset must durably forget a helper before revoking it, so a later automatic grant can retry. */
+    fun forget(applied: Set<String>, keys: Set<String>, persist: (Set<String>) -> Boolean): Boolean =
+        persist(applied - keys)
+
     /** Persist before each mutation: a grant can kill the process, even during an explicit retry. */
     fun runAttempts(
         commands: Map<String, String>,

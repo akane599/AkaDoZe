@@ -303,6 +303,7 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
                         permissionGranted = { permission ->
                             app.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
                         },
+                        forgetHelpers = access::forgetHelpers,
                         restore = {
                             val exit = controller.reconcile(Build.VERSION.SDK_INT, grants())
                             recordExit(exit)
@@ -328,7 +329,8 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
         resets.finishReset(Runnable {
             try {
                 try {
-                    SystemReset.runDeferred(control, Build.VERSION.SDK_INT, app.packageName, deferred)
+                    SystemReset.runDeferred(control, Build.VERSION.SDK_INT, app.packageName, deferred,
+                        forgetHelpers = access::forgetHelpers)
                 } finally { restart.run() }
             } finally { quitIfDetached() }
         })
