@@ -34,6 +34,8 @@ class DozeController @JvmOverloads constructor(
     private var grants: Grants,
     private val diagnosticLogger: (String, Throwable) -> Unit = { _, _ -> },
     private val accessResolved: () -> Boolean = { true },
+    private val remainingBudgetMs: () -> Long? = { null },
+    private val sleeper: (Long) -> Unit = { Thread.sleep(it) },
 ) {
     private val generation = AtomicLong()
     val currentGeneration: Long get() = generation.get()
@@ -210,6 +212,7 @@ class DozeController @JvmOverloads constructor(
                     else -> 3
                 }
             }
+            var airplaneRestored = false
             for (entry in ordered) {
                 if (!admitted()) break
                 val entryApi = entry.apiLevel ?: apiLevel
@@ -231,15 +234,16 @@ class DozeController @JvmOverloads constructor(
                     }
                     if (!admitted()) return@synchronized ExitResult(restored.toList(), ledger, errors.toList())
                     if (debtReason == null) {
-                        success = verifyRestore(entry, entryApi)
+                        success = verifyRestore(entry, entryApi, airplaneRestored, ::admitted)
                         if (!success && entry.feature == Feature.MOTION_SENSORS && lastSensor != SensorMode.UNVERIFIED &&
                             resolver.status(entry.feature, control.level, entryApi, grants) == FeatureStatus.Available
                         ) {
                             commands.forEach { run(it) }
-                            success = verifyRestore(entry, entryApi)
+                            success = verifyRestore(entry, entryApi, airplaneRestored, ::admitted)
                         }
                     }
                 }
+                if (success && entry.feature == Feature.AIRPLANE && entry.originalValue != null) airplaneRestored = true
                 // A backend can die during the last command/readback, too.
                 if (!success && debtReason == null) {
                     debtReason = (resolver.status(entry.feature, control.level, entryApi, grants) as? FeatureStatus.Unavailable)?.reason
@@ -294,6 +298,7 @@ class DozeController @JvmOverloads constructor(
             return EnterResult(EnterStatus.CANCELLED, steps)
         }
         val entries = ledger.entries.filter { it.feature in radios }
+        var airplaneRestored = false
         for (entry in if (restore) entries.asReversed() else entries) {
             if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps)
             val entryApi = entry.apiLevel ?: apiLevel
@@ -314,9 +319,10 @@ class DozeController @JvmOverloads constructor(
                 run(command)
             }
             if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps)
-            val verified = if (restore) verifyRestore(entry, entryApi) else {
+            val verified = if (restore) verifyRestore(entry, entryApi, airplaneRestored, ::admitted) else {
                 readValue(entry.feature, entry.target, false, entryApi) == FeatureReadback.appliedValue(entry.feature)
             }
+            if (restore && verified && entry.feature == Feature.AIRPLANE) airplaneRestored = true
             steps.add(StepResult(entry.feature, entry.target,
                 if (verified) StepStatus.VERIFIED else StepStatus.UNVERIFIED,
                 if (verified) null else Reason.UNVERIFIED))
@@ -364,14 +370,18 @@ class DozeController @JvmOverloads constructor(
             if (verified) null else Reason.UNVERIFIED)
     }
 
-    private fun verifyRestore(entry: LedgerEntry, apiLevel: Int): Boolean {
-        val value = if (entry.feature == Feature.APP_SUSPEND && entry.originalValue == "0") {
-            FeatureReadback.restoredSuspensionValue(
-                read(entry.feature, entry.target, original = true, apiLevel = apiLevel), entry.target, control.level,
-            )
-        } else readValue(entry.feature, entry.target, original = true, apiLevel = apiLevel)
+    private fun verifyRestore(
+        entry: LedgerEntry,
+        apiLevel: Int,
+        airplaneRestored: Boolean,
+        admission: () -> Boolean,
+    ): Boolean {
+        var value = restoredValue(entry, apiLevel)
         val expected = if (entry.feature == Feature.NOTIFICATION_BLOCK && apiLevel < 33)
             entry.originalValue?.substringBeforeLast(',') else entry.originalValue
+        if (FeatureReadback.needsAirplaneSettle(entry.feature, airplaneRestored, value, expected)) {
+            value = settleRadioReadback(entry, apiLevel, value, expected, admission)
+        }
         val verified = value != null && value == expected
         emit(EventType.VERIFY, entry.feature, entry.target, if (verified) null else Reason.UNVERIFIED,
             sensor = if (entry.feature == Feature.MOTION_SENSORS) lastSensor else null)
@@ -379,6 +389,49 @@ class DozeController @JvmOverloads constructor(
             emit(EventType.SENSORS_RESTORED, entry.feature, entry.target, sensor = SensorMode.NORMAL)
         }
         return verified
+    }
+
+    private fun restoredValue(entry: LedgerEntry, apiLevel: Int): String? =
+        if (entry.feature == Feature.APP_SUSPEND && entry.originalValue == "0") {
+            FeatureReadback.restoredSuspensionValue(
+                read(entry.feature, entry.target, original = true, apiLevel = apiLevel), entry.target, control.level,
+            )
+        } else readValue(entry.feature, entry.target, original = true, apiLevel = apiLevel)
+
+    /** Three reads only, at most 750ms including waits and read timeouts; never repeat a mutation. */
+    private fun settleRadioReadback(
+        entry: LedgerEntry,
+        apiLevel: Int,
+        initial: String?,
+        expected: String?,
+        admission: () -> Boolean,
+    ): String? {
+        var value = initial
+        // Leave one read-timeout margin in the caller's shared teardown budget.
+        if (!settleAdmitted(RADIO_SETTLE_MS + RADIO_READ_MS, admission)) return value
+        val deadline = clock.elapsedRealtime() + RADIO_SETTLE_MS
+        repeat(RADIO_REREADS) {
+            val available = minOf(deadline - clock.elapsedRealtime(), remainingBudgetMs() ?: Long.MAX_VALUE)
+            if (!waitForRadioRead(available, admission)) return value
+            if (!settleAdmitted(RADIO_READ_MS, admission) || deadline - clock.elapsedRealtime() < RADIO_READ_MS) return value
+            value = readValue(entry.feature, entry.target, true, apiLevel, RADIO_READ_MS)
+            if (value == expected) return value
+        }
+        return value
+    }
+
+    private fun settleAdmitted(requiredMs: Long, admission: () -> Boolean): Boolean =
+        admission() && (remainingBudgetMs() ?: Long.MAX_VALUE) >= requiredMs
+
+    private fun waitForRadioRead(availableMs: Long, admission: () -> Boolean): Boolean {
+        if (availableMs < RADIO_WAIT_MS + RADIO_READ_MS || !admission()) return false
+        return try {
+            sleeper(RADIO_WAIT_MS)
+            true
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        }
     }
 
     private fun restoreCommands(entry: LedgerEntry, apiLevel: Int): List<String>? {
@@ -402,21 +455,27 @@ class DozeController @JvmOverloads constructor(
         }
     }
 
-    private fun readValue(feature: Feature, target: String?, original: Boolean, apiLevel: Int = this.apiLevel): String? {
-        val output = read(feature, target, original, apiLevel)
+    private fun readValue(
+        feature: Feature, target: String?, original: Boolean, apiLevel: Int = this.apiLevel,
+        timeoutMs: Long = CommandRunner.DEFAULT_TIMEOUT_MS,
+    ): String? {
+        val output = read(feature, target, original, apiLevel, timeoutMs)
         if (feature == Feature.MOTION_SENSORS) lastSensor = SensorModeParser.parse(output).mode
         return FeatureReadback.value(feature, apiLevel, output, target)
     }
 
-    private fun read(feature: Feature, target: String?, original: Boolean, apiLevel: Int = this.apiLevel): List<String> {
+    private fun read(
+        feature: Feature, target: String?, original: Boolean, apiLevel: Int = this.apiLevel,
+        timeoutMs: Long = CommandRunner.DEFAULT_TIMEOUT_MS,
+    ): List<String> {
         val command = if (original) catalog.originalValueRead(feature, apiLevel, target)
             else catalog.readback(feature, apiLevel, target)
-        val result = command?.let(::run)
+        val result = command?.let { run(it, timeoutMs) }
         return if (result?.ok == true) result.stdout else emptyList()
     }
 
-    private fun run(command: String): CommandResult? = try {
-        control.run(command)
+    private fun run(command: String, timeoutMs: Long = CommandRunner.DEFAULT_TIMEOUT_MS): CommandResult? = try {
+        control.run(command, timeoutMs)
     } catch (_: RuntimeException) {
         emit(EventType.ERROR, reason = Reason.UNVERIFIED)
         null
@@ -454,6 +513,10 @@ class DozeController @JvmOverloads constructor(
         entry.feature == feature && (feature !in setOf(Feature.APP_SUSPEND, Feature.NOTIFICATION_BLOCK, Feature.PM_DISABLE) || entry.target == target)
 
     private companion object {
+        const val RADIO_REREADS = 3
+        const val RADIO_WAIT_MS = 150L
+        const val RADIO_READ_MS = 100L
+        const val RADIO_SETTLE_MS = RADIO_REREADS * (RADIO_WAIT_MS + RADIO_READ_MS)
         val radios = setOf(Feature.WIFI, Feature.MOBILE_DATA, Feature.BLUETOOTH, Feature.AIRPLANE, Feature.LOCATION)
         val supported = setOf(
             Feature.MOTION_SENSORS, Feature.BATTERY_SAVER, Feature.FORCE_DOZE, Feature.WIFI,

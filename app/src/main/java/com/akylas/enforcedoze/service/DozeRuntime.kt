@@ -61,6 +61,7 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
         control, CommandCatalog, CapabilityResolver, store, clock, journal, Build.VERSION.SDK_INT, grants(),
         diagnosticLogger,
         { access.state.resolved },
+        { commandDeadline?.minus(clock.elapsedRealtime()) },
     )
     val watchdog = WatchdogPolicy(clock)
     val session = SessionLifecycle()

@@ -8,6 +8,12 @@ import com.akylas.enforcedoze.doze.parse.SensorModeParser
 
 /** Strict original-value/readback decoding. Unsupported OEM output must not authorize a mutation. */
 internal object FeatureReadback {
+    // Airplane policy can asynchronously change these settings; location is not a radio toggle.
+    private val airplaneDependentRadios = setOf(Feature.WIFI, Feature.MOBILE_DATA, Feature.BLUETOOTH)
+
+    fun needsAirplaneSettle(feature: Feature, airplaneRestored: Boolean, value: String?, expected: String?): Boolean =
+        airplaneRestored && feature in airplaneDependentRadios && value != expected
+
     fun value(feature: Feature, apiLevel: Int, output: List<String>, target: String?): String? = when (feature) {
         // We only take ownership of NORMAL sensors. Never replace another owner's restriction.
         Feature.MOTION_SENSORS -> SensorModeParser.parse(output).mode.takeIf { it == SensorMode.NORMAL }?.name
