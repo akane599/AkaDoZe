@@ -17,6 +17,30 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SystemResetTest {
+    private fun outcome(
+        exitComplete: Boolean = true,
+        remaining: RestoreLedger = RestoreLedger(),
+        loadFailed: Boolean = false,
+        corrupt: List<com.akylas.enforcedoze.doze.CorruptLedgerLine> = emptyList(),
+    ) = SystemReset.restoreOutcome(exitComplete, remaining, loadFailed, corrupt)
+
+    @Test fun restoreOutcomeAllClearIsComplete() =
+        assertEquals(ResetRestoreOutcome.COMPLETE, outcome())
+
+    @Test fun restoreOutcomeIncompleteExitIsDebt() =
+        assertEquals(ResetRestoreOutcome.REMAINING_DEBT, outcome(exitComplete = false))
+
+    @Test fun restoreOutcomeRemainingEntriesIsDebt() =
+        assertEquals(ResetRestoreOutcome.REMAINING_DEBT,
+            outcome(remaining = RestoreLedger(listOf(LedgerEntry(Feature.WIFI, null, "1", 0)))))
+
+    @Test fun restoreOutcomeLoadFailedIsDebt() =
+        assertEquals(ResetRestoreOutcome.REMAINING_DEBT, outcome(loadFailed = true))
+
+    @Test fun restoreOutcomeCorruptLinesIsDebt() =
+        assertEquals(ResetRestoreOutcome.REMAINING_DEBT,
+            outcome(corrupt = listOf(com.akylas.enforcedoze.doze.CorruptLedgerLine(1, "garbage"))))
+
     @Test fun attachedServiceTeardownRunsBeforeResetBody() {
         val worker = java.util.ArrayDeque<Runnable>()
         val queue = ServiceResetQueue { worker.add(it) }

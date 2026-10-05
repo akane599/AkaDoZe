@@ -2,6 +2,8 @@ package com.akylas.enforcedoze.service
 
 import com.akylas.enforcedoze.access.CommandRunner
 import com.akylas.enforcedoze.access.PackageNames
+import com.akylas.enforcedoze.doze.CorruptLedgerLine
+import com.akylas.enforcedoze.doze.RestoreLedger
 import java.util.Collections
 
 enum class ResetRestoreOutcome { COMPLETE, REMAINING_DEBT }
@@ -39,6 +41,16 @@ fun interface SystemResetCallback {
 
 /** Synchronous plan, called only on doze-worker by the runtime. Does not clear any preferences. */
 object SystemReset {
+    fun restoreOutcome(
+        exitComplete: Boolean,
+        remaining: RestoreLedger,
+        loadFailed: Boolean,
+        corruptLines: List<CorruptLedgerLine>,
+    ): ResetRestoreOutcome =
+        if (exitComplete && remaining.entries.isEmpty() && !loadFailed && corruptLines.isEmpty()) {
+            ResetRestoreOutcome.COMPLETE
+        } else ResetRestoreOutcome.REMAINING_DEBT
+
     /** Pure boundary for the runtime's whole worker job, before result delivery. */
     fun runJob(job: () -> SystemResetResult): SystemResetResult = try {
         job()

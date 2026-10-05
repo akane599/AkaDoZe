@@ -286,9 +286,7 @@ class DozeRuntime(context: Context) {
                         recordExit(exit)
                         checkSafety()
                         val remaining = store.load()
-                        if (exit.complete && remaining.entries.isEmpty() && !store.loadFailed && store.corruptLines.isEmpty()) {
-                            ResetRestoreOutcome.COMPLETE
-                        } else ResetRestoreOutcome.REMAINING_DEBT
+                        SystemReset.restoreOutcome(exit.complete, remaining, store.loadFailed, store.corruptLines)
                     }
                 }
                 callback.onComplete(result)
