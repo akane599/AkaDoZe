@@ -1,6 +1,7 @@
 package com.akylas.enforcedoze;
 
 import android.Manifest;
+import com.akylas.enforcedoze.doze.ExactAlarmAccessPolicy;
 import com.akylas.enforcedoze.doze.SchedulePolicy;
 import android.app.ActivityManager;
 import android.app.AlarmManager;
@@ -111,6 +112,23 @@ public class Utils {
             stopForceDozeService(context);
         }
         return true;
+    }
+
+    /** Shared by the system grant receiver and foreground return; never applies the current window. */
+    public static ExactAlarmAccessPolicy.Access requeryExactAlarmAccess(Context context) {
+        AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        boolean exactAllowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+                || alarmManager.canScheduleExactAlarms();
+        ExactAlarmAccessPolicy.Access access = ExactAlarmAccessPolicy.requery(Build.VERSION.SDK_INT,
+                exactAllowed, PreferenceManager.getDefaultSharedPreferences(context).getBoolean(
+                        com.akylas.enforcedoze.access.Prefs.SERVICE_USER_ENABLED,
+                        com.akylas.enforcedoze.access.Prefs.DEFAULT_SERVICE_USER_ENABLED),
+                hasCustomDozePeriods(context));
+        if (access.getShouldRearm()) {
+            // The scheduler rechecks access and retains its racing-revocation inexact fallback.
+            scheduleNextCustomDozePeriodBoundary(context);
+        }
+        return access;
     }
 
     public static void scheduleNextCustomDozePeriodBoundary(Context context) {
