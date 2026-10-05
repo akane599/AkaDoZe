@@ -19,7 +19,8 @@ data class ResetCommandResult(val id: ResetCommandId, val outcome: ResetCommandO
 /**
  * [commands] are the steps that ran. [deferred] steps have not run: revoking a runtime permission this app
  * holds makes Android kill its process, so they wait for [SystemReset.runDeferred] after the user has seen
- * this result. They are never counted as OK.
+ * this result. They are never counted as OK, so [complete] covers only the steps that ran; the dialog
+ * does not call the reset finished while [deferred] is non-empty.
  */
 data class SystemResetResult @JvmOverloads constructor(
     val restoreOutcome: ResetRestoreOutcome,

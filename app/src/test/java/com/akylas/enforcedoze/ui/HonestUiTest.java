@@ -337,6 +337,17 @@ public class HonestUiTest {
                 && result.getCommands().size() == 1);
     }
 
+    @Test
+    public void titleIsCompleteOnlyWhenNoDeferredStepIsPending() {
+        List<ResetCommandResult> ok = Collections.singletonList(
+                new ResetCommandResult(ResetCommandId.REVOKE_DUMP, ResetCommandOutcome.OK));
+        SystemResetResult pending = new SystemResetResult(ResetRestoreOutcome.COMPLETE, ok,
+                Collections.singletonList(ResetCommandId.REVOKE_READ_PHONE_STATE));
+        assertEquals(com.akylas.enforcedoze.R.string.reset_almost_done_title, ResetReport.title(pending, true));
+        SystemResetResult done = new SystemResetResult(ResetRestoreOutcome.COMPLETE, ok, Collections.emptyList());
+        assertEquals(com.akylas.enforcedoze.R.string.reset_complete_dialog_title, ResetReport.title(done, true));
+    }
+
     // --- 4. Re-picking the active execution mode is not a switch ---
 
     @Test
