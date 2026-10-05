@@ -30,8 +30,13 @@ import com.akylas.enforcedoze.doze.DozeEvent;
 import com.akylas.enforcedoze.doze.EventType;
 import com.akylas.enforcedoze.doze.ReapplySkip;
 import com.akylas.enforcedoze.service.DozeRuntime;
+import com.akylas.enforcedoze.service.JournalSink;
 
 import java.util.List;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.ObjLongConsumer;
+import java.util.function.Supplier;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
@@ -62,40 +67,76 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
 
     protected ExternalControlReceiver(Action action) { this.action = action; }
 
+    /** Pure admission/ownership seam; denied calls never invoke the admitted-work factory. */
+    public static final class Admission {
+        public static <T> void run(Decision gates, Supplier<T> decode, Function<T, Decision> policy,
+                                   Consumer<DenialReason> denied, Consumer<T> admitted) {
+            if (gates.getReason() == DenialReason.BASIC_CONTROL_DISABLED
+                    || gates.getReason() == DenialReason.PRIVILEGED_CONTROL_DISABLED) {
+                denied.accept(gates.getReason());
+                return;
+            }
+            T input;
+            Decision decision;
+            try {
+                input = decode.get();
+                decision = policy.apply(input);
+            } catch (RuntimeException invalidExtra) {
+                denied.accept(DenialReason.INVALID_EXTRA);
+                return;
+            }
+            if (!decision.getAllowed()) {
+                denied.accept(decision.getReason());
+                return;
+            }
+            admitted.accept(input);
+        }
+
+        public static <T> T journal(ExternalCallRateLimiter limiter, Action action,
+                                    Supplier<T> factory, ObjLongConsumer<T> summary) {
+            ExternalCallRateLimiter.Admission admission = limiter.record(action);
+            if (!admission.getAdmitted()) return null;
+            T journal = factory.get();
+            if (admission.getSuppressed() > 0) summary.accept(journal, admission.getSuppressed());
+            return journal;
+        }
+    }
+
+    private static final class Input {
+        final String key, value, pkg;
+        Input(String key, String value, String pkg) {
+            this.key = key;
+            this.value = value;
+            this.pkg = pkg;
+        }
+    }
+
     @Override
     public final void onReceive(Context context, Intent intent) {
         Context app = context.getApplicationContext();
-        DozeRuntime runtime = MyApplication.getDozeRuntime(app);
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(app);
         String caller = Build.VERSION.SDK_INT >= 34 ? getSentFromPackage() : null;
-        String key = null;
-        String value = null;
-        String pkg = null;
-        Decision decision = decide(prefs, null, null, null);
         // Closed gates take precedence and do not require decoding untrusted extras.
-        if (decision.getReason() == DenialReason.BASIC_CONTROL_DISABLED
-                || decision.getReason() == DenialReason.PRIVILEGED_CONTROL_DISABLED) {
-            journal(runtime, caller, Permission.DENIED, ExternalCallOutcome.DENIED, decision.getReason());
-            return;
+        Admission.run(decide(prefs, null, null, null), () -> decode(intent),
+                input -> decide(prefs, input.key, input.value, input.pkg),
+                reason -> journal(app, caller, Permission.DENIED, ExternalCallOutcome.DENIED, reason),
+                input -> execute(app, prefs, caller, input));
+    }
+
+    private Input decode(Intent intent) {
+        if (action == Action.CHANGE_SETTING) {
+            return new Input(stringExtra(intent, "settingName"), stringExtra(intent, "settingValue"), null);
         }
-        try {
-            if (action == Action.CHANGE_SETTING) {
-                key = stringExtra(intent, "settingName");
-                value = stringExtra(intent, "settingValue");
-            } else if (action == Action.ADD_WHITELIST || action == Action.REMOVE_WHITELIST) {
-                pkg = stringExtra(intent, "packageName");
-            }
-            decision = decide(prefs, key, value, pkg);
-        } catch (RuntimeException invalidExtra) {
-            journal(runtime, caller, Permission.DENIED, ExternalCallOutcome.DENIED, DenialReason.INVALID_EXTRA);
-            return;
+        if (action == Action.ADD_WHITELIST || action == Action.REMOVE_WHITELIST) {
+            return new Input(null, null, stringExtra(intent, "packageName"));
         }
-        if (!decision.getAllowed()) {
-            journal(runtime, caller, Permission.DENIED, ExternalCallOutcome.DENIED, decision.getReason());
-            return;
-        }
+        return new Input(null, null, null);
+    }
+
+    private void execute(Context app, SharedPreferences prefs, String caller, Input input) {
+        DozeRuntime runtime = MyApplication.getDozeRuntime(app);
         PendingResult pending = goAsync();
-        Call call = new Call(app, runtime, prefs, caller, key, value, pkg, pending);
+        Call call = new Call(app, runtime, prefs, caller, input.key, input.value, input.pkg, pending);
         call.timer = DEADLINES.schedule(() -> call.complete(Permission.ALLOWED, ExternalCallOutcome.UNVERIFIED, ExecutionReason.TIMED_OUT),
                 BUDGET_MS, TimeUnit.MILLISECONDS);
         try {
@@ -119,25 +160,23 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
                 key, value, pkg);
     }
 
-    private static boolean admitJournal(DozeRuntime runtime, Action action) {
-        ExternalCallRateLimiter.Admission admission = JOURNAL_LIMIT.record(action);
-        if (!admission.getAdmitted()) return false;
-        if (admission.getSuppressed() > 0) {
-            runtime.getJournal().emit(new DozeEvent(EventType.EXTERNAL_CALL,
-                    "action=" + action.name() + " suppressed=" + admission.getSuppressed()));
-        }
-        return true;
+    private static JournalSink admitJournal(Supplier<JournalSink> factory, Action action) {
+        return Admission.journal(JOURNAL_LIMIT, action, factory, (journal, suppressed) ->
+                journal.emit(new DozeEvent(EventType.EXTERNAL_CALL,
+                        "action=" + action.name() + " suppressed=" + suppressed)));
     }
 
     static void journalReapplySkipped(DozeRuntime runtime, ReapplySkip reason) {
-        if (!admitJournal(runtime, Action.REAPPLY_DOZE)) return;
-        runtime.getJournal().emit(new DozeEvent(EventType.SKIPPED, reason.name()));
+        JournalSink journal = admitJournal(runtime::getJournal, Action.REAPPLY_DOZE);
+        if (journal == null) return;
+        journal.emit(new DozeEvent(EventType.SKIPPED, reason.name()));
     }
 
-    private void journal(DozeRuntime runtime, String caller, Permission permission, ExternalCallOutcome outcome, Enum<?> reason) {
-        if (!admitJournal(runtime, action)) return;
+    private void journal(Context app, String caller, Permission permission, ExternalCallOutcome outcome, Enum<?> reason) {
+        JournalSink journal = admitJournal(() -> MyApplication.getJournal(app), action);
+        if (journal == null) return;
         // Caller identity is platform supplied, never an Intent extra. Do not record target packages/values.
-        runtime.getJournal().emit(new DozeEvent(EventType.EXTERNAL_CALL,
+        journal.emit(new DozeEvent(EventType.EXTERNAL_CALL,
                 permission.name().toLowerCase(java.util.Locale.ROOT) + " action=" + action.name() + " caller=" + caller
                         + " outcome=" + outcome.name() + " reason=" + reason.name()));
     }
@@ -173,7 +212,7 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
             ScheduledFuture<?> timeout = timer;
             if (timeout != null) timeout.cancel(false);
             WORK.remove(this);
-            try { journal(runtime, caller, permission, outcome, reason); }
+            try { journal(app, caller, permission, outcome, reason); }
             finally { pending.finish(); }
         }
 
