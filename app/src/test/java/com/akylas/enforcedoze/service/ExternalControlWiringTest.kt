@@ -9,6 +9,44 @@ class ExternalControlWiringTest {
     private fun service() = File("src/main/java/com/akylas/enforcedoze/ForceDozeService.java").readText()
     private fun receiver() = File("src/main/java/com/akylas/enforcedoze/ExternalControlReceiver.java").readText()
 
+    @Test fun preAdmissionDenialsCannotConstructRuntime() {
+        val entry = receiver().substringAfter("public final void onReceive(")
+            .substringBefore("private static String stringExtra(")
+        val factory = entry.indexOf("MyApplication.getDozeRuntime(app)")
+        val gates = entry.indexOf("decide(prefs, null, null, null)")
+        assertTrue("closed gates must run before the runtime factory", gates >= 0 && factory > gates)
+        assertFalse("pre-admission denials must not journal through a runtime",
+            entry.substringBefore("MyApplication.getDozeRuntime(app)").contains("journal(runtime,"))
+    }
+
+    @Test fun admittedWorkRetainsDeadlineCompletionAndReadmission() {
+        val source = receiver()
+        val entry = source.substringAfter("public final void onReceive(").substringBefore("private Input decode(")
+        assertTrue(entry.contains("Admission.run(decide(prefs, null, null, null), () -> decode(intent),"))
+        assertTrue(entry.contains("input -> decide(prefs, input.key, input.value, input.pkg)"))
+        assertTrue(entry.contains("input -> execute(app, prefs, caller, input)"))
+        assertFalse("all runtime construction belongs to admitted work", entry.contains("getDozeRuntime"))
+        val work = source.substringAfter("private void execute(").substringBefore("private static String stringExtra(")
+        assertTrue(work.indexOf("MyApplication.getDozeRuntime(app)") in 0 until work.indexOf("goAsync()"))
+        assertTrue(work.contains("DEADLINES.schedule("))
+        assertTrue(work.contains("BUDGET_MS, TimeUnit.MILLISECONDS"))
+        assertTrue(work.contains("WORK.execute(call)"))
+        assertTrue(source.contains("BUDGET_MS = 9_000"))
+        val call = source.substringAfter("private final class Call")
+        assertTrue(call.contains("System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(BUDGET_MS - 250)"))
+        assertTrue(call.contains("SystemClock.elapsedRealtime() + BUDGET_MS - 250"))
+        assertTrue(call.contains("live() && decide(prefs, key, value, pkg).getAllowed()"))
+        assertTrue(call.contains("Decision current = decide(prefs, key, value, pkg)"))
+        val complete = call.substringAfter("void complete(").substringBefore("@Override")
+        assertTrue(complete.contains("finished.compareAndSet(false, true)"))
+        assertTrue(complete.contains("timeout.cancel(false)"))
+        assertTrue(complete.contains("WORK.remove(this)"))
+        assertTrue(complete.contains("finally { pending.finish(); }"))
+        assertTrue(call.contains("access.controlWithDeadline(command, deadlineNanos,"))
+        assertTrue(call.contains("access.controlWithDeadline(read, deadlineNanos, this::admitted)"))
+        assertTrue("caller must come only from platform identity", entry.contains("getSentFromPackage()"))
+    }
+
     @Test fun disabledNotificationUsesPrivateInternalEnableReceiver() {
         val notification = File("src/main/java/com/akylas/enforcedoze/Utils.java").readText()
             .substringAfter("public static void showDisabledNotification(")
@@ -181,14 +219,24 @@ class ExternalControlWiringTest {
         assertTrue("timer after policy admission cannot assert definite failure", source.contains("Outcome.UNVERIFIED, ExecutionReason.TIMED_OUT"))
         assertFalse("unknown readback cannot assert definite failure", source.contains("Outcome.FAILED, ExecutionReason.UNVERIFIED"))
         assertTrue("lane results share the tested outcome mapping", source.contains("Outcome.fromCommand(result)"))
-        val limiter = source.substringAfter("private static boolean admitJournal(").substringBefore("private void journal(")
-        assertTrue("all outcomes, including service skips, share the process limiter", limiter.contains("JOURNAL_LIMIT.record(action)"))
+        val limiter = source.substringAfter("private static JournalSink admitJournal(").substringBefore("private void journal(")
+        assertTrue("all outcomes, including service skips, share the process limiter",
+            limiter.contains("Admission.journal(JOURNAL_LIMIT, action, factory,"))
         assertTrue("suppressed counts are coalesced without caller/target extras", limiter.contains("suppressed="))
-        assertTrue(limiter.contains("if (!admission.getAdmitted()) return false;"))
+        val seam = source.substringAfter("public static <T> T journal(").substringBefore("private static final class Input")
+        assertTrue("suppression returns before resolving the journal factory",
+            seam.indexOf("if (!admission.getAdmitted()) return null;") in 0 until seam.indexOf("factory.get()"))
         val journal = source.substringAfter("private void journal(").substringBefore("private final class Call")
-        assertTrue("receiver outcomes use shared admission", journal.contains("if (!admitJournal(runtime, action)) return;"))
+        assertTrue("receiver outcomes use shared journal-only admission",
+            journal.contains("admitJournal(() -> MyApplication.getJournal(app), action)"))
+        assertFalse("denial journal cannot discover access", journal.contains("getDozeRuntime"))
+        assertFalse("untrusted targets/values never enter journal details", journal.contains("input.") || journal.contains("pkg"))
+        assertTrue(journal.contains("permission.name().toLowerCase(java.util.Locale.ROOT)"))
+        assertTrue(journal.contains("action.name() + \" caller=\" + caller"))
+        assertTrue(journal.contains("outcome.name() + \" reason=\" + reason.name()"))
         val skip = source.substringAfter("static void journalReapplySkipped(").substringBefore("private void journal(")
-        assertTrue("service rejections are rate-limited under REAPPLY_DOZE", skip.contains("if (!admitJournal(runtime, Action.REAPPLY_DOZE)) return;"))
+        assertTrue("service rejections are rate-limited under REAPPLY_DOZE",
+            skip.contains("admitJournal(runtime::getJournal, Action.REAPPLY_DOZE)"))
         assertTrue("SKIPPED details come from a typed enum", skip.contains("EventType.SKIPPED, reason.name()"))
     }
 

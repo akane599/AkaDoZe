@@ -35,11 +35,9 @@ import com.akylas.enforcedoze.doze.parse.DozeStateReading
 import com.akylas.enforcedoze.doze.parse.SensorModeParser
 
 /** Owned by MyApplication: one controller/ledger for service, recovery and future self-test callers. */
-class DozeRuntime(context: Context) {
+class DozeRuntime(context: Context, val clock: AndroidClock, val journal: JournalSink) {
     private val app = context.applicationContext
     val access: AccessManager = AccessManager.getInstance(app)
-    val clock = AndroidClock()
-    val journal = JournalSink(app, clock)
     val store = SharedPrefsLedgerStore(app, journal)
     private var commandDeadline: Long? = null // Only accessed on doze-worker.
     private var selfTestRecorder: MutableList<SelfTestCommand>? = null // Only accessed on doze-worker.
