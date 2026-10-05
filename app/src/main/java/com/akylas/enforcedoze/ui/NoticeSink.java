@@ -61,6 +61,7 @@ public final class NoticeSink implements DozeEventSink {
     private static final String SHOWN_PRIVILEGED = "externalPrivilegedRejectedShown";
 
     private static final String DEBT_NOTIFIED = "debtNotified";
+    private static final String DEBT_POSTED = "debtPosted";
 
     private static volatile NoticeSink instance;
     /** Screens that show recovery debt themselves (access card, monitor) while they are in front. */
@@ -83,6 +84,23 @@ public final class NoticeSink implements DozeEventSink {
             @Override
             public void save(Set<String> keys) {
                 notices.edit().putStringSet(DEBT_NOTIFIED, new HashSet<>(keys)).apply();
+            }
+
+            @Override
+            public boolean posted() {
+                // A notice posted before this flag existed may still be held by Android.
+                return notices.getBoolean(DEBT_POSTED, true);
+            }
+
+            @Override
+            public void setPosted(boolean posted) {
+                if (posted != posted()) notices.edit().putBoolean(DEBT_POSTED, posted).apply();
+            }
+
+            @Override
+            public void cancel() {
+                NotificationManager manager = app.getSystemService(NotificationManager.class);
+                if (manager != null) manager.cancel(ID_DEBT);
             }
         });
     }
@@ -213,19 +231,24 @@ public final class NoticeSink implements DozeEventSink {
 
     /** Called by the UI once a ledger check shows nothing left to restore; later debt is announced again. */
     public static void cancelDebt(Context context) {
-        NotificationManager manager = context.getSystemService(NotificationManager.class);
-        if (manager != null) manager.cancel(ID_DEBT);
         NoticeSink sink = get(context);
         synchronized (sink) {
+            NotificationManager manager = context.getSystemService(NotificationManager.class);
+            if (manager != null) manager.cancel(ID_DEBT);
             sink.debtGate.clearAll();
         }
     }
 
-    /**
-     * Called by the UI after every ledger check (DebtRules.isDebt). No debt re-arms the ledger-backed
-     * items, even while event-raised debt is still shown, so a recurrence is announced again.
-     */
+    /** UI checks may suppress debt during a session, so they only re-arm ledger-backed items. */
     public static void ledgerChecked(Context context, boolean debt) {
+        NoticeSink sink = get(context);
+        synchronized (sink) {
+            sink.debtGate.rearmFromLedger(debt);
+        }
+    }
+
+    /** Runtime check after restoration, without UI session suppression; cancels once all debt settles. */
+    public static void restoresChecked(Context context, boolean debt) {
         NoticeSink sink = get(context);
         synchronized (sink) {
             sink.debtGate.ledgerChecked(debt);
