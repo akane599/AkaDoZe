@@ -103,36 +103,68 @@ object CommandCatalog {
     @JvmStatic
     @JvmOverloads
     fun readback(feature: Feature, apiLevel: Int, target: String? = null): String? {
+        val pkg = readbackPackage(feature, target)
+        if (apiLevel < 23) return null
+        return when (feature) {
+            Feature.APP_SUSPEND, Feature.NOTIFICATION_BLOCK, Feature.PM_DISABLE -> packageReadback(feature, apiLevel, pkg)
+            Feature.BATTERY_SAVER, Feature.WIFI, Feature.MOBILE_DATA, Feature.BLUETOOTH -> globalSettingReadback(feature)
+            Feature.AIRPLANE, Feature.LOCATION, Feature.BIOMETRICS -> policySettingReadback(feature, apiLevel)
+            Feature.FORCE_DOZE, Feature.DOZE_STATE_READ, Feature.TUNABLES, Feature.MOTION_SENSORS,
+            Feature.WHITELIST_EDIT, Feature.FOCUSED_APP, Feature.SENSOR_PRIVACY_ALL, Feature.SETPROP_DOZE ->
+                deviceReadback(feature, apiLevel)
+        }
+    }
+
+    private fun readbackPackage(feature: Feature, target: String?): String? {
         if (target != null) PackageNames.requireValid(target)
-        val pkg = when (feature) {
+        return when (feature) {
             Feature.APP_SUSPEND, Feature.NOTIFICATION_BLOCK, Feature.PM_DISABLE -> PackageNames.requireValid(target)
             Feature.FORCE_DOZE, Feature.DOZE_STATE_READ, Feature.TUNABLES, Feature.MOTION_SENSORS,
             Feature.BATTERY_SAVER, Feature.WIFI, Feature.MOBILE_DATA, Feature.BLUETOOTH,
             Feature.AIRPLANE, Feature.LOCATION, Feature.BIOMETRICS, Feature.WHITELIST_EDIT,
             Feature.FOCUSED_APP, Feature.SENSOR_PRIVACY_ALL, Feature.SETPROP_DOZE -> null
         }
-        if (apiLevel < 23) return null
-        return when (feature) {
-            Feature.FORCE_DOZE -> if (apiLevel >= 24) "${deviceIdle(apiLevel)} get deep" else "dumpsys deviceidle"
-            Feature.DOZE_STATE_READ, Feature.TUNABLES -> "dumpsys deviceidle"
-            Feature.MOTION_SENSORS -> "dumpsys sensorservice"
-            Feature.BATTERY_SAVER -> "settings get global low_power"
-            // Airplane policy settles these settings asynchronously; FeatureReadback limits retries
-            // to WIFI/MOBILE_DATA/BLUETOOTH after a verified airplane restore in the same pass.
-            Feature.WIFI -> "settings get global wifi_on"
-            Feature.MOBILE_DATA -> "settings get global mobile_data"
-            Feature.BLUETOOTH -> "settings get global bluetooth_on"
-            Feature.AIRPLANE -> if (apiLevel >= 30) "cmd connectivity airplane-mode" else null
-            Feature.LOCATION -> if (apiLevel >= 30) "cmd location is-location-enabled" else "settings get secure location_mode"
-            Feature.BIOMETRICS -> "settings get secure biometric_keyguard_enabled"
-            Feature.APP_SUSPEND -> if (apiLevel >= 24) "dumpsys package $pkg" else null
-            Feature.NOTIFICATION_BLOCK -> if (apiLevel >= 33) "dumpsys package $pkg" else "dumpsys notification"
-            Feature.WHITELIST_EDIT -> "dumpsys deviceidle whitelist"
-            Feature.FOCUSED_APP -> "dumpsys activity activities"
-            Feature.SENSOR_PRIVACY_ALL -> "dumpsys sensor_privacy"
-            Feature.SETPROP_DOZE -> "getprop $DOZE_PROPERTY"
-            Feature.PM_DISABLE -> "dumpsys package $pkg"
-        }
+    }
+
+    // Each family helper receives only the features assigned by the exhaustive dispatch above.
+    private fun packageReadback(feature: Feature, apiLevel: Int, pkg: String?): String? {
+        if (feature == Feature.APP_SUSPEND && apiLevel < 24) return null
+        if (feature == Feature.NOTIFICATION_BLOCK && apiLevel < 33) return "dumpsys notification"
+        return "dumpsys package $pkg"
+    }
+
+    private fun globalSettingReadback(feature: Feature): String {
+        if (feature == Feature.BATTERY_SAVER) return "settings get global low_power"
+        // Airplane policy settles these settings asynchronously; FeatureReadback limits retries
+        // to WIFI/MOBILE_DATA/BLUETOOTH after a verified airplane restore in the same pass.
+        if (feature == Feature.WIFI) return "settings get global wifi_on"
+        if (feature == Feature.MOBILE_DATA) return "settings get global mobile_data"
+        return "settings get global bluetooth_on"
+    }
+
+    private fun policySettingReadback(feature: Feature, apiLevel: Int): String? {
+        if (feature == Feature.AIRPLANE) return if (apiLevel >= 30) "cmd connectivity airplane-mode" else null
+        if (feature == Feature.LOCATION) return if (apiLevel >= 30) "cmd location is-location-enabled"
+            else "settings get secure location_mode"
+        return "settings get secure biometric_keyguard_enabled"
+    }
+
+    private fun deviceReadback(feature: Feature, apiLevel: Int): String {
+        if (feature == Feature.FORCE_DOZE) return forceDozeReadback(apiLevel)
+        if (feature == Feature.DOZE_STATE_READ || feature == Feature.TUNABLES) return "dumpsys deviceidle"
+        if (feature == Feature.MOTION_SENSORS) return "dumpsys sensorservice"
+        return deviceStatusReadback(feature)
+    }
+
+    private fun forceDozeReadback(apiLevel: Int): String {
+        return if (apiLevel >= 24) "${deviceIdle(apiLevel)} get deep" else "dumpsys deviceidle"
+    }
+
+    private fun deviceStatusReadback(feature: Feature): String {
+        if (feature == Feature.WHITELIST_EDIT) return "dumpsys deviceidle whitelist"
+        if (feature == Feature.FOCUSED_APP) return "dumpsys activity activities"
+        if (feature == Feature.SENSOR_PRIVACY_ALL) return "dumpsys sensor_privacy"
+        return "getprop $DOZE_PROPERTY"
     }
 
     @JvmStatic
