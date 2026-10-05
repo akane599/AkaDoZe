@@ -76,7 +76,7 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
     private var thread: HandlerThread? = null
     private var handler: Handler? = null
     private val selfTests = SelfTestQueue(diagnosticLogger)
-    private val resets = ServiceResetQueue { job -> worker().post(job) }
+    private val resets = ServiceResetQueue(this) { job -> worker().post(job) }
     private var shutdownQueued = false
     private var pendingRecoveries = 0
     private var deferred: Runnable? = null
@@ -318,13 +318,13 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
     @Synchronized
     fun finishReset(deferred: List<ResetCommandId>, restart: Runnable) {
         bumpGeneration()
-        worker().post {
+        resets.finishReset(Runnable {
             try {
                 try {
                     SystemReset.runDeferred(control, Build.VERSION.SDK_INT, app.packageName, deferred)
                 } finally { restart.run() }
             } finally { quitIfDetached() }
-        }
+        })
     }
 
     fun hasPendingRestore(): Boolean = try {
@@ -536,9 +536,11 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
 }
 
 /** Reset/detach posting policy; all calls are made while holding the runtime monitor. */
-internal class ServiceResetQueue(private val post: (Runnable) -> Unit) {
+internal class ServiceResetQueue(private val lock: Any = Any(), private val post: (Runnable) -> Unit) {
     private var attached = false
     private val pending = mutableListOf<Runnable>()
+
+    fun finishReset(job: Runnable) = synchronized(lock) { post(job) }
 
     fun attachService() { attached = true }
 

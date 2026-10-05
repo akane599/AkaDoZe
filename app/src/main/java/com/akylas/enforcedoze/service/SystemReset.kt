@@ -28,7 +28,7 @@ data class SystemResetResult @JvmOverloads constructor(
     val restoreOutcome: ResetRestoreOutcome,
     val commands: List<ResetCommandResult>,
     val deferred: List<ResetCommandId> = emptyList(),
-    /** The job threw before a result was known: preserve all preferences and allow a retry. */
+    /** The job threw before a result was known: preserve user settings and allow a retry. */
     val failed: Boolean = false,
 ) {
     val complete: Boolean get() = !failed && restoreOutcome == ResetRestoreOutcome.COMPLETE &&

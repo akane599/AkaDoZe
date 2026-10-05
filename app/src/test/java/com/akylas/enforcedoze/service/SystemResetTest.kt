@@ -16,6 +16,48 @@ import com.akylas.enforcedoze.ui.ResetReport
 import org.junit.Assert.*
 import org.junit.Test
 
+private class ResetPreferences(initial: Map<String, Any?>) : android.content.SharedPreferences {
+    private val memory = initial.toMutableMap()
+    private var durable = initial.toMap()
+    var commitSucceeds = true
+    var throwOnEdit = false
+    fun afterProcessRestart() = ResetPreferences(durable)
+    override fun getAll(): Map<String, *> = memory.toMap()
+    override fun getBoolean(key: String, defValue: Boolean) = memory[key] as? Boolean ?: defValue
+    override fun getString(key: String, defValue: String?) = memory[key] as? String ?: defValue
+    override fun getStringSet(key: String, defValues: MutableSet<String>?) = error("Unused")
+    override fun getInt(key: String, defValue: Int) = error("Unused")
+    override fun getLong(key: String, defValue: Long) = error("Unused")
+    override fun getFloat(key: String, defValue: Float) = error("Unused")
+    override fun contains(key: String) = memory.containsKey(key)
+    override fun registerOnSharedPreferenceChangeListener(listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener) = Unit
+    override fun unregisterOnSharedPreferenceChangeListener(listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener) = Unit
+    override fun edit(): android.content.SharedPreferences.Editor {
+        if (throwOnEdit) throw IllegalStateException("preference edit failed")
+        return object : android.content.SharedPreferences.Editor {
+            private val updates = mutableMapOf<String, Any?>()
+            private val removed = mutableSetOf<String>()
+            private var clear = false
+            override fun putString(key: String, value: String?) = apply { updates[key] = value }
+            override fun putBoolean(key: String, value: Boolean) = apply { updates[key] = value }
+            override fun putInt(key: String, value: Int) = apply { updates[key] = value }
+            override fun putLong(key: String, value: Long) = apply { updates[key] = value }
+            override fun putFloat(key: String, value: Float) = apply { updates[key] = value }
+            override fun putStringSet(key: String, values: MutableSet<String>?) = error("Unused")
+            override fun remove(key: String) = apply { removed += key }
+            override fun clear() = apply { clear = true }
+            override fun commit(): Boolean {
+                if (clear) memory.clear()
+                removed.forEach(memory::remove)
+                memory.putAll(updates)
+                if (commitSucceeds) durable = memory.toMap()
+                return commitSucceeds
+            }
+            override fun apply() = error("Reset must commit before delivering its result")
+        }
+    }
+}
+
 class SystemResetTest {
     private fun outcome(
         exitComplete: Boolean = true,
@@ -132,12 +174,12 @@ class SystemResetTest {
 
     @Test fun runtimeRoutesResetAndDetachThroughTheTestedQueueUnderItsMonitor() {
         val source = java.io.File("src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt").readText()
-        assertTrue(source.contains("private val resets = ServiceResetQueue { job -> worker().post(job) }"))
+        assertTrue(source.contains("private val resets = ServiceResetQueue(this) { job -> worker().post(job) }"))
         assertTrue(source.contains("@Synchronized\n    fun attachService(): Handler {\n        selfTests.attach()\n        resets.attachService()"))
         assertTrue(source.contains("@Synchronized\n    fun detachService(teardown: Runnable)"))
         assertTrue(source.contains("resets.detachService(teardown)"))
         assertTrue(source.contains("@Synchronized\n    fun resetSystemState(callback: SystemResetCallback) {\n        bumpGeneration()\n        resets.resetSystemState(Runnable {"))
-        assertTrue(source.contains("@Synchronized\n    fun finishReset(deferred: List<ResetCommandId>, restart: Runnable) {\n        bumpGeneration()\n        worker().post {"))
+        assertTrue(source.contains("resets.finishReset(Runnable {"))
     }
 
     private val runner = resetRunner()
@@ -305,23 +347,29 @@ class SystemResetTest {
     private fun assertFailedJobCanBeRetried(job: () -> SystemResetResult) {
         val tracker = ResetReport.Tracker()
         assertTrue(tracker.begin())
-        var callbacks = 0
+        val prefs = ResetPreferences(mapOf(
+            com.akylas.enforcedoze.access.Prefs.SERVICE_ENABLED to true,
+            com.akylas.enforcedoze.access.Prefs.SERVICE_USER_ENABLED to true,
+            com.akylas.enforcedoze.access.Prefs.RESTORE_LEDGER to "damaged ledger",
+            com.akylas.enforcedoze.access.Prefs.TURN_OFF_WIFI to true,
+        ))
+        val main = java.util.ArrayDeque<Runnable>()
         var notices = 0
         tracker.setListener { notices++ }
-        val callback = SystemResetCallback { result ->
-            callbacks++
-            // Null prefs: a failed job must return before even accessing the preference store.
-            tracker.deliver(result, ResetReport.clearPreferences(null, result))
-            tracker.notifyListener()
-        }
-        try {
-            val result = SystemReset.runJob(job)
-            callback.onComplete(result)
-        } catch (_: Exception) {
-            // The old worker's finally retires the worker, but never delivers a result.
-        }
-        assertEquals("a throwing reset job must still deliver one result", 1, callbacks)
+        val callback = ResetReport.callback(prefs, tracker) { main.add(it) }
+        callback.onComplete(SystemReset.runJob(job))
+        assertEquals("a throwing reset job posts one result notification", 1, main.size)
+        assertEquals("notification waits for the main dispatcher", 0, notices)
+        main.removeFirst().run()
         assertEquals("the current screen is notified", 1, notices)
+        assertEquals("the stopped service is off before any retry", false,
+            prefs.all[com.akylas.enforcedoze.access.Prefs.SERVICE_ENABLED])
+        assertEquals("master intent and all other settings survive", mapOf(
+            com.akylas.enforcedoze.access.Prefs.SERVICE_ENABLED to false,
+            com.akylas.enforcedoze.access.Prefs.SERVICE_USER_ENABLED to true,
+            com.akylas.enforcedoze.access.Prefs.RESTORE_LEDGER to "damaged ledger",
+            com.akylas.enforcedoze.access.Prefs.TURN_OFF_WIFI to true,
+        ), prefs.afterProcessRestart().all)
         assertEquals(ResetReport.Tracker.Phase.REPORTED, tracker.phase())
         assertTrue("the exception is identified separately from ordinary partial outcomes", tracker.result().failed)
         assertFalse("an exception is never complete", tracker.result().complete)
@@ -330,6 +378,65 @@ class SystemResetTest {
         assertNull("OK dismisses a failed job, without scheduling a restart", tracker.confirm())
         assertEquals(ResetReport.Tracker.Phase.IDLE, tracker.phase())
         assertTrue("after dismissing the failure the user can reset again", tracker.begin())
+    }
+
+    @Test fun failedCallbackKeepsExplicitMasterOffAndAlreadyStoppedServiceOff() {
+        val keys = com.akylas.enforcedoze.access.Prefs
+        val initial = mapOf(keys.SERVICE_ENABLED to false, keys.SERVICE_USER_ENABLED to false)
+        val prefs = ResetPreferences(initial)
+        val tracker = ResetReport.Tracker()
+        assertTrue(tracker.begin())
+        ResetReport.callback(prefs, tracker, Runnable::run).onComplete(SystemReset.runJob({
+            throw IllegalStateException("failed")
+        }))
+        assertEquals(initial, prefs.afterProcessRestart().all)
+        assertFalse(tracker.prefsCleared())
+    }
+
+    @Test fun successfulRetryUsesTheSameCallbackAndClearsSettingsOnlyAfterItsResult() {
+        val keys = com.akylas.enforcedoze.access.Prefs
+        val prefs = ResetPreferences(mapOf(keys.SERVICE_ENABLED to true, keys.SERVICE_USER_ENABLED to true))
+        val tracker = ResetReport.Tracker()
+        val callback = ResetReport.callback(prefs, tracker, Runnable::run)
+        assertTrue(tracker.begin())
+        callback.onComplete(SystemReset.runJob({ throw IllegalStateException("failed") }))
+        assertEquals(true, prefs.all[keys.SERVICE_USER_ENABLED])
+        assertNull(tracker.confirm())
+        assertTrue(tracker.begin())
+        assertEquals("retry does not destroy recoverable master intent", true, prefs.all[keys.SERVICE_USER_ENABLED])
+        callback.onComplete(SystemResetResult(ResetRestoreOutcome.COMPLETE, emptyList()))
+        assertTrue(tracker.prefsCleared())
+        assertTrue(prefs.afterProcessRestart().all.isEmpty())
+        assertEquals(emptyList<ResetCommandId>(), tracker.confirm())
+    }
+
+    @Test fun preferenceExceptionStillDeliversResultWithoutClaimingClear() {
+        val prefs = ResetPreferences(emptyMap()).apply { throwOnEdit = true }
+        val tracker = ResetReport.Tracker()
+        var notices = 0
+        tracker.setListener { notices++ }
+        assertTrue(tracker.begin())
+        ResetReport.callback(prefs, tracker, Runnable::run)
+            .onComplete(SystemResetResult(ResetRestoreOutcome.COMPLETE, emptyList()))
+        assertEquals(1, notices)
+        assertFalse(tracker.prefsCleared())
+        assertEquals(ResetReport.Tracker.Phase.REPORTED, tracker.phase())
+    }
+
+    @Test fun failedCommitKeepsStoppedMemoryStateButDoesNotClaimPreferencesCleared() {
+        val keys = com.akylas.enforcedoze.access.Prefs
+        val prefs = ResetPreferences(mapOf(keys.SERVICE_ENABLED to true, keys.SERVICE_USER_ENABLED to true))
+            .apply { commitSucceeds = false }
+        val tracker = ResetReport.Tracker()
+        assertTrue(tracker.begin())
+        ResetReport.callback(prefs, tracker, Runnable::run).onComplete(SystemReset.runJob({
+            throw IllegalStateException("failed")
+        }))
+        assertEquals(false, prefs.all[keys.SERVICE_ENABLED])
+        assertEquals(true, prefs.all[keys.SERVICE_USER_ENABLED])
+        assertFalse(tracker.prefsCleared())
+        assertEquals("failed commit cannot promise durable stopped state", true,
+            prefs.afterProcessRestart().all[keys.SERVICE_ENABLED])
     }
 
     @Test fun ledgerRestoreAndReadbackFinishBeforeResetOrRevocations() {
