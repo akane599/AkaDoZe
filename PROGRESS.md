@@ -49,6 +49,23 @@ _Work items, stories and blockers live on the Sidequest board. This file keeps w
 - 2026-10-06: `MyApplication` re-queries exact-alarm access at process start and re-arms the custom-period boundary, because Android broadcasts the grant but not the revoke. (US-6 F9; SQ-142)
 - 2026-10-06: Main never says "service is disabled" while the service is enabled; without access it shows a separate unavailable/resolving status, and the switch stays usable whenever the service is enabled (`AccessUi.mainSwitchEnabled`). (US-6 F6; SQ-143)
 - 2026-10-06: CRAP gate is live: AGP-native JaCoCo 0.8.13 behind `-PcrapCoverage`, `.claude/kit/jacoco-to-lcov.py` (stdlib) and Quartermaster `crap.json` with base Base, ceiling 6. Because the base is Base, the gate always exits 1 on `akadoze-2.0` (352 pre-existing offenders at bdb5dcd); the live rule adds one line deviating from the approved text: a change fails only for functions its own diff adds or modifies. Empty private constructors throw `AssertionError` so they are measurable. (US-6; SQ-26, SQ-144)
+- 2026-10-06: US-7 is SQ-154 option B, picked by the orchestrator when the user said "dispatch SQ-154, your pick". The pure-Kotlin CRAP offenders that US-6 touched were split below the ceiling without changing behaviour. Characterization tests written before each refactor pin it. Base untouched; merged on `akadoze-2.0` (0a5a18f..40d0393, 712 JVM tests).
+  - `CommandCatalog.readback` became per-family readbacks, each Feature `when` exhaustive with no `else`, pinned by a 756-row golden matrix (SQ-157).
+  - The monitor's `SessionAggregator`/`HistoryMerger` were split, with 7 goldens (SQ-155).
+  - The restore engine's `restoreLedger`/`maintenance`/`verifyRestore`/`settleRadioReadback` were split (SQ-156). It's high-stakes: review SQ-158 PASSED it, and SQ-159 pins access lost mid-entry.
+- 2026-10-06: lizard 1.24.0 misreads some Kotlin:
+  - it omits expression-body functions;
+  - it merges local and nested functions;
+  - it truncates at inline lambdas;
+  - it can give an unchanged expression-body function a bogus span (`enterGroupsSafely` 59–284 after SQ-156).
+
+  Quartermaster scores only lizard's rows. So US-7 helpers use block bodies with explicit return types, which the gate can measure. Anything still omitted or truncated is hand-scored in its ticket: cc by lizard's rules, line coverage from JaCoCo. This is ticket-level steering, not a live rule, and the user is told it's an upstream analyzer gap. (US-7)
+- 2026-10-06: The 16 Android-glue offenders stay in SQ-154 for the user's pick. Examples: ModeSwitch.onCreatePreferences (cc30), MainActivity, ForceDozeService, DozeRuntime.sessionMode/checkDebtNotice, NoticeSink, ResetReport.clearPreferences. The options are:
+  - C1: Robolectric, a new dependency;
+  - C2: extract the decisions into pure classes, which touches UI so it goes to Opus;
+  - D: leave them.
+
+  JUnit-only JVM tests can't run them. (US-7)
 
 ## Audit status
 | Area | Last run | Result | How |
@@ -59,7 +76,7 @@ _Work items, stories and blockers live on the Sidequest board. This file keeps w
 | Code audit | 2026-10-05 | `/code-audit` (8 reviewers, fable/high, run in a separate environment) over 61f061a..112cf3c: 7 verified findings (1 P2, 6 P3), fixed in US-4 (SQ-93..SQ-99); bound reviews SQ-100 PASS, SQ-101 PASS; low review notes held in SQ-92 | `/code-audit` |
 | PR review | 2026-10-05 | review of 61f061a..5aa3e68 + post-release backlog → US-5 (SQ-104..SQ-135); bound reviews SQ-130 PASS, SQ-131 FAIL→SQ-132, SQ-134 FAIL→SQ-135; 623 JVM tests green at 15091cb | `/code-review` + `review-audit` (Opus) |
 | Emulator QA | 2026-10-06 | `docs/device-test-1.11.0.md` on an emulator (run elsewhere, Shizuku): 9 findings F1–F9 → US-6 (SQ-136..SQ-153); bound reviews SQ-146 FAIL→SQ-148, SQ-152 PASS; 697 JVM tests green at c9abb12 | emulator, `docs/device-test-emulator-status.md` |
-| Coverage / CRAP | 2026-10-06 | 352 of 794 functions at CRAP ≥ 6 vs Base 42f8e73 (0 unmeasured); 25 of them touched by US-6, held undispatched in SQ-154 for the user's pick | `quartermaster crap --json` |
+| Coverage / CRAP | 2026-10-06 | At 1d1f938: 344 of 880 functions at CRAP ≥ 6 vs Base 42f8e73 (0 unmeasured); was 352 of 794. US-7 cleared the 9 pure-Kotlin offenders US-6 touched (SQ-155/156/157; review SQ-158 PASS). The 16 Android-glue ones stay in SQ-154 for the user's pick (C1 Robolectric / C2 extract / D leave). One more touched row (`enterGroupsSafely`) is a lizard span artifact: hand cc 2, CRAP 2 | `quartermaster crap --json` |
 | Security | — | — | `/claude-security` |
 | UI / design | — | — | `/ui-overhaul` phase review |
 | Lint | 2026-10-03 | baseline captured: 160 pre-existing issues in app/lint-baseline.xml (only new issues fail) | `./gradlew :app:lintDebug -q` |
