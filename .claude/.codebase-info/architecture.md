@@ -71,8 +71,12 @@ debt (`ui/DamagedRecords` → `DozeRuntime.clearRetainedCorruption`).
 
 - **Access discovery is bounded.** `access/AccessResolution` reports access "unresolved" only during cold-start
   discovery: a 10 s Shizuku window, root 1 probe + 3 retries. A binder death after the binder was seen means no access
-  at once. A service that attaches after a detached window closed root discovery gets a fresh 1+3 budget
-  (`AccessManager.startServiceRootDiscovery`, from `DozeRuntime.attachService`). Unresolved access never touches durable intent.
+  at once. A service that attaches after a detached window closed root discovery mid-probe *and* that probe timed out
+  gets a fresh 1+3 budget (`AccessManager.startServiceRootDiscovery`, from `DozeRuntime.attachService`). Callers pass a
+  required ownership flag to `finishRootDiscovery(detached)`: the runtime passes `true` and the two service give-ups pass
+  `false`. Any definitive root answer (grant, denial, exception) consumes that handoff. A detached close with no probe
+  pending or timed out records nothing, so a later ROOT mode switch keeps its own 1+3. Known root, exhausted budgets and
+  service-owned closes never reopen. Unresolved access never touches durable intent.
 - **Restore-only windows.** `DozeRuntime.requestRestoreOnly` runs without a foreground service: a 9 s
   `RestoreOnlyRequest` window under the 30 s `forcedoze:restore` wakelock that reconciles and runs the safety check once
   SHELL/ROOT is ready. The worker job re-checks its remaining budget when it starts; below `MIN_READY_BUDGET_MS` it runs
