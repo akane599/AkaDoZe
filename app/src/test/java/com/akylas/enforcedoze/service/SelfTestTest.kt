@@ -74,6 +74,78 @@ class SelfTestTest {
         assertEquals(1, safetyChecks)
     }
 
+    @Test fun appDumpSensorTestDurablyRestrictsVerifiesAndRestoresWithoutForce() {
+        runner.level = AccessLevel.APP
+        runner.replies(SENSORS, "Mode : NORMAL", "Mode : RESTRICTED : $TOKEN", "Mode : NORMAL")
+        runner.beforeMutation = { assertEquals("NORMAL", store.load().entries.single().originalValue) }
+
+        val result = selfTest.run(SelfTestKind.SENSORS, config.copy(level = AccessLevel.APP))
+
+        assertEquals(SelfTestOutcome.PASSED, result.outcome)
+        assertEquals(SensorMode.RESTRICTED, result.sensor)
+        assertEquals(null, result.deep)
+        assertTrue(result.restoreComplete)
+        assertEquals(listOf(RESTRICT, ENABLE), runner.mutations())
+        assertFalse(runner.commands.any { "deviceidle" in it })
+        assertTrue(store.load().entries.isEmpty())
+        assertEquals(1, safetyChecks)
+        assertEquals(0, subscribed)
+    }
+
+    @Test fun appDumpUnknownSensorReadbackIsNotPassedEvenWithZeroExit() {
+        runner.level = AccessLevel.APP
+        runner.replies(SENSORS, "Mode : NORMAL", "Permission Denial: requires DUMP", "Mode : NORMAL")
+
+        val result = selfTest.run(SelfTestKind.SENSORS, config.copy(level = AccessLevel.APP))
+
+        assertEquals(SelfTestOutcome.NOT_VERIFIED, result.outcome)
+        assertEquals(SensorMode.UNVERIFIED, result.sensor)
+        assertTrue(result.restoreComplete)
+        assertEquals(listOf(RESTRICT, ENABLE), runner.mutations())
+    }
+
+    @Test fun appSensorRestoreMismatchKeepsOriginalIntentAndCannotPass() {
+        runner.level = AccessLevel.APP
+        runner.replies(SENSORS, "Mode : NORMAL", "Mode : RESTRICTED : $TOKEN", "OEM", "OEM")
+        val result = selfTest.run(SelfTestKind.SENSORS, config.copy(level = AccessLevel.APP))
+        assertEquals(SelfTestOutcome.RESTORE_INCOMPLETE, result.outcome)
+        assertFalse(result.restoreComplete)
+        assertEquals("NORMAL", store.load().entries.single().originalValue)
+        assertEquals(1, safetyChecks)
+        assertEquals(0, subscribed)
+    }
+
+    @Test fun appSensorTestCancelledDuringRestrictStillRestoresOriginal() {
+        runner.level = AccessLevel.APP
+        runner.replies(SENSORS, "Mode : NORMAL", "Mode : NORMAL")
+        runner.afterCommand = { if (it == RESTRICT) controller.bumpGeneration() }
+        val result = selfTest.run(SelfTestKind.SENSORS, config.copy(level = AccessLevel.APP))
+        assertEquals(SelfTestOutcome.CANCELLED, result.outcome)
+        assertTrue(result.restoreComplete)
+        assertEquals(listOf(RESTRICT, ENABLE), runner.mutations())
+        assertTrue(store.load().entries.isEmpty())
+        assertEquals(1, safetyChecks)
+    }
+
+    @Test fun appSensorTestIsBusyWithoutCommandsOrSubscriptions() {
+        runner.level = AccessLevel.APP
+        sessionActive = true
+        assertEquals(SelfTestOutcome.BUSY,
+            selfTest.run(SelfTestKind.SENSORS, config.copy(level = AccessLevel.APP)).outcome)
+        assertTrue(runner.commands.isEmpty())
+        assertEquals(0, subscribed)
+        assertEquals(0, safetyChecks)
+    }
+
+    @Test fun appDumpDozeTestRemainsUnavailableWithoutCommands() {
+        runner.level = AccessLevel.APP
+        val result = selfTest.run(SelfTestKind.DOZE, config.copy(level = AccessLevel.APP))
+        assertEquals(SelfTestOutcome.UNAVAILABLE, result.outcome)
+        assertEquals(Reason.NO_ACCESS, result.reason)
+        assertTrue(runner.commands.isEmpty())
+        assertEquals(0, subscribed)
+    }
+
     /** Negative control: an unverified restore must never read as a pass and must stay as debt. */
     @Test fun unverifiedRestoreFailsTheTestAndKeepsLedgerDebt() {
         runner.replies("dumpsys deviceidle", "mForceIdle=false", "mForceIdle=true", "mForceIdle=true", "mForceIdle=true")

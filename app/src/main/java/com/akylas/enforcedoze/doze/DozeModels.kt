@@ -1,5 +1,7 @@
 package com.akylas.enforcedoze.doze
 
+import com.akylas.enforcedoze.service.SessionMode
+
 import com.akylas.enforcedoze.access.AccessLevel
 import com.akylas.enforcedoze.access.Feature
 import com.akylas.enforcedoze.access.Grants
@@ -43,6 +45,7 @@ data class DozeConfig @JvmOverloads constructor(
     val packagesToBlockNotifications: Set<String> = emptySet(),
     val keepDozeEnforced: Boolean = true,
     val legacyNotificationTransaction: Int? = null,
+    val mode: SessionMode = SessionMode.FORCE,
 ) {
     init {
         require(features.all { it in setOf(Feature.WIFI, Feature.MOBILE_DATA, Feature.BLUETOOTH,
