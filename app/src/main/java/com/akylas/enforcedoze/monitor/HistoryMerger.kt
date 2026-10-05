@@ -36,51 +36,85 @@ object HistoryMerger {
         sessionStartElapsed: Long,
         bootId: Int,
     ): HistoryMergeResult {
-        if (bootId < 0) return HistoryMergeResult(appEvents.toList(), emptyList(), false)
-        val anchor = appEvents.firstOrNull {
-            it.bootId == bootId && it.elapsedRealtime == sessionStartElapsed &&
-                it.type == EventType.SCREEN_OFF
-        } ?: return HistoryMergeResult(appEvents.toList(), emptyList(), false)
+        if (bootId < 0) return unchanged(appEvents)
+        val anchor = sessionAnchor(appEvents, sessionStartElapsed, bootId) ?: return unchanged(appEvents)
         val session = appEvents.filter { it.bootId == bootId && it.sessionId == anchor.sessionId }
-        val end = session.filter { it.type == EventType.SCREEN_ON }
-            .minOfOrNull { it.elapsedRealtime } ?: session.maxOf { it.elapsedRealtime }
+        val end = sessionEnd(session)
         val validHistory = historyEvents.filter { it.elapsedRealtime >= 0 }.sortedBy { it.elapsedRealtime }
-        // A late first transition alone is normal on a fresh boot. Only a full ring can lose
-        // older transitions; flag it when those retained transitions cannot cover the start.
-        val truncated = validHistory.size == IdlingHistoryParser.HISTORY_CAPACITY &&
-            validHistory.first().elapsedRealtime > sessionStartElapsed
-        val history = validHistory.filter { it.elapsedRealtime <= end }
-        val carryIn = history.lastOrNull { it.elapsedRealtime < sessionStartElapsed }
-        val candidates = history.filter { it.elapsedRealtime >= sessionStartElapsed || it == carryIn }
+        val truncated = isTruncated(validHistory, sessionStartElapsed)
+        val candidates = historyCandidates(validHistory, sessionStartElapsed, end)
+        val imported = importHistory(candidates, session, anchor)
+        return HistoryMergeResult(mergedEvents(appEvents, imported, anchor, truncated), imported, truncated)
+    }
+
+    private fun unchanged(events: List<JournalEvent>): HistoryMergeResult {
+        return HistoryMergeResult(events.toList(), emptyList(), false)
+    }
+
+    private fun sessionAnchor(events: List<JournalEvent>, start: Long, bootId: Int): JournalEvent? {
+        return events.firstOrNull {
+                it.bootId == bootId && it.elapsedRealtime == start && it.type == EventType.SCREEN_OFF
+            }
+    }
+
+    private fun sessionEnd(events: List<JournalEvent>): Long {
+        return events.filter { it.type == EventType.SCREEN_ON }.minOfOrNull { it.elapsedRealtime }
+                ?: events.maxOf { it.elapsedRealtime }
+    }
+
+    // A late first transition alone is normal on a fresh boot. Only a full ring can lose
+    // older transitions; flag it when those retained transitions cannot cover the start.
+    private fun isTruncated(history: List<HistoryEvent>, start: Long): Boolean {
+        return history.size == IdlingHistoryParser.HISTORY_CAPACITY && history.first().elapsedRealtime > start
+    }
+
+    private fun historyCandidates(history: List<HistoryEvent>, start: Long, end: Long): List<HistoryEvent> {
+        val inRange = history.filter { it.elapsedRealtime <= end }
+        val carryIn = inRange.lastOrNull { it.elapsedRealtime < start }
+        return inRange.filter { it.elapsedRealtime >= start || it == carryIn }
+    }
+
+    private fun importHistory(
+        candidates: List<HistoryEvent>, session: List<JournalEvent>, anchor: JournalEvent,
+    ): List<JournalEvent> {
         val imported = mutableListOf<JournalEvent>()
         for (entry in candidates) {
-            val duplicate = (session.asSequence() + imported.asSequence()).any {
-                kindOf(it) == entry.kind && abs(it.elapsedRealtime - entry.elapsedRealtime) <= 1_000 &&
-                    (it.source == Source.OS_HISTORY || entry.reason.isNullOrBlank())
-            }
-            if (duplicate) continue
-            val states = statesFor(entry.kind)
-            imported += JournalEvent(
-                bootId = bootId,
-                elapsedRealtime = entry.elapsedRealtime,
-                wallTime = anchor.wallTime + (entry.elapsedRealtime - anchor.elapsedRealtime),
-                sessionId = anchor.sessionId,
-                source = Source.OS_HISTORY,
-                type = null,
-                deep = states.first,
-                light = states.second,
-                detail = entry.reason,
-                historyKind = entry.kind,
-            )
+            if (isDuplicate(entry, session.asSequence() + imported.asSequence())) continue
+            imported += historyRow(entry, anchor)
         }
+        return imported.toList()
+    }
+
+    private fun isDuplicate(entry: HistoryEvent, events: Sequence<JournalEvent>): Boolean {
+        return events.any {
+            kindOf(it) == entry.kind && abs(it.elapsedRealtime - entry.elapsedRealtime) <= 1_000 &&
+                (it.source == Source.OS_HISTORY || entry.reason.isNullOrBlank())
+        }
+    }
+
+    private fun historyRow(entry: HistoryEvent, anchor: JournalEvent): JournalEvent {
+        val states = statesFor(entry.kind)
+        return JournalEvent(
+            bootId = anchor.bootId,
+            elapsedRealtime = entry.elapsedRealtime,
+            wallTime = anchor.wallTime + (entry.elapsedRealtime - anchor.elapsedRealtime),
+            sessionId = anchor.sessionId,
+            source = Source.OS_HISTORY,
+            type = null,
+            deep = states.first,
+            light = states.second,
+            detail = entry.reason,
+            historyKind = entry.kind,
+        )
+    }
+
+    private fun mergedEvents(
+        appEvents: List<JournalEvent>, imported: List<JournalEvent>, anchor: JournalEvent, truncated: Boolean,
+    ): List<JournalEvent> {
         val merged = appEvents.map {
             if (it == anchor && truncated) it.copy(historyTruncated = true) else it
         } + imported
-        return HistoryMergeResult(
-            merged.sortedWith(compareBy<JournalEvent> { it.bootId }.thenBy { it.elapsedRealtime }),
-            imported.toList(),
-            truncated,
-        )
+        return merged.sortedWith(compareBy<JournalEvent> { it.bootId }.thenBy { it.elapsedRealtime })
     }
 
     internal fun statesFor(kind: HistoryKind): Pair<DeepState?, LightState?> = when (kind) {
