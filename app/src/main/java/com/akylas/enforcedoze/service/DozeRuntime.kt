@@ -92,6 +92,7 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
     @Synchronized
     fun detachService(teardown: Runnable) {
         selfTests.detach()
+        access.stopServiceRootDiscovery()
         // Enqueue atomically with detach, before an idle shutdown can retire this worker.
         resets.detachService(teardown)
     }

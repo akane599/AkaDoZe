@@ -49,7 +49,7 @@ class AccessManager private constructor(context: Context) : com.akylas.enforcedo
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == Prefs.EXECUTION_MODE) {
             mode = prefs.getString(Prefs.EXECUTION_MODE, Prefs.DEFAULT_EXECUTION_MODE)
-            if (mode == Prefs.MODE_ROOT) probeRoot() else publish()
+            if (mode == Prefs.MODE_ROOT) probeRootForModeSwitch() else publish()
         }
     }
     private val controlRunner = guardedLane("access-control")
@@ -193,10 +193,25 @@ class AccessManager private constructor(context: Context) : com.akylas.enforcedo
 
     /** Service attachment may take over discovery cut short by a detached recovery timeout. */
     fun startServiceRootDiscovery() {
+        resolution.setServiceAttached(true)
         // Reopen after any current probe has published and cleared probePending, not between them.
         probes.execute {
-            if (mode == Prefs.MODE_ROOT && resolution.startServiceRootDiscovery()) {
+            if (mode == Prefs.MODE_ROOT && resolution.startRootModeDiscovery()) {
                 publish()
+                probeRoot()
+            }
+        }
+    }
+
+    /** Symmetric with attachment; a later mode switch must not borrow a detached service's budget. */
+    fun stopServiceRootDiscovery() {
+        resolution.setServiceAttached(false)
+    }
+
+    private fun probeRootForModeSwitch() {
+        probes.execute {
+            if (mode == Prefs.MODE_ROOT) {
+                resolution.startRootModeDiscovery()
                 probeRoot()
             }
         }
