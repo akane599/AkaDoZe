@@ -29,6 +29,9 @@ _Work items, stories and blockers live on the Sidequest board. This file keeps w
 - 2026-10-04: Reset: finishReset posts under the runtime lock. A throwing restore (including an undecodable ledger) gives a failed report, clears no prefs and allows a retry; the never-overwrite-an-unreadable-ledger invariant wins over always clearing. SQ-71's candidate failed review SQ-87; repair SQ-89 passed SQ-91. (US-3)
 - 2026-10-04: The reset clears WRITE_SETTINGS through its app-op (`appops set <pkg> WRITE_SETTINGS default`), because `pm revoke` rejects that appop permission. The readback accepts only AOSP's forms: "No operations." (the op is pruned at its default) and "WRITE_SETTINGS: <mode>" with optional history; UID modes and other output stay UNVERIFIED. (US-3; SQ-75)
 - 2026-10-04: App-suspend restore counts any shell, root or `android` suspender as ours, whichever mode is current, because the execution mode can change between apply and restore. Other suspenders (e.g. Digital Wellbeing) don't block restore. (US-3; SQ-80)
+- 2026-10-05: A reset requested while the service is attached is held and posted right after that service's teardown runnable (ServiceResetQueue), so teardown never waits behind the reset. TEARDOWN_TIMEOUT is emitted only when teardown started and did not finish. The hold has no bound because the only caller stops the service first (held as SQ-92 note). (US-4; SQ-93, review SQ-101 PASS)
+- 2026-10-05: A restore-only window re-checks its remaining budget when its worker job starts. Below MIN_READY_BUDGET_MS it runs nothing, records no attempts, and lets the window finish, so the one shared continuation is armed. A starved follow-up window is skipped without a record (SQ-92 note). (US-4; SQ-94, review SQ-100 PASS)
+- 2026-10-05: A service attaching after a detached restore window closed root discovery gets a fresh 1+3 probe budget (AccessResolution.startServiceRootDiscovery). A detached window still settles on its first timeout. (US-4; SQ-95)
 
 ## Audit status
 | Area | Last run | Result | How |
@@ -36,6 +39,7 @@ _Work items, stories and blockers live on the Sidequest board. This file keeps w
 | Plan audit | 2026-10-03 | REWORK → plan reworked (AkaDoZe 2.0; SQ-3, SQ-4) | `/plan-audit` |
 | Story review | 2026-10-03 | US-1 whole-story review SQ-19: 1 BLOCKER, 1 FIX, 6 NIT → fixed in SQ-39/SQ-40, rest deferred to SQ-41; per-ticket reviews SQ-25, SQ-30, SQ-31, SQ-36, SQ-42; 2026-10-04 US-2 (external six-reviewer pass) bound reviews SQ-54 FAIL, SQ-56 FAIL, SQ-57 PASS, SQ-63 FAIL, SQ-66 PASS; suggestions held in SQ-53 | `review-audit` (Opus) |
 | Bug hunt | 2026-10-04 | 4 areas (restore engine/ledger, runtime/concurrency, access/automation, service/UI/journal); 20 verified; 14 fix tickets in US-3 (SQ-71..SQ-84, with SQ-89/SQ-90 replacing rejected SQ-71/SQ-78; SQ-71 also covers the reset-recreation finding), +1 found while fixing (SQ-85); 1 folded into SQ-41, 5 low/device-only held in SQ-92; reviews SQ-87 FAIL, SQ-88 PASS, SQ-91 PASS | `/bug-hunt` |
+| Code audit | 2026-10-05 | `/code-audit` (8 reviewers, fable/high, run in a separate environment) over 61f061a..112cf3c: 7 verified findings (1 P2, 6 P3), fixed in US-4 (SQ-93..SQ-99); bound reviews SQ-100 PASS, SQ-101 PASS; low review notes held in SQ-92 | `/code-audit` |
 | Security | — | — | `/claude-security` |
 | UI / design | — | — | `/ui-overhaul` phase review |
 | Lint | 2026-10-03 | baseline captured: 160 pre-existing issues in app/lint-baseline.xml (only new issues fail) | `./gradlew :app:lintDebug -q` |

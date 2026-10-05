@@ -1,6 +1,6 @@
 # Modules and Files
 
-*Last Updated: 2026-10-04*
+*Last Updated: 2026-10-05*
 
 Single Gradle module `:app`, base package `com.akylas.enforcedoze` at
 `app/src/main/java/com/akylas/enforcedoze/`: 105 sources (54 Java, 51 Kotlin) in seven packages.
@@ -22,7 +22,7 @@ Single Gradle module `:app`, base package `com.akylas.enforcedoze` at
 ## `access/` (13 Kotlin): transports and capabilities
 
 `AccessManager.kt` (singleton: access level, grants, transports, lanes) · `AccessResolution.kt` (bounded cold-start
-discovery: 10 s Shizuku window, root 1+3 probes, binder-seen facts) · `AccessModels.kt` (AccessLevel, Feature, Reason,
+discovery: 10 s Shizuku window, root 1+3 probes, binder-seen facts, fresh root budget on service attach) · `AccessModels.kt` (AccessLevel, Feature, Reason,
 Grants, CommandResult, FeatureStatus) · `CapabilityResolver.kt` (capability matrix, `PackageNames` validator) ·
 `CommandCatalog.kt` (per-API mutation / original / readback commands) · `CommandLane.kt` (FIFO lanes with timeouts and
 deadlines) · `RootCommandRunner.kt` (persistent libsuperuser shell) · `ShellCommandRunner.kt` (app `sh` or Shizuku
@@ -46,7 +46,7 @@ suspend/notification block for that session).
 
 ## `service/` (17 Kotlin): process runtime
 
-`DozeRuntime.kt` (controller, `doze-worker`, recovery, self-tests, deadlines, reset, restore-only windows) · `SessionLifecycle.kt` (epochs, teardown
+`DozeRuntime.kt` (controller, `doze-worker`, recovery, self-tests, deadlines, reset, restore-only windows; also `ServiceResetQueue`, `TeardownTimeout`) · `SessionLifecycle.kt` (epochs, teardown
 budgets) · `SessionAccess.kt` · `SelfTest.kt` · `JournalSink.kt` · `EventSinks.kt` · `AccessRecovery.kt` ·
 `LedgerRecovery.kt` · `SharedPrefsLedgerStore.kt` · `FeatureSelection.kt` · `DeferredFeatureSelection.kt` ·
 `LegacyDozeStats.kt` · `AndroidClock.kt` · `AccessReadiness.kt` (enter/recovery barrier, `RootProbeRetry`,

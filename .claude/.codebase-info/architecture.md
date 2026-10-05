@@ -1,6 +1,6 @@
 # Architecture
 
-*Last Updated: 2026-10-04*
+*Last Updated: 2026-10-05*
 
 ## Overview
 
@@ -60,7 +60,7 @@ Two rules decide what works:
 | While dozing | `idleChanged` → `DozeController.maintenance` + `WatchdogPolicy.onIdleChanged` | Radios restored/reapplied around maintenance windows; reforce after motion (`keepDozeEnforced`, ≤5 per session, ≥60 s apart). External REAPPLY uses `WatchdogPolicy.onExternalReapply` (same spacing and budget, never cuts maintenance); a generation bump cancels a deferred reforce |
 | Screen on / unlock | `handleScreenOn` → `exitDoze` → `DozeController.exit` | Restores from the ledger, never from current prefs: **sensors → unforce → battery saver → the rest in reverse apply order**. Biometrics are restored at screen-on even when waiting for unlock |
 | Safety | `DozeRuntime.checkSafety` (SafetyNet) | Verifies sensors NORMAL and `mForceIdle=false` when the app owns them; otherwise journals RECOVERY_DEBT. Also runs at startup reconcile and on Main resume |
-| Service stop | `ForceDozeService.onDestroy` | Worker-side time-boxed exit (3.5 s command budget, 4 s main wait; `SessionLifecycle`) with a deadline admission. Entries it doesn't reach stay untouched, and an incomplete exit queues a deadline-free restore-only follow-up under the `forcedoze:restore` 30 s wakelock |
+| Service stop | `ForceDozeService.onDestroy` | Worker-side time-boxed exit (3.5 s command budget, 4 s main wait; `SessionLifecycle`) with a deadline admission. `TEARDOWN_TIMEOUT` debt is emitted only when the teardown runnable started and didn't finish (`TeardownTimeout`). Entries it doesn't reach stay untouched, and an incomplete exit queues a deadline-free restore-only follow-up under the `forcedoze:restore` 30 s wakelock |
 
 Failed restores stay in the ledger (attempts/debt). RECOVERY_DEBT is announced when an entry first fails or its debt flag
 changes; RESTORE_FAILED is journaled on every pass. The access card and Monitor show debt with "Restore now".
@@ -71,18 +71,21 @@ debt (`ui/DamagedRecords` → `DozeRuntime.clearRetainedCorruption`).
 
 - **Access discovery is bounded.** `access/AccessResolution` reports access "unresolved" only during cold-start
   discovery: a 10 s Shizuku window, root 1 probe + 3 retries. A binder death after the binder was seen means no access
-  at once. Unresolved access never touches durable intent.
+  at once. A service that attaches after a detached window closed root discovery gets a fresh 1+3 budget
+  (`AccessManager.startServiceRootDiscovery`, from `DozeRuntime.attachService`). Unresolved access never touches durable intent.
 - **Restore-only windows.** `DozeRuntime.requestRestoreOnly` runs without a foreground service: a 9 s
   `RestoreOnlyRequest` window under the 30 s `forcedoze:restore` wakelock that reconciles and runs the safety check once
-  SHELL/ROOT is ready. Triggers: boot and package update with the service off (gated by `service/BootRestore.hasPending`),
+  SHELL/ROOT is ready. The worker job re-checks its remaining budget when it starts; below `MIN_READY_BUDGET_MS` it runs
+  nothing, records no attempts and lets the window finish (arming the continuation). Triggers: boot and package update with the service off (gated by `service/BootRestore.hasPending`),
   `requestSafetyCheck` (Main / Monitor / access card resume, mode switch) and the teardown follow-up when access is still unresolved.
 - **One continuation.** Windows that end without SHELL/ROOT arm the runtime's single process-level
   `RestoreContinuation`: one subscription, one follow-up window when access arrives, then disarmed.
 - **Reset.** `DozeRuntime.resetSystemState` (Settings) bumps the generation, restores from the ledger and runs
-  `service/SystemReset` on the worker. `OK` means readback-confirmed; "Reset complete" needs restore COMPLETE and every
-  step OK. WRITE_SETTINGS is reset through its app-op (`appops set … default`, readback `appops get`). Prefs are never
+  `service/SystemReset` on the worker. While a service is attached, `ServiceResetQueue` holds the reset and posts it right
+  after that service's teardown runnable, so teardown never waits behind it. The restore outcome is `SystemReset.restoreOutcome`. `OK` means readback-confirmed; "Reset complete" needs restore COMPLETE and every
+  step OK and no deferred step pending ("Reset almost done" otherwise). WRITE_SETTINGS is reset through its app-op (`appops set … default`, readback `appops get`). Prefs are never
   cleared there; `ui/ResetReport` clears them, keeping restore-intent keys while debt remains. `SystemReset.runJob` turns a
-  throwing job (including an undecodable ledger) into a failed report that clears nothing and allows a retry;
+  throwing job (including an undecodable ledger) into a failed report ("didn't finish… try again") that clears nothing and allows a retry;
   `finishReset` posts under the runtime lock, and the static report tracker survives Activity recreation.
 
 ## State

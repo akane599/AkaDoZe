@@ -1,6 +1,6 @@
 # Privileged Commands, Transports and Events
 
-*Last Updated: 2026-10-04*
+*Last Updated: 2026-10-05*
 
 ## Transports (`access/`)
 
@@ -54,7 +54,7 @@ physical-device gaps, is in `docs/doze-feature-ledger.md`.
 | App suspend | `pm suspend|unsuspend` (root on API 23: `pm disable|enable`) | `dumpsys package <pkg>`; restore checks the suspending packages, so only a shell/root/`android` suspender (either mode) blocks it, not e.g. Digital Wellbeing (`FeatureReadback.restoredSuspensionValue`) |
 | Notification block | API 33+: `pm revoke|grant POST_NOTIFICATIONS` + user-fixed flags; below: `service call notification <txn>` (root, UNVERIFIED) | `dumpsys package` / `dumpsys notification` |
 | All-sensor privacy (root, API 29+) | `service call sensor_privacy <txn>` | `dumpsys sensor_privacy` |
-| Tunables | `cmd device_config put device_idle` (API 31+) or `settings put global device_idle_constants` | matching `get` |
+| Tunables | `cmd device_config put device_idle <key> <value>`, one per key (API 31+), or `settings put global device_idle_constants` | matching `get` |
 | Whitelist | `dumpsys deviceidle whitelist +pkg|-pkg` | structured `whitelist` dump; one row grammar (`WhitelistRow`, accepts `system,android,1000`) shared by `WhitelistParser.kt` (COMMAND_FAILED / TIMED_OUT / PARTIALLY_PARSED / EMPTY) and `ExternalControlPolicy.whitelistMembership` |
 | Focused app (read only) | `dumpsys window` | `mCurrentFocus` / `mFocusedApp` (`doze/parse/FocusedAppParser.kt`, incl. AppWindowToken-wrapped and system windows such as NotificationShade); a failed or unfamiliar dump is Unknown |
 
