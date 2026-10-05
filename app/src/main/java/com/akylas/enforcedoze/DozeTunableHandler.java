@@ -139,12 +139,18 @@ public class DozeTunableHandler {
         return sb.toString();
     }
 
-    public ArrayList<String> getCommandsList() {
-        ArrayList<String> commands = new ArrayList<>();
-        for (String pair : getTunableString().split(",")) {
-            commands.add("cmd device_config put device_idle " + pair.replace('=', ' '));
+    public static String adbCommandText(int apiLevel, String tunableString) {
+        if (apiLevel < DEVICE_CONFIG_MIN_API) {
+            return "adb shell settings put global device_idle_constants " + tunableString;
         }
-        return commands;
+        StringBuilder text = new StringBuilder();
+        for (String pair : tunableString.split(",")) {
+            if (text.length() > 0) {
+                text.append('\n');
+            }
+            text.append("adb shell cmd device_config put device_idle ").append(pair.replace('=', ' '));
+        }
+        return text.toString();
     }
 
     public enum Outcome { APPLIED, NOT_EFFECTIVE, UNVERIFIED, UNAVAILABLE }
