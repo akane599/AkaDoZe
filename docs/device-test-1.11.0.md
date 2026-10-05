@@ -121,6 +121,12 @@ before, and nothing should be reset.
   - Repeat with access denied: the boundary is inexact, and if the service start is denied the existing notice
     appears.
   - The master switch off means no re-arm.
+- *Exact-alarm row in Settings (SQ-117), API 31+.*
+  - With a custom Doze period configured, Settings shows the exact-alarm row: exact when "Alarms & reminders"
+    is granted, best-effort when it is denied. Without periods (or below API 31) the row is hidden.
+  - Tapping it opens AkaDoZe's own "Alarms & reminders" page. Toggle access, press Back: the row and the Main
+    screen update on resume without restarting the app.
+  - With TalkBack on, the row reads its title and current status, and it is reachable and activatable by swipe.
 
 **If something fails:** Doze monitor → "Share report", plus
 `adb logcat -d --pid=$(adb shell pidof -s com.akylas.enforcedoze) | tail -200`.
