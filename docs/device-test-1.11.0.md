@@ -90,6 +90,22 @@ before, and nothing should be reset.
       records" on the access card and in the monitor. Confirming removes it. Cancelling keeps it.
 
 **Device-only findings to confirm (SQ-92):**
+- *Shizuku owner-death may drop the second deferred reset revoke (SQ-149 / SQ-145 N1).*
+  - Setup: select Shizuku mode, with READ_LOGS left over from an older version (or grant it with
+    `adb shell pm grant com.akylas.enforcedoze android.permission.READ_LOGS`) and READ_PHONE_STATE granted
+    (`adb shell pm grant com.akylas.enforcedoze android.permission.READ_PHONE_STATE`). Granting READ_LOGS
+    may kill the app; reopen it after setup and confirm both permissions are granted before each trial.
+  - Settings → Reset → wait for the report → OK. After the app restarts (reopen if needed), run
+    `adb shell 'dumpsys package com.akylas.enforcedoze | grep -E "READ_LOGS|READ_PHONE_STATE"'`.
+    Inspect the grant entries, not just the requested-permission names: both must show `granted=false`.
+  - Repeat 5 times, restoring both grants before each trial. Record API level/OEM, Shizuku version,
+    both post-reset grant states per trial, and the failure count out of 5 (either permission still granted).
+    Shizuku ties the remote process to the client's binder lifetime: READ_LOGS revocation can kill the app
+    and terminate the remote shell before the second revoke starts, leaving READ_PHONE_STATE granted.
+  - Only if this fails, try this candidate line **inside the Shizuku remote shell** in a diagnostic build:
+    `{ pm revoke com.akylas.enforcedoze android.permission.READ_LOGS; pm revoke com.akylas.enforcedoze android.permission.READ_PHONE_STATE; } </dev/null >/dev/null 2>&1 &`.
+    Repeat the same 5 trials and record its failure count separately. This is a candidate for the device tester,
+    not an implemented fix; only a measured failure justifies changing the shipped command.
 - *Deferred watchdog timing (F5).*
   - Setup: root or Shizuku, screen off, "Keep Doze enforced" on. Trigger two non-maintenance idle exits within
     60 s so the watchdog defers (`DEFER` in the journal). Then unplug USB and let the CPU suspend.

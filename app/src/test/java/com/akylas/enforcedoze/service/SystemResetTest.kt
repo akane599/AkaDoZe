@@ -567,18 +567,28 @@ class SystemResetTest {
 
     @Test fun unknownAndUnavailablePermissionReadbacksAreUnverified() {
         confirmingDeviceIdleReadbacks()
+        val unavailableReadbacks = mutableListOf<String>()
+        val secureSettings = "android.permission.WRITE_SECURE_SETTINGS"
         val result = SystemReset.run(runner, 36, PACKAGE, permissionGranted = { permission ->
-            when (permission) {
-                "android.permission.DUMP" -> null
-                "android.permission.READ_LOGS" -> throw IllegalStateException("readback unavailable")
+            when {
+                permission == "android.permission.DUMP" -> null
+                runner.commands.lastOrNull() == "pm revoke $PACKAGE $secureSettings" -> {
+                    unavailableReadbacks += permission
+                    throw IllegalStateException("readback unavailable")
+                }
                 else -> false
             }
         }) { ResetRestoreOutcome.COMPLETE }
-        assertEquals(listOf(ResetCommandOutcome.UNVERIFIED,
-            ResetCommandOutcome.OK, ResetCommandOutcome.OK, ResetCommandOutcome.OK),
+        assertEquals("the throwing readback ran after its inline revoke",
+            listOf(secureSettings), unavailableReadbacks)
+        val unavailable = result.commands.single { it.id == ResetCommandId.REVOKE_WRITE_SECURE_SETTINGS }
+        assertEquals(ResetCommandOutcome.UNVERIFIED, unavailable.outcome)
+        assertFalse("an unavailable post-revoke readback must not count as OK",
+            unavailable.outcome == ResetCommandOutcome.OK)
+        assertEquals(listOf(ResetCommandOutcome.UNVERIFIED, ResetCommandOutcome.OK,
+            ResetCommandOutcome.OK, ResetCommandOutcome.UNVERIFIED, ResetCommandOutcome.OK),
             result.commands.drop(2).map { it.outcome })
-        assertEquals("an unavailable READ_LOGS grant check must avoid an inline uid kill",
-            listOf(ResetCommandId.REVOKE_READ_LOGS), result.deferred)
+        assertTrue(result.deferred.isEmpty())
         assertFalse(result.complete)
     }
 
