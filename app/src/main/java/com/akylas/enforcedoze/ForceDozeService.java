@@ -31,6 +31,7 @@ import com.akylas.enforcedoze.doze.parse.DozeStateReading;
 import com.akylas.enforcedoze.doze.parse.FocusedAppParser;
 import com.akylas.enforcedoze.doze.parse.FocusedApps;
 import com.akylas.enforcedoze.service.PackageSelection;
+import com.akylas.enforcedoze.service.AccessReadiness;
 import com.akylas.enforcedoze.service.DozeRuntime;
 import com.akylas.enforcedoze.service.LegacyDozeStats;
 import com.akylas.enforcedoze.service.SessionLifecycle;
@@ -324,7 +325,7 @@ public class ForceDozeService extends Service {
     private synchronized boolean invalidateForwardAccess(AccessState access) {
         SessionMode mode = sessionMode();
         boolean sensors = getDefaultSharedPreferences(this).getBoolean("disableMotionSensors", true);
-        if (access.equals(forwardAccess) && mode == forwardMode && sensors == forwardSensors) return false;
+        if (AccessReadiness.sameCapability(access, forwardAccess) && mode == forwardMode && sensors == forwardSensors) return false;
         forwardAccess = access;
         forwardMode = mode;
         forwardSensors = sensors;

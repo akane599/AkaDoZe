@@ -12,12 +12,19 @@ class AccessReadiness {
     private var recoveredEpoch = -1L
     private var recoveredState: ReadinessState? = null
 
-    // Compare access capability, not incidental probe/grant metadata. Sensor preference changes
-    // invalidate the epoch separately; DUMP still changes the available APP session mode.
-    private fun readinessState(state: AccessState) = ReadinessState(
-        state.level, state.resolved,
-        SessionAccess.mode(state.level, state.grants, sensorsEnabled = true, resolved = state.resolved),
-    )
+    companion object {
+        // Compare access capability, not incidental probe/grant metadata. Sensor preference changes
+        // invalidate the epoch separately; DUMP still changes the available APP session mode.
+        private fun readinessState(state: AccessState) = ReadinessState(
+            state.level, state.resolved,
+            SessionAccess.mode(state.level, state.grants, sensorsEnabled = true, resolved = state.resolved),
+        )
+
+        /** Shared by caller-thread service invalidation and worker recovery. */
+        @JvmStatic
+        fun sameCapability(state: AccessState, previous: AccessState?): Boolean =
+            previous != null && readinessState(state) == readinessState(previous)
+    }
 
     fun invalidate() { epoch.incrementAndGet() }
 

@@ -3,6 +3,8 @@ package com.akylas.enforcedoze.service
 import com.akylas.enforcedoze.access.*
 import com.akylas.enforcedoze.doze.*
 import java.io.File
+import java.net.URLClassLoader
+import java.nio.file.Files
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -25,6 +27,151 @@ class SensorSessionTest {
         assertTrue(changed.contains("selectedGroups = null"))
         assertTrue(changed.contains("maintenance = false"))
         assertFalse("mode return must not create another session or reset its deadline/budget", changed.contains("resetSession()") || changed.contains("scheduleEnter()") || changed.contains("beginSession("))
+    }
+
+    interface AccessCallbackProbe {
+        fun initialize(state: AccessState)
+        fun change(state: AccessState)
+        fun setSensors(enabled: Boolean)
+        fun ready(): Boolean
+        fun events(): List<String>
+    }
+
+    /** Execute the actual service adapter methods with synchronous worker/platform fakes. */
+    private fun withAccessCallbackProbe(check: (AccessCallbackProbe) -> Unit) {
+        val source = service()
+        val methods = source.substringAfter("/** Caller-thread invalidation must interrupt")
+            .substringAfter("*/").substringBefore("/** Worker-only, finite backoff")
+        val directory = Files.createTempDirectory("service-access-adapter").toFile()
+        try {
+            val sourceFile = File(directory, "ServiceAccessAdapter.java")
+            sourceFile.writeText("""
+                import com.akylas.enforcedoze.access.AccessState;
+                import com.akylas.enforcedoze.access.AccessLevel;
+                import com.akylas.enforcedoze.service.*;
+                import java.util.*;
+                public class ServiceAccessAdapter implements SensorSessionTest.AccessCallbackProbe {
+                    private AccessState forwardAccess;
+                    private SessionMode forwardMode = SessionMode.RESTORE_ONLY;
+                    private boolean forwardSensors, destroyed, waitForUnlock, maintenance, verifiedIdleSeen;
+                    private boolean sensors = true;
+                    private Object selectedGroups;
+                    private AccessLevel previousAccess;
+                    private final List<String> actions = new ArrayList<>();
+                    private final Runtime runtime = new Runtime();
+                    public void initialize(AccessState state) {
+                        runtime.state = state;
+                        invalidateForwardAccess(state);
+                        runtime.recoverAccess();
+                        actions.clear();
+                    }
+                    public void change(AccessState state) { runtime.state = state; onAccessChanged(state); }
+                    public void setSensors(boolean enabled) { sensors = enabled; }
+                    public boolean ready() { return runtime.accessReadyForEnter(); }
+                    public List<String> events() { return new ArrayList<>(actions); }
+                    private SessionMode sessionMode() {
+                        return SessionAccess.mode(runtime.state.getLevel(), runtime.state.getGrants(),
+                                sensors, runtime.state.getResolved());
+                    }
+                    private ServiceAccessAdapter getDefaultSharedPreferences(Object ignored) { return this; }
+                    private boolean getBoolean(String key, boolean fallback) { return sensors; }
+                    private void postWork(Runnable work) { actions.add("post"); work.run(); }
+                    private void cancelEnter() { actions.add("cancel"); }
+                    private void resumeEnforcement() { actions.add("resume"); }
+                    private void scheduleRootProbeRetry() { actions.add("retry"); }
+                    private void updateAccessFlags(AccessLevel level) {}
+                    private void handleScreenOn(Object context, int a, int b) {}
+                    private static class Utils {
+                        static boolean isScreenOn(Object context) { return false; }
+                    }
+                    private class Runtime {
+                        private AccessState state;
+                        private final AccessReadiness readiness = new AccessReadiness();
+                        Runtime getAccess() { return this; }
+                        AccessState getState() { return state; }
+                        void invalidateAccess() { actions.add("invalidate"); readiness.invalidate(); }
+                        boolean accessReadyForEnter() { return readiness.ready(state); }
+                        boolean recoverAccess() {
+                            return readiness.recover(state, () -> state, () -> {
+                                actions.add("reconcile");
+                                return kotlin.Unit.INSTANCE;
+                            });
+                        }
+                        void checkSafety() { actions.add("safety"); }
+                        void announceAccess() {}
+                        boolean getSessionActive() { return true; }
+                        void setSessionActive(boolean active) {}
+                        void importHistory() {}
+                    }
+                    $methods
+                }
+            """.trimIndent())
+            val classpath = listOf(AccessState::class.java, AccessReadiness::class.java,
+                SensorSessionTest::class.java, kotlin.Unit::class.java).map {
+                File(it.protectionDomain.codeSource.location.toURI()).path
+            }.distinct().joinToString(File.pathSeparator)
+            // Android's compile bootclasspath omits javax.tools; the JVM test runner uses a JDK.
+            val compiler = Class.forName("javax.tools.ToolProvider").getMethod("getSystemJavaCompiler").invoke(null)
+            assertNotNull("adapter regression requires the project's JDK", compiler)
+            val run = Class.forName("javax.tools.Tool").getMethod("run", java.io.InputStream::class.java,
+                java.io.OutputStream::class.java, java.io.OutputStream::class.java, Array<String>::class.java)
+            assertEquals("actual service methods must compile in the adapter harness", 0,
+                run.invoke(compiler, null, null, null,
+                    arrayOf("-classpath", classpath, "-d", directory.path, sourceFile.path)))
+            URLClassLoader(arrayOf(directory.toURI().toURL()), javaClass.classLoader).use { loader ->
+                val probe = loader.loadClass("ServiceAccessAdapter").getDeclaredConstructor().newInstance()
+                    as AccessCallbackProbe
+                check(probe)
+            }
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test fun serviceGrantOnlyCallbacksPreserveEpochAndDoNotCancelReconcileOrResume() {
+        withAccessCallbackProbe { probe ->
+            for (level in listOf(AccessLevel.APP, AccessLevel.SHELL, AccessLevel.ROOT)) {
+                val initial = AccessState(level, null, Grants(false, false), 10001)
+                probe.initialize(initial)
+                val grants = if (level == AccessLevel.APP) Grants(false, true) else Grants(true, true)
+                probe.change(initial.copy(grants = grants, reason = Reason.NO_ACCESS, uid = 2000,
+                    rootProbeTimedOut = true))
+                assertEquals("$level grant/metadata-only callback must keep the epoch and skip recovery",
+                    listOf("post", "safety"), probe.events())
+                assertTrue("$level existing recovery epoch remains ready", probe.ready())
+            }
+        }
+    }
+
+    @Test fun serviceModeLevelResolutionAndSensorChangesInvalidateBeforeRecovery() {
+        withAccessCallbackProbe { probe ->
+            val app = AccessState(AccessLevel.APP, null, Grants(false, false), 10001)
+            val sensor = app.copy(grants = Grants(true, false))
+            val shell = app.copy(level = AccessLevel.SHELL)
+            for ((initial, changed) in listOf(app to sensor, sensor to app, shell to shell.copy(level = AccessLevel.ROOT))) {
+                probe.initialize(initial)
+                probe.change(changed)
+                val expected = mutableListOf("invalidate", "post", "cancel", "reconcile")
+                if (changed != app) expected += "resume"
+                assertEquals("capability changes invalidate on the caller before cancel/reconcile", expected, probe.events())
+                assertTrue(probe.ready())
+            }
+            probe.initialize(shell)
+            probe.change(shell.copy(resolved = false))
+            assertEquals(listOf("invalidate", "post", "cancel", "safety", "retry"), probe.events())
+            assertFalse("unresolved access cannot recover or admit", probe.ready())
+            probe.initialize(shell)
+            probe.setSensors(false)
+            probe.change(shell)
+            assertEquals("sensor preference changes must still invalidate even in FORCE",
+                listOf("invalidate", "post", "cancel", "reconcile", "resume"), probe.events())
+        }
+    }
+
+    @Test fun idleObservationUsesTheSameCallerThreadInvalidationAsAccessCallbacks() {
+        val idle = service().substringAfter("private void idleChanged()").substringBefore("DozeStateReading reading")
+        assertTrue(idle.contains("if (invalidateForwardAccess(runtime.getAccess().getState()))"))
+        assertTrue(idle.contains("onAccessChanged(runtime.getAccess().getState())"))
     }
 
     @Test fun sensorModeCannotDispatchMaintenanceOrAutomaticWatchdog() {
