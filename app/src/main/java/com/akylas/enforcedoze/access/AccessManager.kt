@@ -191,7 +191,7 @@ class AccessManager private constructor(context: Context) : com.akylas.enforcedo
         if (mode == Prefs.MODE_ROOT && resolution.canRetryRoot()) probeRoot()
     }
 
-    /** Service attachment may take over discovery closed by a detached recovery window. */
+    /** Service attachment may take over discovery cut short by a detached recovery timeout. */
     fun startServiceRootDiscovery() {
         // Reopen after any current probe has published and cleared probePending, not between them.
         probes.execute {
@@ -202,8 +202,8 @@ class AccessManager private constructor(context: Context) : com.akylas.enforcedo
         }
     }
 
-    fun finishRootDiscovery() {
-        resolution.finishRootDiscovery()
+    fun finishRootDiscovery(detached: Boolean) {
+        resolution.finishRootDiscovery(detached)
         publish()
     }
 

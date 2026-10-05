@@ -416,6 +416,23 @@ class AccessDiscoveryRepairTest {
         assertTrue("the service publishes fresh discovery and starts the initial probe", hook.contains("publish()") && hook.contains("probeRoot()"))
     }
 
+    @Test fun rootDiscoveryClosuresKeepDetachedAndServiceOwnershipSeparate() {
+        val runtime = listOf(File("src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt"),
+            File("app/src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt")).first { it.isFile }.readText()
+        assertTrue("only detached recovery completion permits a timeout handoff",
+            runtime.contains("if (!selfTests.attached) access.finishRootDiscovery(detached = true)"))
+        val service = listOf(File("src/main/java/com/akylas/enforcedoze/ForceDozeService.java"),
+            File("app/src/main/java/com/akylas/enforcedoze/ForceDozeService.java")).first { it.isFile }.readText()
+        assertEquals("both service give-up paths mark terminal ownership", 2,
+            Regex("""runtime\.getAccess\(\)\.finishRootDiscovery\(false\);""").findAll(service).count())
+        assertEquals("the service has no detached or implicit closure call", 2,
+            Regex("""\.finishRootDiscovery\(""").findAll(service).count())
+        val manager = listOf(File("src/main/java/com/akylas/enforcedoze/access/AccessManager.kt"),
+            File("app/src/main/java/com/akylas/enforcedoze/access/AccessManager.kt")).first { it.isFile }.readText()
+        assertTrue("closure ownership has no default", manager.contains("fun finishRootDiscovery(detached: Boolean) {"))
+        assertTrue("the adapter forwards closure ownership", manager.contains("resolution.finishRootDiscovery(detached)"))
+    }
+
     @Test fun runtimeSharesOneProcessContinuation() {
         val runtime = listOf(File("src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt"),
             File("app/src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt")).first { it.isFile }.readText()

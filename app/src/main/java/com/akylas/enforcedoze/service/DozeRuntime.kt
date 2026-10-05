@@ -409,7 +409,7 @@ class DozeRuntime(context: Context) {
                 {
                     synchronized(this@DozeRuntime) { pendingRecoveries-- }
                     try {
-                        if (!selfTests.attached) access.finishRootDiscovery()
+                        if (!selfTests.attached) access.finishRootDiscovery(detached = true)
                         completed.run()
                     } finally {
                         try { if (wakeLock.isHeld) wakeLock.release() }
