@@ -99,9 +99,24 @@ public final class AccessUi {
     /**
      * The main switch's status. FORCING needs Shizuku or root. SENSORS_ONLY (DUMP plus the sensor setting)
      * only restricts motion sensors: Android still decides when the device dozes. PASSIVE reads state and
-     * restores, nothing more. CHECKING: access isn't known yet, so nothing is claimed.
+     * restores, nothing more. CHECKING: access isn't known yet, so nothing is claimed. Switched off with no
+     * usable access: UNAVAILABLE once access is resolved, RESOLVING before.
      */
-    public enum ServiceStatus { INACTIVE, CHECKING, FORCING, SENSORS_ONLY, PASSIVE }
+    public enum ServiceStatus { INACTIVE, CHECKING, FORCING, SENSORS_ONLY, PASSIVE, UNAVAILABLE, RESOLVING }
+
+    /**
+     * Main screen status. {@code usable}: root, Shizuku or DUMP. A switched-on service is described by what
+     * it does (PASSIVE without access), never as off.
+     */
+    public static ServiceStatus mainStatus(boolean enabled, boolean usable, AccessState state, boolean sensorsEnabled) {
+        if (enabled || usable) return serviceStatus(enabled, state, sensorsEnabled);
+        return state != null && state.getResolved() ? ServiceStatus.UNAVAILABLE : ServiceStatus.RESOLVING;
+    }
+
+    /** The main switch can always turn a running service off; turning it on needs usable access. */
+    public static boolean mainSwitchEnabled(boolean enabled, boolean usable) {
+        return enabled || usable;
+    }
 
     public static ServiceStatus serviceStatus(boolean enabled, AccessState state, boolean sensorsEnabled) {
         if (!enabled) return ServiceStatus.INACTIVE;
