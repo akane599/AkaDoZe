@@ -118,6 +118,48 @@ class RestoreCharacterizationTest {
         }
     }
 
+    @Test fun accessLostBetweenNotificationRestoreCommandsPinsDebtWithoutVerification() {
+        val notification = LedgerEntry(Feature.NOTIFICATION_BLOCK, "com.example.app", "1,0,1", 0, apiLevel = 36)
+        val f = Fixture(listOf(notification))
+        val firstCommand = "pm grant com.example.app android.permission.POST_NOTIFICATIONS"
+        f.runner.replies("dumpsys package com.example.app", "")
+        f.runner.afterCommand = { if (it == firstCommand) f.runner.level = AccessLevel.APP }
+
+        val result = f.controller.exit()
+
+        assertEquals(listOf(firstCommand), f.runner.commands)
+        val retained = RestoreLedger(listOf(notification.copy(attempts = 1, debt = true)))
+        assertEquals(listOf(retained), f.saves)
+        assertEquals(retained, f.ledger)
+        assertEquals(RestoreLedgerCodec.encode(retained), f.rawLedger)
+        assertEquals(listOf(
+            DozeEvent(EventType.RESTORE_FAILED, "NOTIFICATION_BLOCK", feature = Feature.NOTIFICATION_BLOCK,
+                target = "com.example.app", reason = Reason.NO_ACCESS),
+            DozeEvent(EventType.RECOVERY_DEBT, "NOTIFICATION_BLOCK", feature = Feature.NOTIFICATION_BLOCK,
+                target = "com.example.app", reason = Reason.NO_ACCESS),
+        ), f.events)
+        assertEquals(ExitResult(emptyList(), retained, emptyList()), result)
+        assertFalse(result.complete)
+        assertTrue(f.waits.isEmpty())
+    }
+
+    @Test fun maintenanceRadiosHaveOnlySingleCommandRestoresAcrossSupportedApis() {
+        // A multi-command radio would make executeMaintenanceEntry's mid-entry lost path reachable;
+        // that path would then need its own access-loss test.
+        val radios = listOf(Feature.WIFI, Feature.MOBILE_DATA, Feature.BLUETOOTH, Feature.AIRPLANE, Feature.LOCATION)
+        var supportedRestores = 0
+        for (feature in radios) {
+            for (apiLevel in 23..36) {
+                for (original in listOf("0", "1")) {
+                    val commands = CommandCatalog.restore(feature, apiLevel, original) ?: continue
+                    assertEquals("$feature API $apiLevel original=$original", 1, commands.size)
+                    supportedRestores++
+                }
+            }
+        }
+        assertEquals(126, supportedRestores)
+    }
+
     @Test fun undecodableLedgerPinsLoadFailureWithoutCommandsOrOverwrite() {
         for (maintenance in listOf(false, true)) {
             val f = Fixture(emptyList(), unreadable = true)
