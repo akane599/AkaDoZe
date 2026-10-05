@@ -407,6 +407,8 @@ class DozeController @JvmOverloads constructor(
         admission: () -> Boolean,
     ): String? {
         var value = initial
+        // The 750ms cap is per radio; a tight shared budget leaves later entries in the ledger.
+        val command = catalog.originalValueRead(entry.feature, apiLevel, entry.target) ?: return value
         // Leave one read-timeout margin in the caller's shared teardown budget.
         if (!settleAdmitted(RADIO_SETTLE_MS + RADIO_READ_MS, admission)) return value
         val deadline = clock.elapsedRealtime() + RADIO_SETTLE_MS
@@ -414,7 +416,10 @@ class DozeController @JvmOverloads constructor(
             val available = minOf(deadline - clock.elapsedRealtime(), remainingBudgetMs() ?: Long.MAX_VALUE)
             if (!waitForRadioRead(available, admission)) return value
             if (!settleAdmitted(RADIO_READ_MS, admission) || deadline - clock.elapsedRealtime() < RADIO_READ_MS) return value
-            value = readValue(entry.feature, entry.target, true, apiLevel, RADIO_READ_MS)
+            val result = run(command, RADIO_READ_MS)
+            if (result?.timedOut == true) return value // The root lane reset its shell; do not reopen it just to settle.
+            val output = if (result?.ok == true) result.stdout else emptyList()
+            value = FeatureReadback.value(entry.feature, apiLevel, output, entry.target)
             if (value == expected) return value
         }
         return value

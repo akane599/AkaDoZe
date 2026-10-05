@@ -7,6 +7,7 @@ import com.akylas.enforcedoze.access.CommandResult
 import com.akylas.enforcedoze.access.CommandRunner
 import com.akylas.enforcedoze.access.Feature
 import com.akylas.enforcedoze.access.Grants
+import com.akylas.enforcedoze.access.Reason
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -90,12 +91,46 @@ class RadioRestoreSettleTest {
         runner.replies(DATA_READ, "0")
         repeat(3) { runner.answer(DATA_READ) {
             clock.elapsed += 100L
-            FakeRunner.result("", timeout = true)
+            FakeRunner.result("0") // A slow successful mismatch can still use all three rereads.
         } }
         assertFalse(controller.exit().complete)
         assertEquals(4, runner.commands.count { it == DATA_READ })
         assertEquals(750L, clock.elapsed - 1_000L)
         assertEquals(100L, deadline!! - clock.elapsed)
+    }
+
+    @Test fun timedOutFirstRereadStopsSettleWithoutMoreReadsOrWaits() {
+        radioLedger()
+        runner.replies(DATA_READ, "0")
+        runner.answer(DATA_READ) { FakeRunner.result("1", timeout = true) }
+        runner.replies(DATA_READ, "1") // Must not turn a timed-out settle into a later success.
+        val result = controller.exit()
+        assertFalse("timeout cannot verify restoration", result.complete)
+        assertEquals("initial read and only one settle reread", 2, runner.commands.count { it == DATA_READ })
+        assertEquals("no sleep after the timeout", listOf(150L), waits)
+        assertEquals(1, result.remaining.entries.single().attempts)
+        assertEquals(Feature.MOBILE_DATA, result.remaining.entries.single().feature)
+        assertEquals(1, runner.mutations().count { it == "svc data enable" })
+        assertEquals(Reason.UNVERIFIED,
+            events.single { it.type == EventType.VERIFY && it.feature == Feature.MOBILE_DATA }.reason)
+        assertEquals(Reason.UNVERIFIED,
+            events.single { it.type == EventType.RESTORE_FAILED && it.feature == Feature.MOBILE_DATA }.reason)
+    }
+
+    @Test fun interruptedSleeperAbortsSettleAndPreservesInterruptFlag() {
+        radioLedger()
+        runner.replies(DATA_READ, "0", "1")
+        afterWait = { throw InterruptedException("settle interrupted") }
+        try {
+            val result = controller.exit()
+            assertTrue("interruption must remain visible to the worker", Thread.currentThread().isInterrupted)
+            assertFalse(result.complete)
+            assertEquals("no reread after interrupted wait", 1, runner.commands.count { it == DATA_READ })
+            assertEquals(listOf(150L), waits)
+            assertEquals(Feature.MOBILE_DATA, result.remaining.entries.single().feature)
+        } finally {
+            Thread.interrupted() // Do not leak the tested worker flag to the JUnit runner.
+        }
     }
 
     @Test fun budgetExhaustedDuringWaitDoesNotStartAnotherRead() {
