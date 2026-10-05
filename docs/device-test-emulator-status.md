@@ -2,7 +2,7 @@
 
 Live status of the emulator-runnable parts of the device checklist. This file is updated and pushed as the run goes on.
 
-**Last update:** 2026-10-05 21:10 (+03) · **Run state:** IN PROGRESS
+**Last update:** 2026-10-05 21:45 (+03) · **Run state:** IN PROGRESS
 
 ## Setup
 - Build: `akadoze-2.0` @ 896e778, `:app:assembleDebug`
@@ -18,7 +18,7 @@ Legend: ✅ pass · ❌ fail (finding below) · ⚠️ partial / emulator-limite
 |---|------|--------|-------|
 | 0 | Install over old version, settings preserved | ✅ | 1.10.2 (Base 42f8e73) → 1.11.0. 11 seeded non-default prefs (mode, delay, Wi-Fi, saver, period, tunable…) byte-identical after upgrade; Shizuku grant kept |
 | 1 | Self-tests under Shizuku | ✅ | buttons disabled with reason while stopped; Test Doze → PASSED; Test sensors → PASSED; afterwards `Mode : NORMAL`, `mForceIdle=false` |
-| 2 | 30+ min screen-off session with movement | 🔄 | started 21:08 (2nd attempt), on battery (`dumpsys battery unplug`), acceleration changed every 2 min via emulator console |
+| 2 | 30+ min screen-off session with movement | ⚠️ | **Enforcement ✅:** 21:08–21:39 on battery, acceleration changed every 2 min; forced IDLE + `Mode : RESTRICTED` + Wi-Fi off + saver on in all 31 one-minute samples, no idle exits, so 0 re-forces (emulator motion can't reach a restricted detector). Screen-on: `NORMAL`, `mForceIdle=false`, Wi-Fi/saver restored ✅. **Monitor card ❌:** "Deep 98% · Unknown 2%" is right, but it says "Sensors on ✗ / motion sensors were not restricted" (**F2**) and "History truncated" (**F3**) |
 | 3 | Kill Shizuku mid-doze | ⏳ | |
 | 4 | Honest settings (Shizuku) | 🔄 | "Disable all sensors" disabled: "Requires root — not available with Shizuku". Notification blocklist enabled (correct, API 36 ≥ 13). Auto-rotate fix disabled as "No longer used…". No setprop item in main Settings. Value-preservation on switch back to root pending |
 | 5 | Restore system state | ⏳ | |
@@ -40,6 +40,8 @@ Legend: ✅ pass · ❌ fail (finding below) · ⚠️ partial / emulator-limite
 
 ## Findings
 - **F1 (low, monitor UI): phantom session card from pre-session events.** Before the first screen-off, journal rows carry `sessionId=0` (here two `ACCESS_CHANGED` rows written at install/first launch). `SessionAggregator.summarize` keeps `sessionId >= 0` (`monitor/SessionAggregator.kt:47`), so the monitor shows "Session from 8:52 PM, 0 minutes … Partial session, Never reached deep Doze, Sensors unverified" though no screen-off ever happened. Likely one such card per boot. Fix idea: drop `sessionId == 0` from session grouping (keep them in the journal).
+- **F2 (medium, monitor/summary): every normally ended session reports "motion sensors were not restricted".** Journal for the 30-min session: `SENSORS_RESTRICTED sensor=RESTRICTED` at 85 s, then teardown `VERIFY sensor=NORMAL` at 1 910 529 ms, *then* `SCREEN_ON` at 1 910 846 ms (teardown readbacks are journaled before the SCREEN_ON row). `SessionAggregator.summarizeSession` keeps the *last* sensor observation before `end` (`SessionAggregator.kt:130-138`), which is the post-restore NORMAL, so the verdict is `NO`. The headline sensor metric (and likely the screen-on summary notification) is wrong for real sessions. Fix idea: judge restriction from observations before teardown starts (or "any verified RESTRICTED while screen off"); add a JVM test with the real event order.
+- **F3 (low, monitor): false "History truncated".** `HistoryMerger.merge` sets `truncated` when the first OS idling-history entry is later than SCREEN_OFF (`HistoryMerger.kt:47`). On a fresh boot (or whenever nothing idle-related happened before the session) the OS history is just `deep-idle` at +30 s (after the Doze delay), so a complete history is flagged truncated. Needs a better signal (e.g. history non-empty before the session but missing the carry-in, or buffer at capacity).
 - **O1 (observation, wording):** with the screen on, the monitor reads "Deep Doze: Active / Light Doze: Active". That's the deviceidle state name (`ACTIVE` = *not* dozing), but it reads as "Doze is active". Consider "Not idle (screen/device active)".
 
 ## Log
@@ -48,3 +50,4 @@ Legend: ✅ pass · ❌ fail (finding below) · ⚠️ partial / emulator-limite
 - 20:58 service on, both self-tests passed.
 - 21:00 first item-2 attempt: forced IDLE + sensors RESTRICTED + Wi-Fi off + saver on, all within the 30 s delay ✅. Then a 2nd emulator was booted for parallel work and **both emulators hung and died** (host contention; QEMU hanging-thread errors). Not an app problem. Back to one emulator and serial runs; read-only AVD so it was re-provisioned from scratch (`install -g`, Shizuku over adb, QA prefs).
 - 21:08 item 2 restarted.
+- 21:39 item 2 done; enforcement solid for 30 min; monitor summary wrong about sensors (F2) and truncation (F3). F1 seen again (a 9:07 phantom card, now with "Access lost" from the startup NO_ACCESS→SHELL transition).
