@@ -28,6 +28,7 @@ class RestoreOnlyRequest(
     private val completed: () -> Unit,
     private val continuation: RestoreContinuation?,
     private val skipped: () -> Unit,
+    private val hasPendingRestore: () -> Boolean = { false },
 ) {
     private var finished = false
     private var announcedNoAccess = false
@@ -79,13 +80,14 @@ class RestoreOnlyRequest(
         if (finished) return
         finished = true
         val state = access.state
-        // Settled APP also needs a later recovery: it may have finished before the nine-second timer.
-        val later = !state.resolved || state.level < AccessLevel.SHELL || !restoredReady
+        // Admission is not completion: a deadline or lost access can leave durable intent behind.
+        val later = !state.resolved || state.level < AccessLevel.SHELL || !restoredReady || hasPendingRestore()
         access.removeListener(listener)
         cancelTimeout?.invoke()
+        // Acquire a ready follow-up's wakeful window before releasing this window or goAsync result.
+        if (later) continuation?.arm(announcedNoAccess)
         completed()
         if (continuation == null && !restoredReady && !announcedNoAccess) skipped()
-        if (later) continuation?.arm(announcedNoAccess)
     }
 
     private companion object {
