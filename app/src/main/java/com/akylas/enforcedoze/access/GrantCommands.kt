@@ -7,7 +7,7 @@ object GrantCommands {
         val pkg = PackageNames.requireValid(packageName)
         val service = PackageNames.requireValid(notificationService)
         val commands = linkedMapOf<String, String>()
-        for (permission in listOf("DUMP", "WRITE_SECURE_SETTINGS", "READ_PHONE_STATE", "READ_LOGS")) {
+        for (permission in listOf("DUMP", "WRITE_SECURE_SETTINGS", "READ_PHONE_STATE")) {
             commands[permission] = "pm grant $pkg android.permission.$permission"
         }
         if (apiLevel >= 31) commands["SCHEDULE_EXACT_ALARM"] = "appops set $pkg SCHEDULE_EXACT_ALARM allow"

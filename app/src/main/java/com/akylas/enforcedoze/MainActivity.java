@@ -311,7 +311,7 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         if (isSuAvailable || isShizukuAvailable) {
             if (!helpersRequested) {
                 helpersRequested = true;
-                AsyncTask.execute(() -> accessManager.grantHelpers());
+                AsyncTask.execute(() -> accessManager.grantHelpersAutomatically());
             }
         } else {
             helpersRequested = false;

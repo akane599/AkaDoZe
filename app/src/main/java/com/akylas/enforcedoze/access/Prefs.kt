@@ -1,6 +1,8 @@
 package com.akylas.enforcedoze.access
 
 object Prefs {
+    // Internal grant-attempt record, cleared by the existing preferences reset.
+    const val APPLIED_HELPERS = "appliedHelpers"
     const val EXECUTION_MODE = "executionMode"
     const val MODE_ROOT = "root"
     const val MODE_SHIZUKU = "shizuku"

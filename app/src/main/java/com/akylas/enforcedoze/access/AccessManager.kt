@@ -28,6 +28,7 @@ class AccessManager private constructor(context: Context) : com.akylas.enforcedo
     private val prefs = PreferenceManager.getDefaultSharedPreferences(app)
     private val main = Handler(Looper.getMainLooper())
     private val lock = Any()
+    private val helperGrantLock = Any()
     private val listeners = CopyOnWriteArraySet<Listener>()
     private val shizukuListeners = CopyOnWriteArraySet<ShizukuListener>()
     private val probePending = AtomicBoolean(false)
@@ -157,15 +158,32 @@ class AccessManager private constructor(context: Context) : com.akylas.enforcedo
         }
     }
 
-    /** Returns one transport result per attempted helper, including failures; does not short-circuit. */
-    fun grantHelpers(): Map<String, CommandResult> {
+    /** Explicit user actions may retry every helper; results never imply effective grants. */
+    fun grantHelpers(): Map<String, CommandResult> = grantHelpers(HelperGrantPolicy.Trigger.EXPLICIT)
+
+    /** Opening a screen must not undo a user's later revocation of helper access. */
+    fun grantHelpersAutomatically(): Map<String, CommandResult> = grantHelpers(HelperGrantPolicy.Trigger.AUTOMATIC)
+
+    private fun grantHelpers(trigger: HelperGrantPolicy.Trigger): Map<String, CommandResult> = synchronized(helperGrantLock) {
         requireBackgroundThread()
+        val applied = prefs.getStringSet(Prefs.APPLIED_HELPERS, emptySet()).orEmpty().toMutableSet()
+        val commands = HelperGrantPolicy.commands(
+            GrantCommands.forApp(Build.VERSION.SDK_INT, app.packageName, NotificationService::class.java.name),
+            applied,
+            trigger,
+        )
         val results = linkedMapOf<String, CommandResult>()
-        for ((item, command) in GrantCommands.forApp(Build.VERSION.SDK_INT, app.packageName, NotificationService::class.java.name)) {
+        for ((item, command) in commands) {
+            applied.add(item)
+            // Persist before execution: a permission grant can kill the process. Failed attempts
+            // also require an explicit retry rather than silently overriding a later revocation.
+            check(prefs.edit().putStringSet(Prefs.APPLIED_HELPERS, applied.toSet()).commit()) {
+                "Unable to persist helper grant record"
+            }
             results[item] = controlRunner.run(command)
         }
         publish() // Refresh actual DUMP/WSS grants after the commands, not based on their exit codes.
-        return Collections.unmodifiableMap(results)
+        Collections.unmodifiableMap(results)
     }
 
     private fun readGrants() = Grants(

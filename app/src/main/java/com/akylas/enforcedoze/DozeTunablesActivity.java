@@ -198,7 +198,7 @@ public class DozeTunablesActivity extends AppCompatActivity {
             refreshApplyMenuItem();
             if (!helpersRequested && (state.getLevel() == AccessLevel.ROOT || state.getLevel() == AccessLevel.SHELL)) {
                 helpersRequested = true;
-                AsyncTask.execute(() -> accessManager.grantHelpers());
+                AsyncTask.execute(() -> accessManager.grantHelpersAutomatically());
             }
         };
 
