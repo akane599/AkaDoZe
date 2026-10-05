@@ -152,6 +152,53 @@ public class SessionHonestyTest {
         assertTrue(AccessUi.selfTestOffered(SelfTestKind.DOZE, shell, true, API));
     }
 
+    // --- SQ-126 (SQ-53 S3): cold-start discovery is "checking", not an access problem ---
+
+    @Test
+    public void unresolvedShellOrRootRunsNoSessionsYet() {
+        // The same rule as sessionMode: nothing runs until discovery settles.
+        assertFalse(AccessUi.sessionsAvailable(unresolved(AccessLevel.SHELL, true)));
+        assertFalse(AccessUi.sessionsAvailable(unresolved(AccessLevel.ROOT, true)));
+        assertFalse(AccessUi.selfTestOffered(SelfTestKind.DOZE, unresolved(AccessLevel.ROOT, true), false, API));
+    }
+
+    @Test
+    public void discoveryShowsCheckingInsteadOfNeedsSessionAccess() {
+        AccessState[] discovering = {unresolved(AccessLevel.APP, false), unresolved(AccessLevel.APP, true),
+                unresolved(AccessLevel.NONE, false), unresolved(AccessLevel.ROOT, true)};
+        for (AccessState state : discovering) {
+            for (boolean shizukuMode : new boolean[] {false, true}) {
+                for (Feature feature : Feature.values()) {
+                    Reason reason = AccessUi.unavailableReason(feature, state, shizukuMode, API);
+                    if (AccessUi.offered(feature, state, shizukuMode, API)) continue;
+                    assertTrue(state + " " + feature + " reads checking, not " + reason,
+                            AccessUi.checking(feature, state, reason));
+                }
+            }
+        }
+        AccessState app = unresolved(AccessLevel.APP, true);
+        assertTrue("the session rule would say Needs Shizuku or root", AccessUi.checking(Feature.FORCE_DOZE, app,
+                AccessUi.unavailableReason(Feature.FORCE_DOZE, app, false, API)));
+    }
+
+    @Test
+    public void aVersionLimitIsFinalEvenWhileChecking() {
+        AccessState app = unresolved(AccessLevel.APP, true);
+        assertFalse(AccessUi.checking(Feature.APP_SUSPEND, app, Reason.API_TOO_OLD));
+        assertFalse(AccessUi.checking(Feature.BIOMETRICS, app, Reason.NOT_EFFECTIVE_ON_THIS_VERSION));
+    }
+
+    @Test
+    public void aDefinitiveNoneStillNamesTheSessionRule() {
+        AccessState none = state(AccessLevel.NONE, false, false);
+        Reason reason = AccessUi.unavailableReason(Feature.FORCE_DOZE, none, false, API);
+        assertFalse(AccessUi.checking(Feature.FORCE_DOZE, none, reason));
+        assertTrue(AccessUi.sessionBlocked(Feature.FORCE_DOZE, none, reason));
+        assertEquals(AccessUi.Action.ADB_INSTRUCTIONS, AccessUi.primaryAction(none, false));
+        assertFalse("an offered feature is never checking",
+                AccessUi.checking(Feature.MOTION_SENSORS, unresolved(AccessLevel.APP, true), null));
+    }
+
     // --- N4: debt notice keys ---
 
     private static final class Memory implements DebtRules.NoticeGate.Store {

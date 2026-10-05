@@ -77,9 +77,9 @@ public final class AccessUi {
         return reason;
     }
 
-    /** Full sessions (force Doze and every in-Doze change) need Shizuku or root. */
+    /** Full sessions (force Doze and every in-Doze change) need Shizuku or root, once discovery settles. */
     public static boolean sessionsAvailable(AccessState state) {
-        return SessionAccess.canRunSessions(state.getLevel());
+        return state.getResolved() && SessionAccess.canRunSessions(state.getLevel());
     }
 
     /**
@@ -152,6 +152,20 @@ public final class AccessUi {
         return feature == Feature.MOTION_SENSORS && state.getLevel() == AccessLevel.APP;
     }
 
+    /**
+     * Access is still being discovered (the Shizuku window, or root's 1+3 probe) and the feature isn't
+     * offered for a reason discovery can still change: the UI says "checking", not an access problem.
+     */
+    static boolean checking(Feature feature, AccessState state, Reason reason) {
+        return !state.getResolved() && !isVersionLimit(reason)
+                && (reason != null || sessionBlocked(feature, state, reason));
+    }
+
+    /** Final whatever access resolves to. */
+    private static boolean isVersionLimit(Reason reason) {
+        return reason == Reason.API_TOO_OLD || reason == Reason.NOT_EFFECTIVE_ON_THIS_VERSION;
+    }
+
     private static boolean isPlatformLimit(Reason reason) {
         return reason == Reason.REQUIRES_ROOT || reason == Reason.API_TOO_OLD
                 || reason == Reason.NOT_EFFECTIVE_ON_THIS_VERSION;
@@ -176,6 +190,7 @@ public final class AccessUi {
     /** Why the UI can't offer the feature as working, or null when it can. */
     public static String unavailableText(Context context, Feature feature, AccessState state, boolean shizukuMode) {
         Reason reason = unavailableReason(feature, state, shizukuMode);
+        if (checking(feature, state, reason)) return context.getString(R.string.access_status_checking);
         if (sessionBlocked(feature, state, reason)) return context.getString(R.string.reason_sessions_need_access);
         return reason == null ? null : reasonText(context, reason, shizukuMode);
     }
@@ -239,10 +254,23 @@ public final class AccessUi {
     public static List<String> problems(Context context, AccessState state, boolean shizukuMode, boolean musicWhitelist,
                                         boolean sensorsEnabled) {
         List<String> problems = new ArrayList<>();
+        // Still discovering: the status line says "checking access", and no access problem is known yet.
+        if (state.getResolved()) addAccessProblems(problems, context, state, shizukuMode, sensorsEnabled);
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+            problems.add(context.getString(R.string.access_problem_plain, context.getString(R.string.access_problem_notifications_off)));
+        }
+        if (musicWhitelist && !hasListenerAccess(context)) {
+            problems.add(context.getString(R.string.access_problem_plain, context.getString(R.string.access_problem_music_listener)));
+        }
+        return problems;
+    }
+
+    private static void addAccessProblems(List<String> problems, Context context, AccessState state, boolean shizukuMode,
+                                          boolean sensorsEnabled) {
         if (sessionsAvailable(state)) {
             addFeatureProblem(problems, context, state, shizukuMode, Feature.FORCE_DOZE, R.string.access_feature_force_doze);
             addFeatureProblem(problems, context, state, shizukuMode, Feature.MOTION_SENSORS, R.string.access_feature_motion_sensors);
-        } else if (state.getResolved()) {
+        } else {
             // One reason for the session features; the status line above names the transport problem.
             problems.add(context.getString(R.string.access_problem_plain, context.getString(sessionProblem(state, sensorsEnabled))));
         }
@@ -256,13 +284,6 @@ public final class AccessUi {
                         context.getString(R.string.access_problem_helpers_missing, android.text.TextUtils.join(", ", missing))));
             }
         }
-        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
-            problems.add(context.getString(R.string.access_problem_plain, context.getString(R.string.access_problem_notifications_off)));
-        }
-        if (musicWhitelist && !hasListenerAccess(context)) {
-            problems.add(context.getString(R.string.access_problem_plain, context.getString(R.string.access_problem_music_listener)));
-        }
-        return problems;
     }
 
     private static void addFeatureProblem(List<String> problems, Context context, AccessState state, boolean shizukuMode,

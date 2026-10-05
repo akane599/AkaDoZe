@@ -141,6 +141,8 @@ public final class AccessCard {
         problems.setVisibility(list.isEmpty() ? View.GONE : View.VISIBLE);
         problems.setText(TextUtils.join("\n", list));
         action.setText(AccessUi.actionLabel(AccessUi.primaryAction(next, shizukuMode)));
+        // While discovery runs (Shizuku window, root 1+3) there is nothing to repair yet.
+        action.setVisibility(next.getResolved() ? View.VISIBLE : View.GONE);
         renderDebt();
     }
 
@@ -208,6 +210,7 @@ public final class AccessCard {
         boolean visible = restoring || ledgerDebt || debtDetail != null;
         debtCard.setVisibility(visible ? View.VISIBLE : View.GONE);
         if (!visible) return;
+        boolean known = state != null && state.getResolved();
         boolean privileged = state != null && AccessUi.isPrivileged(state);
         String text;
         if (restoring && debtDetail == null) {
@@ -216,7 +219,7 @@ public final class AccessCard {
             text = activity.getString("ACCESS_LOST".equals(debtDetail)
                     ? R.string.access_debt_access_lost : R.string.access_debt_generic);
             if (!dismissible.isEmpty()) text = text + "\n\n" + DamagedRecords.debtText(activity, dismissible);
-            if (!privileged) text = text + "\n" + activity.getString(R.string.access_debt_needs_access);
+            if (known && !privileged) text = text + "\n" + activity.getString(R.string.access_debt_needs_access);
         }
         debtText.setText(text);
         restore.setEnabled(privileged && !(restoring && debtDetail == null));

@@ -18,6 +18,10 @@ import com.akylas.enforcedoze.service.SessionMode;
 
 import org.junit.Test;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -50,6 +54,40 @@ public class AccessRepairTest {
         assertEquals(SessionMode.RESTORE_ONLY, NoticeSink.modeAfterLoss(AccessLevel.APP, false, true));
         assertEquals(SessionMode.RESTORE_ONLY, NoticeSink.modeAfterLoss(AccessLevel.APP, true, false));
         assertEquals(SessionMode.RESTORE_ONLY, NoticeSink.modeAfterLoss(AccessLevel.NONE, true, true));
+    }
+
+    // --- SQ-126 (SQ-53 S3): no access-repair prompt while access is still being discovered ---
+
+    @Test
+    public void accessCardOffersRepairOnlyOnceAccessIsKnown() throws IOException {
+        String card = source("src/main/java/com/akylas/enforcedoze/ui/AccessCard.java");
+        String bind = between(card, "private void bind(AccessState next)", "private void checkLedger(");
+        assertTrue("the repair button waits for a definitive answer",
+                bind.contains("action.setVisibility(next.getResolved() ? View.VISIBLE : View.GONE);"));
+        String debt = between(card, "private void renderDebt()", "debtText.setText(text);");
+        assertTrue("no 'Restoring needs root or Shizuku' while checking",
+                debt.contains("if (known && !privileged)"));
+        String ui = source("src/main/java/com/akylas/enforcedoze/ui/AccessUi.java");
+        String problems = between(ui, "public static List<String> problems(", "private static void addAccessProblems(");
+        assertTrue("access problems wait for discovery; notifications and music still show",
+                problems.contains("if (state.getResolved()) addAccessProblems("));
+        String text = between(ui, "public static String unavailableText(", "public static boolean isRootOnly(");
+        assertTrue("checking wins over the session rule",
+                text.indexOf("R.string.access_status_checking") >= 0
+                        && text.indexOf("R.string.access_status_checking") < text.indexOf("R.string.reason_sessions_need_access"));
+    }
+
+    private static String source(String path) throws IOException {
+        File file = new File(path).isFile() ? new File(path) : new File("app/" + path);
+        return new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+    }
+
+    private static String between(String text, String start, String end) {
+        int from = text.indexOf(start);
+        assertTrue("missing " + start, from >= 0);
+        int to = text.indexOf(end, from);
+        assertTrue("missing " + end, to >= 0);
+        return text.substring(from, to);
     }
 
     // --- FIX-1 / NIT-1: the Shizuku wait decision ---
