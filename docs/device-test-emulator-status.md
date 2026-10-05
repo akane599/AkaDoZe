@@ -2,7 +2,7 @@
 
 Live status of the emulator-runnable parts of the device checklist. This file is updated and pushed as the run goes on.
 
-**Last update:** 2026-10-05 21:50 (+03) · **Run state:** IN PROGRESS
+**Last update:** 2026-10-05 22:00 (+03) · **Run state:** IN PROGRESS
 
 ## Setup
 - Build: `akadoze-2.0` @ 896e778, `:app:assembleDebug`
@@ -21,10 +21,10 @@ Legend: ✅ pass · ❌ fail (finding below) · ⚠️ partial / emulator-limite
 | 2 | 30+ min screen-off session with movement | ⚠️ | **Enforcement ✅:** 21:08–21:39 on battery, acceleration changed every 2 min; forced IDLE + `Mode : RESTRICTED` + Wi-Fi off + saver on in all 31 one-minute samples, no idle exits, so 0 re-forces (emulator motion can't reach a restricted detector). Screen-on: `NORMAL`, `mForceIdle=false`, Wi-Fi/saver restored ✅. **Monitor card ❌:** "Deep 98% · Unknown 2%" is right, but it says "Sensors on ✗ / motion sensors were not restricted" (**F2**) and "History truncated" (**F3**) |
 | 3 | Kill Shizuku mid-doze | ⚠️ | Screen off 21:40:51, `pkill shizuku_server` at 21:43:26. Debt notice "Sensors/Doze may still be restricted" ✅ and "Doze forcing stopped … still restricts motion sensors" ✅ (DUMP held, so sensor-only downgrade). Journal: ACCESS_LOST debt, RESTORE_FAILED ×3 (NO_ACCESS), sensors re-restricted via app UID. Shizuku restarted (screen still off): "Access is back", all three debts restored (VERIFY rows), full forcing resumed in the **same** session ✅. Screen on: NORMAL, unforced, Wi-Fi/saver back ✅; monitor "nothing left to restore" ✅. **But** the debt notice stayed posted after both restores until the app was opened (**F4**) |
 | 4 | Honest settings (Shizuku) | 🔄 | "Disable all sensors" disabled: "Requires root — not available with Shizuku". Notification blocklist enabled (correct, API 36 ≥ 13). Auto-rotate fix disabled as "No longer used…". No setprop item in main Settings. Value-preservation on switch back to root pending |
-| 5 | Restore system state | ⏳ | |
+| 5 | Restore system state | ✅ | App-owned debt kept through screen-on (Shizuku killed mid-doze): monitor shows the debt text, Restore disabled with "Restoring needs root or Shizuku access" ✅. Shizuku restarted: service auto-restored within ~1 s; Restore tapped → `Mode : NORMAL`, `mForceIdle=false`, Wi-Fi/saver back ✅. Note: a `force-idle` set outside the app is (by design) not undone and the button gives no feedback (O2) |
 | 6 | Mode switch root → Shizuku | ⏳ | no app root here, so it may only be partial |
-| 7 | Process death mid-session | ⏳ | |
-| 8 | Radios/features restore | ⏳ | Wi-Fi/data/location/airplane/battery saver only |
+| 7 | Process death mid-session | ✅ | `am crash` 2.5 min into an enforced session: service back after 5 s (START_STICKY, restartCount=1), restored everything (verified), opened a new session and re-enforced after the 30 s delay. Screen on: NORMAL / unforced / radios back. (Restore rows carry sessionId 0, feeding F1) |
+| 8 | Radios/features restore | ⚠️ | Wi-Fi + data + BT + location + saver: all off while dozing, all restored + verified on screen-on ✅. Adding airplane: all restored, but mobile-data readback ~100 ms after airplane-off → `UNVERIFIED` → false RESTORE_FAILED + debt notice (**F5**, 2/2). Biometrics, app suspend and notification block not exercised |
 | 9 | Tasker/automation gates | ⏳ | via `adb shell am broadcast` |
 | 10 | Summary notification (13+) | ⚠️ | permission granted + setting on: "While the screen was off — Deep Doze 59% of 3 min · 27% unknown · 0 maintenance · sensors on ✗ · 0.0%/h" posted on screen-on ✅. "sensors on ✗" is wrong (F2). Denied-permission case pending |
 | 11 | Update / reboot | ⏳ | |
@@ -39,12 +39,14 @@ Legend: ✅ pass · ❌ fail (finding below) · ⚠️ partial / emulator-limite
 | SQ-126 | Cold-start "checking" (root) | ⏭️ | needs app root |
 
 ## Findings
-Filed on the Sidequest board as SQ-1 (F2), SQ-2 (F1), SQ-3 (F3), SQ-4 (F4); not dispatched during the emulator run (Gradle load destabilised the emulator earlier).
+Filed on the Sidequest board as SQ-1 (F2), SQ-2 (F1), SQ-3 (F3), SQ-4 (F4), SQ-5 (F5); not dispatched during the emulator run (Gradle load destabilised the emulator earlier).
 
 - **F1 (low, monitor UI): phantom session card from pre-session events.** Before the first screen-off, journal rows carry `sessionId=0` (here two `ACCESS_CHANGED` rows written at install/first launch). `SessionAggregator.summarize` keeps `sessionId >= 0` (`monitor/SessionAggregator.kt:47`), so the monitor shows "Session from 8:52 PM, 0 minutes … Partial session, Never reached deep Doze, Sensors unverified" though no screen-off ever happened. Likely one such card per boot. Fix idea: drop `sessionId == 0` from session grouping (keep them in the journal).
 - **F2 (medium, monitor/summary): every normally ended session reports "motion sensors were not restricted".** Journal for the 30-min session: `SENSORS_RESTRICTED sensor=RESTRICTED` at 85 s, then teardown `VERIFY sensor=NORMAL` at 1 910 529 ms, *then* `SCREEN_ON` at 1 910 846 ms (teardown readbacks are journaled before the SCREEN_ON row). `SessionAggregator.summarizeSession` keeps the *last* sensor observation before `end` (`SessionAggregator.kt:130-138`), which is the post-restore NORMAL, so the verdict is `NO`. The headline sensor metric (and likely the screen-on summary notification) is wrong for real sessions. Fix idea: judge restriction from observations before teardown starts (or "any verified RESTRICTED while screen off"); add a JVM test with the real event order.
 - **F3 (low, monitor): false "History truncated".** `HistoryMerger.merge` sets `truncated` when the first OS idling-history entry is later than SCREEN_OFF (`HistoryMerger.kt:47`). On a fresh boot (or whenever nothing idle-related happened before the session) the OS history is just `deep-idle` at +30 s (after the Doze delay), so a complete history is flagged truncated. Needs a better signal (e.g. history non-empty before the session but missing the carry-in, or buffer at capacity).
 - **F4 (low-medium, notices): "Sensors/Doze may still be restricted" outlives the debt.** After Shizuku came back the service verified all three restores (journal VERIFY FORCE_DOZE/BATTERY_SAVER/WIFI), and screen-on teardown verified NORMAL/unforced, yet notification 8802 stayed until the app was opened. `NoticeSink.cancelDebt` is only called from UI ledger checks (`DozeMonitorActivity.java:484`, `AccessCard.java:164`); service-side verified restores only clear the gate (`NoticeSink.emit` VERIFY/SENSORS_RESTORED). A user who never opens the app keeps a false alarm. Related: the session card lists "Restore failed, Restore pending" with no sign that it was later restored.
+- **F5 (low-medium, restore): false mobile-data debt after airplane restore.** With airplane + mobile data enabled, screen-on restore reads `settings get global mobile_data` right after `airplane-mode disable`; it reads 0 for ~250 ms, so the journal gets `VERIFY MOBILE_DATA: UNVERIFIED → RESTORE_FAILED → RECOVERY_DEBT` and the "Sensors/Doze may still be restricted" notice appears. The value becomes 1 on its own and the next ledger check clears it. Needs a bounded re-read (or settling after airplane-off). The notice title is also generic for a data-only debt.
+- **O2 (observation):** "Restore system state" when forced idle comes from outside the app (e.g. `dumpsys deviceidle force-idle`) changes nothing and gives no feedback while the card still says "Forced idle: Yes". That's correct ownership, but the user can't tell the button did anything.
 - **O1 (observation, wording):** with the screen on, the monitor reads "Deep Doze: Active / Light Doze: Active". That's the deviceidle state name (`ACTIVE` = *not* dozing), but it reads as "Doze is active". Consider "Not idle (screen/device active)".
 
 ## Log
@@ -54,4 +56,5 @@ Filed on the Sidequest board as SQ-1 (F2), SQ-2 (F1), SQ-3 (F3), SQ-4 (F4); not 
 - 21:00 first item-2 attempt: forced IDLE + sensors RESTRICTED + Wi-Fi off + saver on, all within the 30 s delay ✅. Then a 2nd emulator was booted for parallel work and **both emulators hung and died** (host contention; QEMU hanging-thread errors). Not an app problem. Back to one emulator and serial runs; read-only AVD so it was re-provisioned from scratch (`install -g`, Shizuku over adb, QA prefs).
 - 21:08 item 2 restarted.
 - 21:40–21:45 item 3 + item 10 run; F4 found.
+- 21:45–21:58 items 7, 5, 8 run; F5 found.
 - 21:39 item 2 done; enforcement solid for 30 min; monitor summary wrong about sensors (F2) and truncation (F3). F1 seen again (a 9:07 phantom card, now with "Access lost" from the startup NO_ACCESS→SHELL transition).
