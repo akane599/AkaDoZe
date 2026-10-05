@@ -106,6 +106,12 @@ before, and nothing should be reset.
     own switch and with the journal/ledger outcome.
   - Repeat after swapping the default-data SIM, including a swap between Doze entry and restore.
   - If the global bit and the affected SIM disagree, file it with these outputs.
+- *Interrupted root command (A4, SQ-107).*
+  - On root, make a root command outlast its timeout. For example, run a self-test while `su` is slowed by a
+    pending Magisk prompt, or with a long-running blocking command.
+  - After the timeout, `ps -A | grep -E ' su|sh$'` must show no leftover su session from AkaDoZe. The
+    interrupted change must not land afterwards (check its readback).
+  - The next root command opens a fresh su session and succeeds.
 
 **If something fails:** Doze monitor → "Share report", plus
 `adb logcat -d --pid=$(adb shell pidof -s com.akylas.enforcedoze) | tail -200`.
