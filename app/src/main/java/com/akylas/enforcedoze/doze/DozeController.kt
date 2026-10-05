@@ -191,97 +191,189 @@ class DozeController @JvmOverloads constructor(
 
     private fun restoreLedger(apiLevel: Int, grants: Grants, selected: (LedgerEntry) -> Boolean,
                               admission: () -> Boolean): ExitResult {
-        fun admitted() = accessResolved() && admission()
         return synchronized(this) {
             this.apiLevel = apiLevel
             this.grants = grants
-            var ledger = try {
-                store.load()
-            } catch (_: Exception) {
-                emit(EventType.ERROR, reason = Reason.UNVERIFIED)
-                return@synchronized ExitResult(emptyList(), RestoreLedger(), listOf(ExitError.LEDGER_LOAD_FAILED))
-            }
-            val errors = mutableListOf<ExitError>()
-            val restored = mutableListOf<LedgerEntry>()
-            // Stable core priority, then reverse durable apply order (airplane before radios).
-            val ordered = ledger.entries.asReversed().filter(selected).sortedBy {
-                when (it.feature) {
-                    Feature.MOTION_SENSORS -> 0
-                    Feature.FORCE_DOZE -> 1
-                    Feature.BATTERY_SAVER -> 2
-                    else -> 3
-                }
-            }
-            var airplaneRestored = false
-            for (entry in ordered) {
-                if (!admitted()) break
-                val entryApi = entry.apiLevel ?: apiLevel
-                val unavailable = resolver.status(entry.feature, control.level, entryApi, grants) as? FeatureStatus.Unavailable
-                val commands = restoreCommands(entry, entryApi)
-                // Older versions persisted unread originals but never mutated their features.
-                var success = entry.originalValue == null
-                if (success) emit(EventType.SKIPPED, entry.feature, entry.target, Reason.UNVERIFIED)
-                var debtReason = unavailable?.reason
-                if (unavailable == null && commands != null) {
-                    for (command in commands) {
-                        if (!admitted()) return@synchronized ExitResult(restored.toList(), ledger, errors.toList())
-                        val current = resolver.status(entry.feature, control.level, entryApi, grants) as? FeatureStatus.Unavailable
-                        if (current != null) {
-                            debtReason = current.reason
-                            break
-                        }
-                        run(command)
-                    }
-                    if (!admitted()) return@synchronized ExitResult(restored.toList(), ledger, errors.toList())
-                    if (debtReason == null) {
-                        success = verifyRestore(entry, entryApi, airplaneRestored, ::admitted)
-                        if (!success && entry.feature == Feature.MOTION_SENSORS && lastSensor != SensorMode.UNVERIFIED &&
-                            resolver.status(entry.feature, control.level, entryApi, grants) == FeatureStatus.Available
-                        ) {
-                            commands.forEach { run(it) }
-                            success = verifyRestore(entry, entryApi, airplaneRestored, ::admitted)
-                        }
-                    }
-                }
-                if (success && entry.feature == Feature.AIRPLANE && entry.originalValue != null) airplaneRestored = true
-                // A backend can die during the last command/readback, too.
-                if (!success && debtReason == null) {
-                    debtReason = (resolver.status(entry.feature, control.level, entryApi, grants) as? FeatureStatus.Unavailable)?.reason
-                }
-                if (!admitted()) break
-                val updated = ledger.entries.toMutableList()
-                val index = updated.indexOf(entry)
-                if (success) {
-                    updated.removeAt(index)
-                } else {
-                    updated[index] = entry.copy(
-                        attempts = if (entry.attempts == Int.MAX_VALUE) entry.attempts else entry.attempts + 1,
-                        debt = debtReason != null,
-                    )
-                    emit(EventType.RESTORE_FAILED, entry.feature, entry.target, debtReason ?: Reason.UNVERIFIED)
-                }
-                val next = RestoreLedger(updated)
-                try {
-                    store.save(next)
-                    ledger = next
-                    if (success && entry.originalValue != null) restored.add(entry)
-                } catch (_: Exception) {
-                    // Keep the durable intent and continue restoring the other entries.
-                    errors.add(ExitError.LEDGER_SAVE_FAILED)
-                    emit(EventType.ERROR, entry.feature, entry.target, Reason.UNVERIFIED)
-                }
-                // Announce new failures or debt transitions, not every retry/screen cycle.
-                // A verified restore with failed durable cleanup must still announce retained intent.
-                val newFailure = entry.attempts == 0 && !entry.debt
-                val debtChanged = entry.debt != (debtReason != null)
-                if ((success || newFailure || debtChanged) &&
-                    ledger.entries.any { sameKey(it, entry.feature, entry.target) }
-                ) {
-                    emit(EventType.RECOVERY_DEBT, entry.feature, entry.target, debtReason ?: Reason.UNVERIFIED)
-                }
-            }
-            ExitResult(restored.toList(), ledger, errors.toList())
+            val ledger = loadRestoreLedger()
+                ?: return@synchronized ExitResult(emptyList(), RestoreLedger(), listOf(ExitError.LEDGER_LOAD_FAILED))
+            restoreEntries(ledger, selected, apiLevel, grants) { restoreAdmitted(admission) }
         }
+    }
+
+    private fun restoreAdmitted(admission: () -> Boolean): Boolean {
+        return accessResolved() && admission()
+    }
+
+    private fun loadRestoreLedger(): RestoreLedger? {
+        return try {
+            store.load()
+        } catch (_: Exception) {
+            emit(EventType.ERROR, reason = Reason.UNVERIFIED)
+            null
+        }
+    }
+
+    private fun orderedRestoreEntries(ledger: RestoreLedger, selected: (LedgerEntry) -> Boolean): List<LedgerEntry> {
+        return ledger.entries.asReversed().filter(selected).sortedBy { restorePriority(it.feature) }
+    }
+
+    // Stable core priority, then reverse durable apply order (airplane before radios).
+    private fun restorePriority(feature: Feature): Int {
+        return when (feature) {
+            Feature.MOTION_SENSORS -> 0
+            Feature.FORCE_DOZE -> 1
+            Feature.BATTERY_SAVER -> 2
+            Feature.DOZE_STATE_READ, Feature.TUNABLES, Feature.WIFI, Feature.MOBILE_DATA,
+            Feature.BLUETOOTH, Feature.AIRPLANE, Feature.LOCATION, Feature.BIOMETRICS,
+            Feature.APP_SUSPEND, Feature.NOTIFICATION_BLOCK, Feature.WHITELIST_EDIT,
+            Feature.FOCUSED_APP, Feature.SENSOR_PRIVACY_ALL, Feature.SETPROP_DOZE, Feature.PM_DISABLE -> 3
+        }
+    }
+
+    private fun restoreEntries(
+        ledger: RestoreLedger, selected: (LedgerEntry) -> Boolean, apiLevel: Int, grants: Grants,
+        admission: () -> Boolean,
+    ): ExitResult {
+        var result = ExitResult(emptyList(), ledger)
+        var airplaneRestored = false
+        for (entry in orderedRestoreEntries(ledger, selected)) {
+            if (!admission()) break
+            val outcome = restoreEntry(entry, apiLevel, grants, airplaneRestored, admission) ?: break
+            if (restoredAirplane(entry, outcome.first)) airplaneRestored = true
+            result = recordRestore(result, entry, outcome.first, outcome.second)
+        }
+        return result
+    }
+
+    /** Null means admission was lost at a command boundary: retain the current durable intent. */
+    private fun restoreEntry(
+        entry: LedgerEntry, apiLevel: Int, grants: Grants, airplaneRestored: Boolean, admission: () -> Boolean,
+    ): Pair<Boolean, Reason?>? {
+        val entryApi = entry.apiLevel ?: apiLevel
+        val unavailable = resolver.status(entry.feature, control.level, entryApi, grants) as? FeatureStatus.Unavailable
+        val commands = restoreCommands(entry, entryApi)
+        val success = skipUnreadOriginal(entry)
+        val outcome = if (unavailable == null && commands != null) {
+            restoreAvailableEntry(entry, entryApi, grants, commands, success, airplaneRestored, admission) ?: return null
+        } else success to unavailable?.reason
+        return admittedRestoreOutcome(refreshRestoreDebt(entry, entryApi, grants, outcome), admission)
+    }
+
+    /** The final admission boundary precedes any durable cleanup or failure bookkeeping. */
+    private fun admittedRestoreOutcome(outcome: Pair<Boolean, Reason?>, admission: () -> Boolean): Pair<Boolean, Reason?>? {
+        if (!admission()) return null
+        return outcome
+    }
+
+    // Older versions persisted unread originals but never mutated their features.
+    private fun skipUnreadOriginal(entry: LedgerEntry): Boolean {
+        return (entry.originalValue == null).also {
+            if (it) emit(EventType.SKIPPED, entry.feature, entry.target, Reason.UNVERIFIED)
+        }
+    }
+
+    private fun restoreAvailableEntry(
+        entry: LedgerEntry, entryApi: Int, grants: Grants, commands: List<String>, initialSuccess: Boolean,
+        airplaneRestored: Boolean, admission: () -> Boolean,
+    ): Pair<Boolean, Reason?>? {
+        val execution = runRestoreCommands(entry, entryApi, { grants }, commands, admission)
+        if (!execution.first) return null
+        if (!admission()) return null
+        if (execution.second != null) return initialSuccess to execution.second
+        return verifyRestoreWithSensorRetry(entry, entryApi, grants, commands, airplaneRestored, admission) to null
+    }
+
+    /** The first value marks admission; the second preserves the backend's exact unavailable reason. */
+    private fun runRestoreCommands(
+        entry: LedgerEntry, entryApi: Int, grants: () -> Grants, commands: List<String>, admission: () -> Boolean,
+    ): Pair<Boolean, Reason?> {
+        for (command in commands) {
+            if (!admission()) return false to null
+            val unavailable = resolver.status(entry.feature, control.level, entryApi, grants()) as? FeatureStatus.Unavailable
+            if (unavailable != null) return true to unavailable.reason
+            run(command)
+        }
+        return true to null
+    }
+
+    private fun verifyRestoreWithSensorRetry(
+        entry: LedgerEntry, entryApi: Int, grants: Grants, commands: List<String>, airplaneRestored: Boolean,
+        admission: () -> Boolean,
+    ): Boolean {
+        val success = verifyRestore(entry, entryApi, airplaneRestored, admission)
+        if (!shouldRetrySensorRestore(entry, entryApi, grants, success)) return success
+        commands.forEach { run(it) }
+        return verifyRestore(entry, entryApi, airplaneRestored, admission)
+    }
+
+    private fun shouldRetrySensorRestore(entry: LedgerEntry, entryApi: Int, grants: Grants, success: Boolean): Boolean {
+        return !success && entry.feature == Feature.MOTION_SENSORS && lastSensor != SensorMode.UNVERIFIED &&
+                resolver.status(entry.feature, control.level, entryApi, grants) == FeatureStatus.Available
+    }
+
+    // A backend can die during the last command/readback, too.
+    private fun refreshRestoreDebt(
+        entry: LedgerEntry, entryApi: Int, grants: Grants, outcome: Pair<Boolean, Reason?>,
+    ): Pair<Boolean, Reason?> {
+        if (outcome.first || outcome.second != null) return outcome
+        val unavailable = resolver.status(entry.feature, control.level, entryApi, grants) as? FeatureStatus.Unavailable
+        return false to unavailable?.reason
+    }
+
+    private fun restoredAirplane(entry: LedgerEntry, success: Boolean): Boolean {
+        return success && entry.feature == Feature.AIRPLANE && entry.originalValue != null
+    }
+
+    private fun recordRestore(result: ExitResult, entry: LedgerEntry, success: Boolean, reason: Reason?): ExitResult {
+        val next = updatedRestoreLedger(result.remaining, entry, success, reason)
+        val saved = saveRestoreResult(result, next, entry, success)
+        announceRetainedRestore(saved.remaining, entry, success, reason)
+        return saved
+    }
+
+    private fun updatedRestoreLedger(
+        ledger: RestoreLedger, entry: LedgerEntry, success: Boolean, reason: Reason?,
+    ): RestoreLedger {
+        val updated = ledger.entries.toMutableList()
+        val index = updated.indexOf(entry)
+        if (success) updated.removeAt(index) else {
+            updated[index] = entry.copy(attempts = nextRestoreAttempt(entry), debt = reason != null)
+            emit(EventType.RESTORE_FAILED, entry.feature, entry.target, reason ?: Reason.UNVERIFIED)
+        }
+        return RestoreLedger(updated)
+    }
+
+    private fun nextRestoreAttempt(entry: LedgerEntry): Int {
+        return if (entry.attempts == Int.MAX_VALUE) entry.attempts else entry.attempts + 1
+    }
+
+    private fun saveRestoreResult(result: ExitResult, next: RestoreLedger, entry: LedgerEntry, success: Boolean): ExitResult {
+        return try {
+                store.save(next)
+                result.copy(remaining = next, restored = restoredEntries(result.restored, entry, success))
+            } catch (_: Exception) {
+                // Keep the durable intent and continue restoring the other entries.
+                emit(EventType.ERROR, entry.feature, entry.target, Reason.UNVERIFIED)
+                result.copy(errors = result.errors + ExitError.LEDGER_SAVE_FAILED)
+            }
+    }
+
+    private fun restoredEntries(entries: List<LedgerEntry>, entry: LedgerEntry, success: Boolean): List<LedgerEntry> {
+        return if (success && entry.originalValue != null) entries + entry else entries
+    }
+
+    private fun announceRetainedRestore(ledger: RestoreLedger, entry: LedgerEntry, success: Boolean, reason: Reason?) {
+        if (shouldAnnounceRestore(entry, success, reason) && ledger.entries.any { sameKey(it, entry.feature, entry.target) }) {
+            emit(EventType.RECOVERY_DEBT, entry.feature, entry.target, reason ?: Reason.UNVERIFIED)
+        }
+    }
+
+    private fun shouldAnnounceRestore(entry: LedgerEntry, success: Boolean, reason: Reason?): Boolean {
+        // Announce new failures or debt transitions, not every retry/screen cycle.
+        // A verified restore with failed durable cleanup must still announce retained intent.
+        val newFailure = entry.attempts == 0 && !entry.debt
+        val debtChanged = entry.debt != (reason != null)
+        return success || newFailure || debtChanged
     }
 
     @JvmOverloads
@@ -291,45 +383,88 @@ class DozeController @JvmOverloads constructor(
     @Synchronized
     fun maintenance(restore: Boolean, generation: Long, admission: () -> Boolean): EnterResult {
         val steps = mutableListOf<StepResult>()
-        fun admitted() = accessResolved() && generation == currentGeneration && admission()
+        val admitted = { maintenanceAdmitted(generation, admission) }
         if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps)
-        val ledger = try { store.load() } catch (_: Exception) {
-            emit(EventType.ERROR, reason = Reason.UNVERIFIED)
-            return EnterResult(EnterStatus.CANCELLED, steps)
-        }
+        val ledger = loadRestoreLedger() ?: return EnterResult(EnterStatus.CANCELLED, steps)
+        return maintainEntries(ledger, restore, steps, admitted)
+    }
+
+    private fun maintenanceAdmitted(generation: Long, admission: () -> Boolean): Boolean {
+        return accessResolved() && generation == currentGeneration && admission()
+    }
+
+    private fun maintenanceEntries(ledger: RestoreLedger, restore: Boolean): List<LedgerEntry> {
         val entries = ledger.entries.filter { it.feature in radios }
+        return if (restore) entries.asReversed() else entries
+    }
+
+    private fun maintainEntries(
+        ledger: RestoreLedger, restore: Boolean, steps: MutableList<StepResult>, admission: () -> Boolean,
+    ): EnterResult {
         var airplaneRestored = false
-        for (entry in if (restore) entries.asReversed() else entries) {
-            if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps)
-            val entryApi = entry.apiLevel ?: apiLevel
-            val unavailable = resolver.status(entry.feature, control.level, entryApi, grants) as? FeatureStatus.Unavailable
-            if (unavailable != null) {
-                steps.add(skip(entry.feature, entry.target, unavailable.reason))
-                continue
-            }
-            val commands = if (restore) restoreCommands(entry, entryApi) else catalog.apply(entry.feature, entryApi, entry.target)
-            if (entry.debt || commands == null) {
-                steps.add(skip(entry.feature, entry.target, Reason.UNVERIFIED))
-                continue
-            }
-            for (command in commands) {
-                if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps)
-                val lost = resolver.status(entry.feature, control.level, entryApi, grants) as? FeatureStatus.Unavailable
-                if (lost != null) return EnterResult(EnterStatus.CANCELLED, steps + skip(entry.feature, entry.target, lost.reason))
-                run(command)
-            }
-            if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps)
-            val verified = if (restore) verifyRestore(entry, entryApi, airplaneRestored, ::admitted) else {
-                readValue(entry.feature, entry.target, false, entryApi) == FeatureReadback.appliedValue(entry.feature)
-            }
-            if (restore && verified && entry.feature == Feature.AIRPLANE) airplaneRestored = true
-            steps.add(StepResult(entry.feature, entry.target,
-                if (verified) StepStatus.VERIFIED else StepStatus.UNVERIFIED,
-                if (verified) null else Reason.UNVERIFIED))
-            if (!restore) emit(EventType.VERIFY, entry.feature, entry.target, if (verified) null else Reason.UNVERIFIED)
-            if (!verified && restore) emit(EventType.RESTORE_FAILED, entry.feature, entry.target, Reason.UNVERIFIED)
+        for (entry in maintenanceEntries(ledger, restore)) {
+            if (!admission()) return EnterResult(EnterStatus.CANCELLED, steps)
+            val result = maintainEntry(entry, restore, airplaneRestored, admission)
+            steps.addAll(result.steps)
+            if (result.status == EnterStatus.CANCELLED) return EnterResult(EnterStatus.CANCELLED, steps)
+            if (maintenanceRestoredAirplane(entry, restore, result)) airplaneRestored = true
         }
         return EnterResult(EnterStatus.COMPLETED, steps)
+    }
+
+    private fun maintainEntry(
+        entry: LedgerEntry, restore: Boolean, airplaneRestored: Boolean, admission: () -> Boolean,
+    ): EnterResult {
+        val entryApi = entry.apiLevel ?: apiLevel
+        val unavailable = resolver.status(entry.feature, control.level, entryApi, grants) as? FeatureStatus.Unavailable
+        if (unavailable != null) return maintenanceSkipped(entry, unavailable.reason)
+        val commands = maintenanceCommands(entry, entryApi, restore)
+        if (entry.debt || commands == null) return maintenanceSkipped(entry, Reason.UNVERIFIED)
+        return executeMaintenanceEntry(entry, entryApi, commands, restore, airplaneRestored, admission)
+    }
+
+    private fun maintenanceCommands(entry: LedgerEntry, entryApi: Int, restore: Boolean): List<String>? {
+        return if (restore) restoreCommands(entry, entryApi) else catalog.apply(entry.feature, entryApi, entry.target)
+    }
+
+    private fun maintenanceSkipped(entry: LedgerEntry, reason: Reason): EnterResult {
+        return EnterResult(EnterStatus.COMPLETED, listOf(skip(entry.feature, entry.target, reason)))
+    }
+
+    private fun executeMaintenanceEntry(
+        entry: LedgerEntry, entryApi: Int, commands: List<String>, restore: Boolean,
+        airplaneRestored: Boolean, admission: () -> Boolean,
+    ): EnterResult {
+        val execution = runRestoreCommands(entry, entryApi, { grants }, commands, admission)
+        if (!execution.first) return EnterResult(EnterStatus.CANCELLED, emptyList())
+        val lost = execution.second
+        if (lost != null) return EnterResult(EnterStatus.CANCELLED, listOf(skip(entry.feature, entry.target, lost)))
+        if (!admission()) return EnterResult(EnterStatus.CANCELLED, emptyList())
+        val verified = verifyMaintenance(entry, entryApi, restore, airplaneRestored, admission)
+        return EnterResult(EnterStatus.COMPLETED, listOf(maintenanceVerdict(entry, restore, verified)))
+    }
+
+    private fun verifyMaintenance(
+        entry: LedgerEntry, entryApi: Int, restore: Boolean, airplaneRestored: Boolean, admission: () -> Boolean,
+    ): Boolean {
+        return if (restore) verifyRestore(entry, entryApi, airplaneRestored, admission) else {
+            readValue(entry.feature, entry.target, false, entryApi) == FeatureReadback.appliedValue(entry.feature)
+        }
+    }
+
+    private fun maintenanceVerdict(entry: LedgerEntry, restore: Boolean, verified: Boolean): StepResult {
+        val reason = if (verified) null else Reason.UNVERIFIED
+        emitMaintenanceVerification(entry, restore, verified, reason)
+        return StepResult(entry.feature, entry.target, if (verified) StepStatus.VERIFIED else StepStatus.UNVERIFIED, reason)
+    }
+
+    private fun emitMaintenanceVerification(entry: LedgerEntry, restore: Boolean, verified: Boolean, reason: Reason?) {
+        if (!restore) emit(EventType.VERIFY, entry.feature, entry.target, reason)
+        if (!verified && restore) emit(EventType.RESTORE_FAILED, entry.feature, entry.target, Reason.UNVERIFIED)
+    }
+
+    private fun maintenanceRestoredAirplane(entry: LedgerEntry, restore: Boolean, result: EnterResult): Boolean {
+        return restore && result.steps.single().status == StepStatus.VERIFIED && entry.feature == Feature.AIRPLANE
     }
 
     private fun legacyNotificationCommands(target: String?, original: String, enabled: Boolean, apiLevel: Int): List<String>? {
@@ -376,19 +511,34 @@ class DozeController @JvmOverloads constructor(
         airplaneRestored: Boolean,
         admission: () -> Boolean,
     ): Boolean {
-        var value = restoredValue(entry, apiLevel)
-        val expected = if (entry.feature == Feature.NOTIFICATION_BLOCK && apiLevel < 33)
-            entry.originalValue?.substringBeforeLast(',') else entry.originalValue
-        if (FeatureReadback.needsAirplaneSettle(entry.feature, airplaneRestored, value, expected)) {
-            value = settleRadioReadback(entry, apiLevel, value, expected, admission)
-        }
-        val verified = value != null && value == expected
+        val value = restoredValue(entry, apiLevel)
+        val expected = expectedRestoreValue(entry, apiLevel)
+        val settled = settleRestoreValue(entry, apiLevel, airplaneRestored, value, expected, admission)
+        val verified = settled != null && settled == expected
+        emitRestoreVerification(entry, verified)
+        return verified
+    }
+
+    private fun expectedRestoreValue(entry: LedgerEntry, apiLevel: Int): String? {
+        return if (entry.feature == Feature.NOTIFICATION_BLOCK && apiLevel < 33)
+                entry.originalValue?.substringBeforeLast(',') else entry.originalValue
+    }
+
+    private fun settleRestoreValue(
+        entry: LedgerEntry, apiLevel: Int, airplaneRestored: Boolean, value: String?, expected: String?,
+        admission: () -> Boolean,
+    ): String? {
+        return if (FeatureReadback.needsAirplaneSettle(entry.feature, airplaneRestored, value, expected)) {
+            settleRadioReadback(entry, apiLevel, value, expected, admission)
+        } else value
+    }
+
+    private fun emitRestoreVerification(entry: LedgerEntry, verified: Boolean) {
         emit(EventType.VERIFY, entry.feature, entry.target, if (verified) null else Reason.UNVERIFIED,
             sensor = if (entry.feature == Feature.MOTION_SENSORS) lastSensor else null)
         if (verified && entry.feature == Feature.MOTION_SENSORS) {
             emit(EventType.SENSORS_RESTORED, entry.feature, entry.target, sensor = SensorMode.NORMAL)
         }
-        return verified
     }
 
     private fun restoredValue(entry: LedgerEntry, apiLevel: Int): String? =
@@ -406,23 +556,38 @@ class DozeController @JvmOverloads constructor(
         expected: String?,
         admission: () -> Boolean,
     ): String? {
-        var value = initial
         // The 750ms cap is per radio; a tight shared budget leaves later entries in the ledger.
-        val command = catalog.originalValueRead(entry.feature, apiLevel, entry.target) ?: return value
+        val command = catalog.originalValueRead(entry.feature, apiLevel, entry.target) ?: return initial
         // Leave one read-timeout margin in the caller's shared teardown budget.
-        if (!settleAdmitted(RADIO_SETTLE_MS + RADIO_READ_MS, admission)) return value
+        if (!settleAdmitted(RADIO_SETTLE_MS + RADIO_READ_MS, admission)) return initial
         val deadline = clock.elapsedRealtime() + RADIO_SETTLE_MS
+        return rereadRadio(entry, apiLevel, command, initial, expected, deadline, admission)
+    }
+
+    private fun rereadRadio(
+        entry: LedgerEntry, apiLevel: Int, command: String, initial: String?, expected: String?,
+        deadline: Long, admission: () -> Boolean,
+    ): String? {
+        var value = initial
         repeat(RADIO_REREADS) {
-            val available = minOf(deadline - clock.elapsedRealtime(), remainingBudgetMs() ?: Long.MAX_VALUE)
-            if (!waitForRadioRead(available, admission)) return value
-            if (!settleAdmitted(RADIO_READ_MS, admission) || deadline - clock.elapsedRealtime() < RADIO_READ_MS) return value
+            if (!awaitRadioRead(deadline, admission)) return value
             val result = run(command, RADIO_READ_MS)
             if (result?.timedOut == true) return value // The root lane reset its shell; do not reopen it just to settle.
-            val output = if (result?.ok == true) result.stdout else emptyList()
-            value = FeatureReadback.value(entry.feature, apiLevel, output, entry.target)
+            value = radioReadValue(entry, apiLevel, result)
             if (value == expected) return value
         }
         return value
+    }
+
+    private fun awaitRadioRead(deadline: Long, admission: () -> Boolean): Boolean {
+        val available = minOf(deadline - clock.elapsedRealtime(), remainingBudgetMs() ?: Long.MAX_VALUE)
+        if (!waitForRadioRead(available, admission)) return false
+        return settleAdmitted(RADIO_READ_MS, admission) && deadline - clock.elapsedRealtime() >= RADIO_READ_MS
+    }
+
+    private fun radioReadValue(entry: LedgerEntry, apiLevel: Int, result: CommandResult?): String? {
+        val output = if (result?.ok == true) result.stdout else emptyList()
+        return FeatureReadback.value(entry.feature, apiLevel, output, entry.target)
     }
 
     private fun settleAdmitted(requiredMs: Long, admission: () -> Boolean): Boolean =
