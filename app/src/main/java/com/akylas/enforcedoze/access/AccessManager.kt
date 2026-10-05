@@ -202,8 +202,7 @@ class AccessManager private constructor(context: Context) : com.akylas.enforcedo
         }
     }
 
-    @JvmOverloads
-    fun finishRootDiscovery(detached: Boolean = true) {
+    fun finishRootDiscovery(detached: Boolean) {
         resolution.finishRootDiscovery(detached)
         publish()
     }

@@ -37,6 +37,10 @@ class AccessResolution {
         rootAvailable = available
         rootCompleted = rootCompleted || !timedOut || rootAttempts >= 4
         rootTimedOut = timedOut && !rootCompleted
+        // A definitive answer consumes any detached handoff, including an older timeout.
+        if (!timedOut && rootDiscoveryClose != RootDiscoveryClose.SERVICE) {
+            rootDiscoveryClose = RootDiscoveryClose.OPEN
+        }
         // A detached close may precede its probe result; classify that timeout before settling it.
         if (rootDiscoveryClose != RootDiscoveryClose.OPEN) {
             finishRootDiscovery(detached = rootDiscoveryClose != RootDiscoveryClose.SERVICE)
@@ -46,9 +50,11 @@ class AccessResolution {
     @Synchronized fun canRetryRoot(): Boolean = rootTimedOut && !rootCompleted && rootAttempts < 4
 
     /** A detached receiver settles on its first timeout; a service-owned close is terminal. */
-    @Synchronized fun finishRootDiscovery(detached: Boolean = true) {
+    @Synchronized fun finishRootDiscovery(detached: Boolean) {
         if (!detached) rootDiscoveryClose = RootDiscoveryClose.SERVICE
-        else if (rootDiscoveryClose == RootDiscoveryClose.OPEN) rootDiscoveryClose = RootDiscoveryClose.DETACHED
+        else if (rootDiscoveryClose == RootDiscoveryClose.OPEN && (rootTimedOut || rootProbeInFlight)) {
+            rootDiscoveryClose = RootDiscoveryClose.DETACHED
+        }
         if (rootTimedOut) {
             if (rootDiscoveryClose == RootDiscoveryClose.DETACHED) rootDiscoveryClose = RootDiscoveryClose.DETACHED_TIMEOUT
             rootCompleted = true
