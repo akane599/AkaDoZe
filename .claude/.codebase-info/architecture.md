@@ -1,6 +1,6 @@
 # Architecture
 
-*Last Updated: 2026-10-05*
+*Last Updated: 2026-10-06*
 
 ## Overview
 
@@ -56,6 +56,20 @@ Two rules decide what works:
   epoch (same session, same delay). It upgrades back to FORCE when access returns. `SafetyNet` exempts only healthy
   intent owned by the admitted session (`keepsSafetyIntent`). The UI shows the same three states honestly
   (`ui/AccessUi`), including a "checking" status while cold-start discovery is unresolved.
+  On Main, an enabled service with no usable access reads "on, but not enforcing". Its switch stays usable, so it can
+  be turned off (`AccessUi.mainStatus` / `mainSwitchEnabled`).
+
+**Helper grants.** At SHELL/ROOT, `AccessManager` grants the `GrantCommands` helpers:
+- DUMP, WRITE_SECURE_SETTINGS and READ_PHONE_STATE;
+- SCHEDULE_EXACT_ALARM (API 31+) and usage stats;
+- the notification listener and the self-whitelist.
+
+READ_LOGS is never granted, because the grant kills the app.
+- **Automatic runs** (service start on doze-worker, Main, Tunables) skip helpers already in the device-local record.
+  This keeps a user's revoke in place.
+- **Explicit runs** (mode switch, access card, Phone toggle) re-grant.
+- At APP or unresolved access, the service only shows the system allowlist dialog or notification.
+- See database.md for the record and the reset.
 
 ## Core flow
 
@@ -71,7 +85,14 @@ Two rules decide what works:
 | Service stop | `ForceDozeService.onDestroy` | Worker-side time-boxed exit (3.5 s command budget, 4 s main wait; `SessionLifecycle`) with a deadline admission. `TEARDOWN_TIMEOUT` debt is emitted only when the teardown runnable started and didn't finish (`TeardownTimeout`). Entries it doesn't reach stay untouched, and an incomplete exit queues a deadline-free restore-only follow-up under the `forcedoze:restore` 30 s wakelock |
 
 Failed restores stay in the ledger (attempts/debt). RECOVERY_DEBT is announced when an entry first fails or its debt flag
-changes; RESTORE_FAILED is journaled on every pass. The access card and Monitor show debt with "Restore now".
+changes; RESTORE_FAILED is journaled on every pass. After each safety pass the runtime re-reads the ledger (`DozeRuntime.checkDebtNotice`), and
+`NoticeSink.restoresChecked` cancels the debt notification once no debt remains.
+
+Wi-Fi, mobile data and Bluetooth can read stale right after airplane mode is restored. Their restore readback then gets a
+bounded settle (`DozeController.settleRadioReadback`):
+- at most 3 rereads, 150 ms apart, with a 100 ms read timeout (750 ms per radio);
+- it runs only when the command budget still has room for it plus one read;
+- a timed-out reread ends the settle with the step UNVERIFIED, so root never reopens `su` just to settle. The access card and Monitor show debt with "Restore now".
 Damaged ledger lines: FORCE_DOZE / MOTION_SENSORS lines auto-clear after verified recovery; others stay as dismissible
 debt (`ui/DamagedRecords` → `DozeRuntime.clearRetainedCorruption`).
 
@@ -99,7 +120,9 @@ debt (`ui/DamagedRecords` → `DozeRuntime.clearRetainedCorruption`).
 - **Reset.** `DozeRuntime.resetSystemState` (Settings) bumps the generation, restores from the ledger and runs
   `service/SystemReset` on the worker. While a service is attached, `ServiceResetQueue` holds the reset and posts it right
   after that service's teardown runnable, so teardown never waits behind it. The restore outcome is `SystemReset.restoreOutcome`. `OK` means readback-confirmed; "Reset complete" needs restore COMPLETE and every
-  step OK and no deferred step pending ("Reset almost done" otherwise). WRITE_SETTINGS is reset through its app-op (`appops set … default`, readback `appops get`). Prefs are never
+  step OK and no deferred step pending ("Reset almost done" otherwise). WRITE_SETTINGS is reset through its app-op (`appops set … default`, readback `appops get`). Revoking READ_PHONE_STATE or READ_LOGS kills the app (`PROCESS_KILLING`). Those revokes are
+deferred until the user taps OK, then sent as one privileged shell (`SystemReset.runDeferred`). Before any helper
+revoke, inline or deferred, the helper's grant-record key is forgotten durably. If that fails, the revoke is skipped. Prefs are never
   cleared there; `ui/ResetReport` clears them, keeping restore-intent keys while debt remains. `SystemReset.runJob` turns a
   throwing job (including an undecodable ledger) into a failed report ("didn't finish… try again") that clears nothing and allows a retry;
   `finishReset` posts under the runtime lock, and the static report tracker survives Activity recreation.
@@ -115,7 +138,8 @@ Custom Doze periods: `Utils.applyForceDozeSchedule` / `scheduleNextCustomDozePer
 `doze/SchedulePolicy.kt`) set an exact `RTC_WAKEUP` alarm when allowed (`SCHEDULE_EXACT_ALARM` is declared; on 13+ the user grants it), else an inexact
 one → `CustomDozePeriodReceiver` → start/stop the service. `ExactAlarmPermissionReceiver` (not exported) re-queries the
 grant on `SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED` and re-arms the next boundary (`doze/ExactAlarmAccessPolicy`);
-it never starts the service or applies the current window. Settings shows an "Exact alarms" row (API 31+, only with
+it never starts the service or applies the current window. Revoking exact-alarm access kills the app without a broadcast, so `MyApplication.onCreate`
+re-queries the grant (`Utils.requeryExactAlarmAccess`) and re-arms only the next boundary. Settings shows an "Exact alarms" row (API 31+, only with
 periods) that opens the app's own "Alarms & reminders" page and refreshes on resume. Boot re-arms it. Boundaries run only while the user intent
 `serviceUserEnabled` is on (`SchedulePolicy.shouldRunService`): explicit OFF cancels the alarm; explicit ON (master switch,
 tile, external ENABLE, notification) starts the service at once, then persists the intent and arms the next boundary.

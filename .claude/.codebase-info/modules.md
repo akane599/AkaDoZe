@@ -1,6 +1,6 @@
 # Modules and Files
 
-*Last Updated: 2026-10-05*
+*Last Updated: 2026-10-06*
 
 Single Gradle module `:app`, base package `com.akylas.enforcedoze` at
 `app/src/main/java/com/akylas/enforcedoze/`: 110 sources (56 Java, 54 Kotlin) in seven packages.
@@ -19,14 +19,15 @@ Single Gradle module `:app`, base package `com.akylas.enforcedoze` at
 | Tiles / listener | `ForceDozeTileService`, `AirplaneTileService`, `NotificationService.kt` (media-playing app) |
 | Helpers | `Utils.java` (service start, schedules, permissions, pref repair), `ShizukuHandler.java` (legacy compatibility listener only), `NumberPickerPreference.java`, `MaterialListPreference.kt`, `CustomTabs.java`, `ChromePackageHelper.java` |
 
-## `access/` (13 Kotlin): transports and capabilities
+## `access/` (14 Kotlin): transports and capabilities
 
 `AccessManager.kt` (singleton: access level, grants, transports, lanes) · `AccessResolution.kt` (bounded cold-start
 discovery: 10 s Shizuku window, root 1+3 probes, binder-seen facts, fresh root budget on service attach) · `AccessModels.kt` (AccessLevel, Feature, Reason,
 Grants, CommandResult, FeatureStatus) · `CapabilityResolver.kt` (capability matrix, `PackageNames` validator) ·
 `CommandCatalog.kt` (per-API mutation / original / readback commands) · `CommandLane.kt` (FIFO lanes with timeouts and
 deadlines) · `RootCommandRunner.kt` (persistent libsuperuser shell behind the `RootSession` seam) · `ShellCommandRunner.kt` (app `sh` or Shizuku
-process) · `GrantCommands.kt` (permission / appops / listener / whitelist helpers) · `ExternalControlPolicy.kt` (gates,
+process) · `GrantCommands.kt` (permission / appops / listener / whitelist helpers; no READ_LOGS) · `HelperGrantPolicy.kt` (AUTOMATIC vs EXPLICIT
+selection, persist-before-grant attempts, forget-before-revoke) · `ExternalControlPolicy.kt` (gates,
 scalar allowlist) · `ExternalCallRateLimiter.kt` (journal flood limit) · `WhitelistParser.kt` (whitelist dump → packages + typed parse
 reason) · `Prefs.kt` (shared keys/defaults).
 
@@ -41,7 +42,7 @@ suspend/notification block for that session).
 ## `monitor/` (7 Kotlin): journal
 
 `JournalDb.kt` (serial SQLite adapter) · `JournalEvent.kt` (event row, `JournalIdentity` for session vs self-test ids) ·
-`HistoryMerger.kt` (merge OS idling history) · `SessionAggregator.kt` (coverage, maintenance, problems) ·
+`HistoryMerger.kt` (merge OS idling history; "truncated" only when the 100-entry buffer is full) · `SessionAggregator.kt` (coverage, maintenance, problems) ·
 `ReportFormatter.kt` · `ReportExporter.kt` (FileProvider share) · `EventCodes.kt` (persisted journal detail codes).
 
 ## `service/` (18 Kotlin): process runtime

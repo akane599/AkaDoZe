@@ -1,6 +1,6 @@
 # Patterns, Style and Known Oddities
 
-*Last Updated: 2026-10-05*
+*Last Updated: 2026-10-06*
 
 ## Patterns
 
@@ -42,17 +42,17 @@
 
 ## Testing
 
-`app/src/test/java/com/akylas/enforcedoze/` has 73 JVM sources with 623 `@Test` methods (JUnit 4.13.2, no mocking library):
+`app/src/test/java/com/akylas/enforcedoze/` has 81 JVM sources with 697 `@Test` methods (JUnit 4.13.2, no mocking library):
 
 | Package | Files | Tests |
 |---------|-------|-------|
 | root | 2 | 22 |
-| access | 12 | 68 |
-| doze | 10 | 123 |
+| access | 15 | 82 |
+| doze | 11 | 138 |
 | doze/parse | 7 | 36 |
-| monitor | 6 | 31 |
-| service | 30 | 266 |
-| ui | 6 | 77 |
+| monitor | 6 | 46 |
+| service | 33 | 291 |
+| ui | 7 | 82 |
 
 The suites use these styles:
 - fake-backed behaviour tests: `FakeRunner` (a `CommandRunner`), `FakeClock` and an in-memory ledger store, in

@@ -1,6 +1,6 @@
 # Onboarding
 
-*Last Updated: 2026-10-05*
+*Last Updated: 2026-10-06*
 
 ## Build and verify
 
@@ -9,6 +9,7 @@ bash .claude/kit/gradle-check.sh :app:testDebugUnitTest :app:assembleDebug :app:
 bash .claude/kit/gradle-check.sh :app:testDebugUnitTest --tests '*DozeControllerTest'                           # narrow run
 ./gradlew :app:installDebug -q && adb shell am start -n com.akylas.enforcedoze/.MainActivity
 adb logcat -d --pid=$(adb shell pidof -s com.akylas.enforcedoze) | tail -80
+node ~/.claude/plugins/cache/eigenwise-toolshed/quartermaster/0.11.10/bin/quartermaster.js crap --json            # CRAP gate (see tech-landscape.md)
 ```
 
 Other notes:
@@ -42,6 +43,7 @@ whitelist & settings" is on. Every call is journaled; see the Monitor.
 | Screen events, admission, teardown | `ForceDozeService.java` (`receiveOnWorker`, `admitted`, `onDestroy`), `service/SessionLifecycle.kt` |
 | Recovery and debt | `service/LedgerRecovery.kt`, `AccessRecovery.kt`, `doze/SafetyNet.kt`, `ui/DebtRules.java`, `ui/DamagedRecords.java` |
 | Restore after boot / update / cold start | `service/BootRestore.kt` + `BootRestorePolicy.kt` (`BootRestorePolicyTest`), `RestoreOnlyRequest.kt`, `AccessReadiness.kt`, `access/AccessResolution.kt`, `DozeRuntime.requestRestoreOnly` (+ `AccessDiscoveryRepairTest`, `AccessReadinessTest`) |
+| Helper permission grants | `access/AccessManager.kt` (`grantHelpers`, `grantHelper`, `grantHelpersAutomatically`, `forgetHelpers`), `HelperGrantPolicy.kt`, `GrantCommands.kt` (+ `HelperGrantPolicyTest`, `HelperGrantWiringTest`, `ServiceHelperGrantTest`) |
 | Settings reset | `service/SystemReset.kt`, `DozeRuntime.resetSystemState`, `ui/ResetReport.java` (+ `SystemResetTest`, `HonestUiTest`) |
 | External reapply limits | `doze/WatchdogPolicy.kt` (+ `ExternalReapplyPolicyTest`) |
 | Journal, Monitor, reports | `monitor/` + `ui/DozeMonitorActivity.java`, `MonitorFormat.java` |

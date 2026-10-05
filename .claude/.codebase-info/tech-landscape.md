@@ -1,6 +1,6 @@
 # Tech Landscape
 
-*Last Updated: 2026-10-03*
+*Last Updated: 2026-10-06*
 
 | Item | Value | Source of truth |
 |------|-------|-----------------|
@@ -13,6 +13,7 @@
 | Repos | `jcenter()`, `google()`, jitpack | `build.gradle` |
 | Gradle props | `-Xmx2048m`, Jetifier on, non-transitive R | `gradle.properties` |
 | Lint | `lint { baseline = file("lint-baseline.xml") }` (159 pre-existing issues; only new ones fail) | `app/build.gradle`, `app/lint-baseline.xml` |
+| Coverage | Opt-in only: `-PcrapCoverage` turns on `debug.enableUnitTestCoverage` (JaCoCo pinned to 0.8.13 via `testCoverage`). Normal builds are byte-identical | `app/build.gradle` |
 | R8 | release is minified; keeps `rikka.shizuku.Shizuku` / `ShizukuRemoteProcess` for the reflective `newProcess` call | `app/proguard-rules.pro` |
 
 Build scripts are Groovy (`apply plugin:`), no version catalog, no build-logic. Signing: debug key by
@@ -36,3 +37,24 @@ SharedPreferences. There is no DI, Room, networking, coroutines, Compose or form
 - `fastlane/metadata/android/`: store listing + changelogs.
 - `.weblate`: translations from hosted Weblate (`enforcedoze/application-strings`).
 - `docs/index.html`: static landing page.
+
+## Coverage and the CRAP gate
+
+The Quartermaster plugin (0.11.10) gates CRAP: cyclomatic complexity combined with test coverage, at a fixed ceiling of 6
+against `Base`.
+- **Config.** `.claude/quartermaster/crap.json` sets sources `app/src/main/java` and base `Base`.
+- **Coverage command.** `.claude/kit/crap-coverage.sh` is fail-closed. It runs
+  `:app:createDebugUnitTestCoverageReport -PcrapCoverage` with no daemon, no cache and every task rerun, which takes
+  about 35 s. It checks that the native exec and class identities match.
+- **Conversion.** `.claude/kit/jacoco-to-lcov.py` is a stdlib-only converter from JaCoCo XML to LCOV, with tests in
+  `test_jacoco_to_lcov.py`. LCOV is published atomically, so stale or partial output gives exit 2.
+- **Prerequisites.** lizard 1.24.0 lives in a user venv at `~/.local/bin/lizard`; the wrapper refuses any other version.
+- **Run it** as described in onboarding.md. Exit 1 on akadoze-2.0 is expected: everything written for 2.0 counts as new
+  against Base. The live rule `.claude/live-rules/rules/crap-gate.md` judges only the functions a change adds or
+  modifies.
+- **Limitations.**
+  - JaCoCo filters out empty private constructors, which leaves them unmeasured (exit 2). Utility classes use
+    `private X() { throw new AssertionError(); }` instead.
+  - lizard's Kotlin parsing can merge a lambda with the code after it, or omit functions while still reporting
+    `unmeasured=0`.
+  - Line coverage is not branch coverage.
