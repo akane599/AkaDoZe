@@ -52,9 +52,10 @@ object SystemReset {
         } else ResetRestoreOutcome.REMAINING_DEBT
 
     /** Pure boundary for the runtime's whole worker job, before result delivery. */
-    fun runJob(job: () -> SystemResetResult): SystemResetResult = try {
+    fun runJob(job: () -> SystemResetResult, onError: (Throwable) -> Unit = {}): SystemResetResult = try {
         job()
-    } catch (_: Exception) {
+    } catch (error: Exception) {
+        onError(error)
         failedResult()
     }
 
@@ -68,11 +69,15 @@ object SystemReset {
         packageName: String,
         // Own-app platform permission check: true = granted, false = denied, null = unknown.
         permissionGranted: (String) -> Boolean? = { null },
+        onError: (Throwable) -> Unit = {},
         restore: () -> ResetRestoreOutcome,
     ): SystemResetResult {
         val pkg = PackageNames.requireValid(packageName)
         // The restore callback includes ledger readbacks and durable reconciliation before returning.
-        val restoreOutcome = try { restore() } catch (_: Exception) { return failedResult() }
+        val restoreOutcome = try { restore() } catch (error: Exception) {
+            onError(error)
+            return failedResult()
+        }
         val sessions = SessionAccess.canRunSessions(control.level)
         val (deferred, now) = commands(apiLevel, pkg).partition { (id, command) ->
             // Not granted: Android skips the revoke without killing, so it runs (and is checked) in place.
