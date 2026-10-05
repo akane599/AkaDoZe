@@ -33,6 +33,17 @@
       "priority": 15,
       "enabled": true,
       "include": []
+    },
+    {
+      "path": "rules/crap-gate.md",
+      "hash": "9bc500f811dce4cf1d0413f4b91034a94cbaeb2195e6083e4c13178c05b12d3e",
+      "description": "Keep changed code within the CRAP ceiling",
+      "globs": [],
+      "dirs": [],
+      "prompt": [],
+      "priority": 85,
+      "enabled": true,
+      "include": []
     }
   ]
 }
