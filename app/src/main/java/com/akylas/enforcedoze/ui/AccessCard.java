@@ -46,13 +46,14 @@ public final class AccessCard {
     private final Button action;
     private final AccessManager.Listener accessListener = this::bind;
     private final DozeEventSink events = this::onEvent;
+    private final Runnable restoreRecheck = () -> checkLedger(true);
 
     private boolean started;
     private AccessState state;
     private boolean ledgerDebt;
     private List<String> dismissible = Collections.emptyList();
     private String debtDetail;
-    private boolean restoring;
+    private final RestoreState restoreState = new RestoreState();
 
     public AccessCard(Activity activity, AccessManager access) {
         this.activity = activity;
@@ -76,7 +77,7 @@ public final class AccessCard {
             if (!started) return;
             // The dismissed records were what LEDGER_DAMAGED announced; the ledger read decides now.
             if ("LEDGER_DAMAGED".equals(debtDetail)) debtDetail = null;
-            checkLedger();
+            checkLedger(false);
         }));
     }
 
@@ -86,7 +87,9 @@ public final class AccessCard {
         NoticeSink.setDebtShownInApp(true);
         access.addListener(accessListener);
         ForceDozeService.addSink(activity, events);
-        checkLedger();
+        checkLedger(false);
+        // stop() dropped the pending rechecks; a start read never settles, so re-arm them.
+        if (restoreState.isRestoring()) scheduleRechecks();
     }
 
     public void stop() {
@@ -101,10 +104,15 @@ public final class AccessCard {
     /** Asks the runtime to reconcile the ledger (the service's restore path), then re-reads it. */
     public void restoreNow() {
         debtDetail = null;
-        restoring = true;
+        restoreState.beginRestore();
         renderDebt();
         ForceDozeService.requestSafetyCheck(activity);
-        for (long delay : RESTORE_RECHECK_MS) main.postDelayed(this::checkLedger, delay);
+        scheduleRechecks();
+    }
+
+    private void scheduleRechecks() {
+        main.removeCallbacks(restoreRecheck);
+        for (long delay : RESTORE_RECHECK_MS) main.postDelayed(restoreRecheck, delay);
     }
 
     private void onEvent(DozeEvent event) {
@@ -114,11 +122,11 @@ public final class AccessCard {
             main.post(() -> {
                 if (!started) return;
                 debtDetail = detail;
-                restoring = false;
+                restoreState.onRecoveryDebt();
                 renderDebt();
             });
         } else if (type == EventType.SENSORS_RESTORED || type == EventType.RESTORE_FAILED || type == EventType.VERIFY) {
-            main.post(() -> { if (started) checkLedger(); });
+            main.post(() -> { if (started) checkLedger(true); });
         }
     }
 
@@ -137,18 +145,19 @@ public final class AccessCard {
     }
 
     /** Failed or damaged ledger entries outside a session are restoration debt (DebtRules, fail closed). */
-    private void checkLedger() {
+    private void checkLedger(boolean settlesRestore) {
         if (!started) return;
         Context app = activity.getApplicationContext();
+        long token = restoreState.beginRead();
         // Not the serial executor: checkDebt can wait for a running exit walk to finish.
         AsyncTask.THREAD_POOL_EXECUTOR.execute(() -> {
             MonitorData.DebtCheck check = MonitorData.checkDebt(MyApplication.getDozeRuntime(app));
             boolean result = check.debt;
             main.post(() -> {
                 if (!started) return;
+                if (!restoreState.completeRead(token, settlesRestore)) return;
                 ledgerDebt = result;
                 dismissible = check.dismissible;
-                restoring = false;
                 // Event-raised debt (e.g. SafetyNet RAISE_DEBT) is not ledger-backed; only Restore clears it.
                 if (!result && debtDetail == null) NoticeSink.cancelDebt(app);
                 else NoticeSink.ledgerChecked(app, result);
@@ -157,7 +166,45 @@ public final class AccessCard {
         });
     }
 
+    /**
+     * Restore-now progress, kept on main. Each Restore now opens a new epoch; a ledger read captures the
+     * epoch when issued, so its callback can be matched to the request it belongs to.
+     */
+    static final class RestoreState {
+        private long epoch;
+        private boolean restoring;
+
+        void beginRestore() {
+            epoch++;
+            restoring = true;
+        }
+
+        void onRecoveryDebt() {
+            restoring = false;
+        }
+
+        boolean isRestoring() {
+            return restoring;
+        }
+
+        long beginRead() {
+            return epoch;
+        }
+
+        /**
+         * False for a read issued before the latest Restore now: its snapshot predates the request, so the
+         * caller drops it. An accepted read ends progress only when it is a settling read (a scheduled recheck
+         * or a restoration event); start/dismiss reads only refresh the debt snapshot.
+         */
+        boolean completeRead(long token, boolean settlesRestore) {
+            if (token != epoch) return false;
+            if (settlesRestore) restoring = false;
+            return true;
+        }
+    }
+
     private void renderDebt() {
+        boolean restoring = restoreState.isRestoring();
         boolean visible = restoring || ledgerDebt || debtDetail != null;
         debtCard.setVisibility(visible ? View.VISIBLE : View.GONE);
         if (!visible) return;
