@@ -155,6 +155,11 @@ public class AccessRepairTest {
 
     private static final class MemoryStore implements DebtRules.NoticeGate.Store {
         Set<String> keys = new HashSet<>();
+        boolean posted;
+
+        @Override public boolean posted() { return posted; }
+        @Override public void setPosted(boolean value) { posted = value; }
+        @Override public void cancel() {}
 
         @Override
         public Set<String> load() {

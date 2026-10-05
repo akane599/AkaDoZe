@@ -34,6 +34,8 @@ import com.akylas.enforcedoze.doze.SensorMode
 import com.akylas.enforcedoze.doze.WatchdogPolicy
 import com.akylas.enforcedoze.doze.parse.DozeStateParser
 import com.akylas.enforcedoze.doze.parse.DozeStateReading
+import com.akylas.enforcedoze.ui.DebtRules
+import com.akylas.enforcedoze.ui.NoticeSink
 import com.akylas.enforcedoze.doze.parse.SensorModeParser
 
 /** Owned by MyApplication: one controller/ledger for service, recovery and future self-test callers. */
@@ -454,7 +456,21 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
     }
 
     /** DUMP readbacks are the oracle; fail safe on damaged/lost intent, preserving all evidence. */
-    fun checkSafety() = synchronized(controller) { checkSafetyLocked() }
+    fun checkSafety() = synchronized(controller) {
+        try { checkSafetyLocked() } finally { checkDebtNotice() }
+    }
+
+    /** Presentation follows committed intent, never an individual VERIFY before ledger.save(). */
+    private fun checkDebtNotice() {
+        val debt = try {
+            val ledger = store.load()
+            val damaged = store.loadFailed || store.corruptLines.isNotEmpty()
+            // Unlike the UI card, the notice must retain debt even in an active session.
+            DebtRules.isDebt(ledger.entries, damaged, false)
+        } catch (_: Exception) { true }
+        try { NoticeSink.restoresChecked(app, debt) }
+        catch (error: Exception) { diagnosticLogger("Debt notice update failed", error) }
+    }
 
     private fun checkSafetyLocked() {
         if (!access.state.resolved) return

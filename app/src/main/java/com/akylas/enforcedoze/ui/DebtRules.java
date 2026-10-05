@@ -57,6 +57,12 @@ public final class DebtRules {
             Set<String> load();
 
             void save(Set<String> keys);
+
+            boolean posted();
+
+            void setPosted(boolean posted);
+
+            void cancel();
         }
 
         public interface Poster {
@@ -81,6 +87,7 @@ public final class DebtRules {
             if (!posted && !shownInApp) return false;
             notified.add(key);
             store.save(notified);
+            if (posted) store.setPosted(true);
             return posted;
         }
 
@@ -91,6 +98,7 @@ public final class DebtRules {
 
         public void clearAll() {
             if (!store.load().isEmpty()) store.save(Collections.emptySet());
+            store.setPosted(false);
         }
 
         /**
@@ -99,6 +107,13 @@ public final class DebtRules {
          * debt the ledger can't see (ACCESS_LOST, SafetyNet's readback debts) keeps its own clearing.
          */
         public void ledgerChecked(boolean debt) {
+            if (debt) return;
+            rearmFromLedger(false);
+            cancelIfSettled();
+        }
+
+        /** UI reads suppress in-session debt: they may re-arm keys but cannot authorize cancellation. */
+        public void rearmFromLedger(boolean debt) {
             if (debt) return;
             Set<String> notified = new HashSet<>(store.load());
             boolean changed = false;
@@ -110,6 +125,13 @@ public final class DebtRules {
                 }
             }
             if (changed) store.save(notified);
+        }
+
+        /** VERIFY can clear the last key before persistence completes; only a ledger check cancels. */
+        private void cancelIfSettled() {
+            if (!store.load().isEmpty() || !store.posted()) return;
+            store.cancel();
+            store.setPosted(false);
         }
     }
 
