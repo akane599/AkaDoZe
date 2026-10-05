@@ -11,6 +11,12 @@ class AccessResolution {
     private enum class RootDiscoveryClose { OPEN, DETACHED, DETACHED_TIMEOUT, SERVICE }
     private var rootDiscoveryClose = RootDiscoveryClose.OPEN
     private var rootProbeInFlight = false
+    private var serviceAttached = false
+
+    @Synchronized fun setServiceAttached(attached: Boolean) { serviceAttached = attached }
+
+    /** A ROOT selection can take over a stranded detached handoff only for a live service. */
+    @Synchronized fun startRootModeDiscovery(): Boolean = serviceAttached && startServiceRootDiscovery()
 
     @Synchronized fun startDiscovery(now: Long) {
         if (discoveryDeadline == null) discoveryDeadline = now + 10_000L
@@ -34,7 +40,7 @@ class AccessResolution {
 
     @Synchronized fun rootProbeFinished(available: Boolean, timedOut: Boolean) {
         rootProbeInFlight = false
-        rootAvailable = available
+        if (!timedOut) rootAvailable = available
         rootCompleted = rootCompleted || !timedOut || rootAttempts >= 4
         rootTimedOut = timedOut && !rootCompleted
         // A definitive answer consumes any detached handoff, including an older timeout.

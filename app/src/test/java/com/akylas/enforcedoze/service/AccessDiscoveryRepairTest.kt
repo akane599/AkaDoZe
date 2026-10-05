@@ -412,8 +412,29 @@ class AccessDiscoveryRepairTest {
             File("app/src/main/java/com/akylas/enforcedoze/access/AccessManager.kt")).first { it.isFile }.readText()
         val hook = manager.substringAfter("fun startServiceRootDiscovery() {").substringBefore("\n    }")
         assertTrue("owner handoff waits for the existing probe to finish publishing", hook.contains("probes.execute {"))
-        assertTrue("only root mode reopens a closed discovery", hook.contains("mode == Prefs.MODE_ROOT && resolution.startServiceRootDiscovery()"))
+        assertTrue("only root mode reopens a closed discovery", hook.contains("mode == Prefs.MODE_ROOT && resolution.startRootModeDiscovery()"))
         assertTrue("the service publishes fresh discovery and starts the initial probe", hook.contains("publish()") && hook.contains("probeRoot()"))
+    }
+
+    @Test fun rootModeSwitchQueuesAttachedHandoffBeforeItsSingleProbe() {
+        val root = if (File("src/main").exists()) File("src/main/java/com/akylas/enforcedoze")
+            else File("app/src/main/java/com/akylas/enforcedoze")
+        val manager = File(root, "access/AccessManager.kt").readText()
+        val preference = manager.substringAfter("private val prefListener =").substringBefore("private val controlRunner")
+        assertTrue("ROOT mode changes use the serialized mode-switch hook", preference.contains("probeRootForModeSwitch()"))
+        val selection = manager.substringAfter("private fun probeRootForModeSwitch() {").substringBefore("\n    }")
+        assertTrue("mode switch waits for in-flight probe publication", selection.contains("probes.execute {"))
+        assertTrue("ignore superseded ROOT selections", selection.contains("mode == Prefs.MODE_ROOT"))
+        assertTrue("consume service handoff before one initial probe", selection.indexOf("resolution.startRootModeDiscovery()") in
+            0 until selection.indexOf("probeRoot()"))
+        assertEquals("no second initial su probe", 1, Regex("""probeRoot\(\)""").findAll(selection).count())
+        val runtime = File(root, "service/DozeRuntime.kt").readText()
+        val detach = runtime.substringAfter("fun detachService(teardown: Runnable) {").substringBefore("\n    }")
+        assertTrue("detach revokes mode-switch service authority", detach.contains("access.stopServiceRootDiscovery()"))
+        val attach = manager.substringAfter("fun startServiceRootDiscovery() {").substringBefore("\n    }")
+        val stop = manager.substringAfter("fun stopServiceRootDiscovery() {").substringBefore("\n    }")
+        assertTrue("attach records ownership even in Shizuku mode", attach.contains("resolution.setServiceAttached(true)"))
+        assertTrue("detach clears the same ownership", stop.contains("resolution.setServiceAttached(false)"))
     }
 
     @Test fun rootDiscoveryClosuresKeepDetachedAndServiceOwnershipSeparate() {

@@ -72,6 +72,56 @@ class AccessReadinessTest {
         assertTrue(gate.recover(state, { state }) { restores++ })
     }
 
+    @Test fun grantAndMetadataChangesPreserveReadinessWithinTheSameSessionMode() {
+        for (level in listOf(AccessLevel.APP, AccessLevel.SHELL, AccessLevel.ROOT)) {
+            val gate = AccessReadiness()
+            val state = AccessState(level, null, Grants(false, false), 10001)
+            assertTrue(gate.recover(state, { state }) {})
+            val grants = if (level == AccessLevel.APP) Grants(false, true) else Grants(true, true)
+            val changed = state.copy(grants = grants, uid = 2000, reason = Reason.NO_ACCESS, rootProbeTimedOut = true)
+            assertTrue("$level metadata/grants do not change session readiness", gate.ready(changed))
+            assertTrue(gate.recover(changed, { changed }) { fail("unchanged readiness must not reconcile again") })
+        }
+    }
+
+    @Test fun metadataChangingDuringRestoreDoesNotStrandReadiness() {
+        val gate = AccessReadiness()
+        val initial = AccessState(AccessLevel.ROOT, null, Grants(false, false), 0)
+        var current = initial
+        assertTrue("irrelevant concurrent updates do not discard completed recovery", gate.recover(initial, { current }) {
+            current = initial.copy(grants = Grants(true, true), uid = 10001, rootProbeTimedOut = true)
+        })
+        assertTrue(gate.ready(current))
+    }
+
+    @Test fun dumpChangesSensorOnlyReadinessButSecureSettingsDoesNot() {
+        val gate = AccessReadiness()
+        var state = AccessState(AccessLevel.APP, Reason.NO_ACCESS, Grants(false, false), 10001)
+        var restores = 0
+        assertTrue(gate.recover(state, { state }) { restores++ })
+        state = state.copy(grants = Grants(true, false))
+        assertFalse("DUMP admits SENSOR_ONLY and requires recovery first", gate.ready(state))
+        assertTrue(gate.recover(state, { state }) { restores++ })
+        state = state.copy(grants = Grants(true, true))
+        assertTrue("WSS does not change SENSOR_ONLY readiness", gate.ready(state))
+        assertTrue(gate.recover(state, { state }) { fail("WSS must not interrupt the sensor session") })
+        state = state.copy(grants = Grants(false, true))
+        assertFalse("DUMP loss returns to RESTORE_ONLY", gate.ready(state))
+        assertTrue(gate.recover(state, { state }) { restores++ })
+        assertEquals(3, restores)
+    }
+
+    @Test fun levelAndResolutionChangesDuringRecoveryStillBlockAdmission() {
+        val initial = AccessState(AccessLevel.ROOT, null, Grants(false, false), 0)
+        for (changed in listOf(initial.copy(level = AccessLevel.SHELL), initial.copy(resolved = false),
+            initial.copy(level = AccessLevel.APP, grants = Grants(true, false)))) {
+            val gate = AccessReadiness()
+            var current = initial
+            assertFalse(gate.recover(initial, { current }) { current = changed })
+            assertFalse(gate.ready(changed))
+        }
+    }
+
     @Test fun staleNoAccessDebtIsRestoredBeforeNextEnterWithoutNewDebtNotice() {
         val store = InMemoryLedgerStore()
         store.save(RestoreLedger(listOf(LedgerEntry(Feature.FORCE_DOZE, null, "0", 0, attempts = 1, debt = true))))
