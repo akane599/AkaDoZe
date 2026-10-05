@@ -9,4 +9,22 @@ object HelperGrantPolicy {
         applied: Set<String>,
         trigger: Trigger,
     ): Map<String, String> = helpers.filterKeys { trigger == Trigger.EXPLICIT || it !in applied }
+
+    /** Persist before each mutation: a grant can kill the process, even during an explicit retry. */
+    fun runAttempts(
+        commands: Map<String, String>,
+        applied: Set<String>,
+        persist: (Set<String>) -> Boolean,
+        execute: (String) -> CommandResult,
+    ): Map<String, CommandResult> {
+        val record = applied.toMutableSet()
+        val results = linkedMapOf<String, CommandResult>()
+        for ((item, command) in commands) {
+            record.add(item)
+            // Transport failures consume the automatic attempt too. Only an explicit action retries.
+            if (!persist(record.toSet())) break
+            results[item] = execute(command)
+        }
+        return results
+    }
 }

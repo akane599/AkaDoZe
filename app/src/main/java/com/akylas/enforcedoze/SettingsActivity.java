@@ -561,7 +561,7 @@ public class SettingsActivity extends AppCompatActivity {
                     if (isSuAvailable || isShizukuAvailable) {
                         log("Root or Shizuku permission granted");
                         log("Granting android.permission.READ_PHONE_STATE to com.akylas.enforcedoze");
-                        AsyncTask.execute(() -> accessManager.grantHelpers());
+                        AsyncTask.execute(() -> accessManager.grantHelper("READ_PHONE_STATE"));
                         return true;
                     } else {
                         log("SU permission denied or not available");
@@ -811,7 +811,8 @@ public class SettingsActivity extends AppCompatActivity {
             renderReset();
             // Restores through the ledger first, then the reset steps; the callback runs on doze-worker.
             MyApplication.getDozeRuntime(context).resetSystemState(ResetReport.callback(
-                    PreferenceManager.getDefaultSharedPreferences(context), ResetReport.TRACKER,
+                    PreferenceManager.getDefaultSharedPreferences(context),
+                    context.getSharedPreferences(Prefs.HELPER_GRANTS, Context.MODE_PRIVATE), ResetReport.TRACKER,
                     task -> new Handler(Looper.getMainLooper()).post(task)));
         }
 

@@ -1,7 +1,8 @@
 package com.akylas.enforcedoze.access
 
 object Prefs {
-    // Internal grant-attempt record, cleared by the existing preferences reset.
+    // Device-local grant attempts: excluded from backup/transfer and cleared on reset.
+    const val HELPER_GRANTS = "helper_grants"
     const val APPLIED_HELPERS = "appliedHelpers"
     const val EXECUTION_MODE = "executionMode"
     const val MODE_ROOT = "root"

@@ -18,8 +18,12 @@ class HelperGrantWiringTest {
     @Test
     fun accessCardAndSettingsUserActionsRemainExplicit() {
         assertTrue(source("ui/AccessUi.java").contains("results = access.grantHelpers();"))
-        assertEquals(2, Regex("accessManager\\.grantHelpers\\(\\)").findAll(source("SettingsActivity.java")).count())
-        assertFalse(source("SettingsActivity.java").contains("grantHelpersAutomatically"))
+        val settings = source("SettingsActivity.java")
+        assertEquals(1, Regex("accessManager\\.grantHelpers\\(\\)").findAll(settings).count())
+        val toggle = settings.substringAfter("turnOffDataInDoze.setOnPreferenceChangeListener").substringBefore("whitelistMusicAppNetwork.setOnPreferenceChangeListener")
+        assertTrue(toggle.contains("accessManager.grantHelper(\"READ_PHONE_STATE\")"))
+        assertFalse(toggle.contains("grantHelpers()"))
+        assertFalse(settings.contains("grantHelpersAutomatically"))
     }
 
     @Test
@@ -40,20 +44,22 @@ class HelperGrantWiringTest {
     }
 
     @Test
-    fun managerSerializesAndPersistsEachAttemptBeforeMutationAndResetClearsIt() {
+    fun managerSerializesAndPersistsEachAttemptBeforeMutation() {
         val manager = source("access/AccessManager.kt")
         assertTrue(manager.contains("fun grantHelpers(): Map<String, CommandResult> = grantHelpers(HelperGrantPolicy.Trigger.EXPLICIT)"))
+        assertTrue(manager.contains("fun grantHelper(item: String): Map<String, CommandResult> = grantHelpers(HelperGrantPolicy.Trigger.EXPLICIT, item)"))
         assertTrue(manager.contains("fun grantHelpersAutomatically(): Map<String, CommandResult> = grantHelpers(HelperGrantPolicy.Trigger.AUTOMATIC)"))
         val batch = manager.substringAfter("private fun grantHelpers(trigger:").substringBefore("private fun readGrants")
         assertTrue(batch.contains("synchronized(helperGrantLock)"))
-        assertTrue(batch.contains("prefs.getStringSet(Prefs.APPLIED_HELPERS, emptySet()).orEmpty().toMutableSet()"))
+        assertTrue(batch.contains("requireBackgroundThread()"))
+        assertTrue(batch.contains("helperPrefs.getStringSet(Prefs.APPLIED_HELPERS, emptySet()).orEmpty()"))
+        assertTrue(batch.contains(".filterKeys { item == null || it == item }"))
         assertTrue(batch.contains("HelperGrantPolicy.commands("))
-        assertTrue(batch.contains("applied.add(item)"))
-        val persist = batch.indexOf("check(prefs.edit().putStringSet(Prefs.APPLIED_HELPERS, applied.toSet()).commit())")
-        val execute = batch.indexOf("results[item] = controlRunner.run(command)")
-        assertTrue(persist >= 0 && execute > persist)
-        assertTrue(source("ui/ResetReport.java").contains("prefs.edit().clear()"))
-        assertFalse(source("ui/ResetReport.java").contains("APPLIED_HELPERS"))
+        assertTrue(batch.contains("HelperGrantPolicy.runAttempts(commands, applied, persist ="))
+        assertTrue(batch.contains("helperPrefs.edit().putStringSet(Prefs.APPLIED_HELPERS, record).commit()"))
+        assertTrue(batch.contains("if (!saved) android.util.Log.e("))
+        assertFalse(batch.contains("check("))
+        assertTrue(batch.contains("execute = controlRunner::run"))
         assertFalse(source("Utils.java").contains("grantPermissionsViaShizuku"))
     }
 

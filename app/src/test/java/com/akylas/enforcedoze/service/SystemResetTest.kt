@@ -356,7 +356,7 @@ class SystemResetTest {
         val main = java.util.ArrayDeque<Runnable>()
         var notices = 0
         tracker.setListener { notices++ }
-        val callback = ResetReport.callback(prefs, tracker) { main.add(it) }
+        val callback = ResetReport.callback(prefs, ResetPreferences(emptyMap()), tracker) { main.add(it) }
         callback.onComplete(SystemReset.runJob(job))
         assertEquals("a throwing reset job posts one result notification", 1, main.size)
         assertEquals("notification waits for the main dispatcher", 0, notices)
@@ -386,7 +386,7 @@ class SystemResetTest {
         val prefs = ResetPreferences(initial)
         val tracker = ResetReport.Tracker()
         assertTrue(tracker.begin())
-        ResetReport.callback(prefs, tracker, Runnable::run).onComplete(SystemReset.runJob({
+        ResetReport.callback(prefs, ResetPreferences(emptyMap()), tracker, Runnable::run).onComplete(SystemReset.runJob({
             throw IllegalStateException("failed")
         }))
         assertEquals(initial, prefs.afterProcessRestart().all)
@@ -397,7 +397,7 @@ class SystemResetTest {
         val keys = com.akylas.enforcedoze.access.Prefs
         val prefs = ResetPreferences(mapOf(keys.SERVICE_ENABLED to true, keys.SERVICE_USER_ENABLED to true))
         val tracker = ResetReport.Tracker()
-        val callback = ResetReport.callback(prefs, tracker, Runnable::run)
+        val callback = ResetReport.callback(prefs, ResetPreferences(emptyMap()), tracker, Runnable::run)
         assertTrue(tracker.begin())
         callback.onComplete(SystemReset.runJob({ throw IllegalStateException("failed") }))
         assertEquals(true, prefs.all[keys.SERVICE_USER_ENABLED])
@@ -410,13 +410,56 @@ class SystemResetTest {
         assertEquals(emptyList<ResetCommandId>(), tracker.confirm())
     }
 
+    @Test fun successfulResetClearsDeviceLocalHelperPrefsDurably() {
+        val keys = com.akylas.enforcedoze.access.Prefs
+        val prefs = ResetPreferences(mapOf(keys.SERVICE_ENABLED to true))
+        val helpers = ResetPreferences(mapOf(keys.APPLIED_HELPERS to setOf("READ_PHONE_STATE", "SELF_WHITELIST")))
+        val tracker = ResetReport.Tracker()
+        assertTrue(tracker.begin())
+        ResetReport.callback(prefs, helpers, tracker, Runnable::run)
+            .onComplete(SystemResetResult(ResetRestoreOutcome.COMPLETE, emptyList()))
+        assertTrue(tracker.prefsCleared())
+        assertTrue(prefs.afterProcessRestart().all.isEmpty())
+        assertTrue("successful reset clears the helper-grant file", helpers.afterProcessRestart().all.isEmpty())
+    }
+
+    @Test fun failedResetPreservesDeviceLocalHelperPrefs() {
+        val keys = com.akylas.enforcedoze.access.Prefs
+        val original = mapOf(keys.APPLIED_HELPERS to setOf("READ_PHONE_STATE", "SELF_WHITELIST"))
+        val helpers = ResetPreferences(original)
+        val tracker = ResetReport.Tracker()
+        assertTrue(tracker.begin())
+        ResetReport.callback(ResetPreferences(emptyMap()), helpers, tracker, Runnable::run)
+            .onComplete(SystemReset.runJob({ throw IllegalStateException("reset failed") }))
+        assertFalse(tracker.prefsCleared())
+        assertEquals("failed reset keeps helper attempts", original, helpers.afterProcessRestart().all)
+    }
+
+    @Test fun failedDefaultPrefsCommitDoesNotClearHelperPrefs() {
+        val keys = com.akylas.enforcedoze.access.Prefs
+        val prefs = ResetPreferences(mapOf(keys.SERVICE_ENABLED to true)).apply { commitSucceeds = false }
+        val original = mapOf(keys.APPLIED_HELPERS to setOf("READ_PHONE_STATE"))
+        val helpers = ResetPreferences(original)
+        assertFalse(ResetReport.clearPreferences(prefs, helpers, SystemResetResult(ResetRestoreOutcome.COMPLETE, emptyList())))
+        assertEquals(original, helpers.afterProcessRestart().all)
+    }
+
+    @Test fun failedHelperPrefsCommitNeverReportsSuccessfulClear() {
+        val keys = com.akylas.enforcedoze.access.Prefs
+        val original = mapOf(keys.APPLIED_HELPERS to setOf("READ_PHONE_STATE"))
+        val helpers = ResetPreferences(original).apply { commitSucceeds = false }
+        assertFalse(ResetReport.clearPreferences(ResetPreferences(emptyMap()), helpers,
+            SystemResetResult(ResetRestoreOutcome.COMPLETE, emptyList())))
+        assertEquals(original, helpers.afterProcessRestart().all)
+    }
+
     @Test fun preferenceExceptionStillDeliversResultWithoutClaimingClear() {
         val prefs = ResetPreferences(emptyMap()).apply { throwOnEdit = true }
         val tracker = ResetReport.Tracker()
         var notices = 0
         tracker.setListener { notices++ }
         assertTrue(tracker.begin())
-        ResetReport.callback(prefs, tracker, Runnable::run)
+        ResetReport.callback(prefs, ResetPreferences(emptyMap()), tracker, Runnable::run)
             .onComplete(SystemResetResult(ResetRestoreOutcome.COMPLETE, emptyList()))
         assertEquals(1, notices)
         assertFalse(tracker.prefsCleared())
@@ -429,7 +472,7 @@ class SystemResetTest {
             .apply { commitSucceeds = false }
         val tracker = ResetReport.Tracker()
         assertTrue(tracker.begin())
-        ResetReport.callback(prefs, tracker, Runnable::run).onComplete(SystemReset.runJob({
+        ResetReport.callback(prefs, ResetPreferences(emptyMap()), tracker, Runnable::run).onComplete(SystemReset.runJob({
             throw IllegalStateException("failed")
         }))
         assertEquals(false, prefs.all[keys.SERVICE_ENABLED])
