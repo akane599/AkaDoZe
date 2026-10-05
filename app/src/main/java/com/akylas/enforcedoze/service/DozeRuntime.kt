@@ -274,21 +274,27 @@ class DozeRuntime(context: Context) {
         bumpGeneration()
         resets.resetSystemState(Runnable {
             try {
-                val result = SystemReset.runJob {
+                val onError: (Throwable) -> Unit = { error ->
+                    diagnosticLogger("System reset failed", error)
+                    journal.emit(DozeEvent(EventType.ERROR, "RESET_FAILED"))
+                }
+                val result = SystemReset.runJob({
                     sessionActive = false
                     session.recordExit()
                     SystemReset.run(control, Build.VERSION.SDK_INT, app.packageName,
                         permissionGranted = { permission ->
                             app.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
                         },
-                    ) {
-                        val exit = controller.reconcile(Build.VERSION.SDK_INT, grants())
-                        recordExit(exit)
-                        checkSafety()
-                        val remaining = store.load()
-                        SystemReset.restoreOutcome(exit.complete, remaining, store.loadFailed, store.corruptLines)
-                    }
-                }
+                        restore = {
+                            val exit = controller.reconcile(Build.VERSION.SDK_INT, grants())
+                            recordExit(exit)
+                            checkSafety()
+                            val remaining = store.load()
+                            SystemReset.restoreOutcome(exit.complete, remaining, store.loadFailed, store.corruptLines)
+                        },
+                        onError = onError,
+                    )
+                }, onError = onError)
                 callback.onComplete(result)
             } finally { quitIfDetached() }
         })

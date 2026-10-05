@@ -24,6 +24,37 @@ class SystemResetTest {
         corrupt: List<com.akylas.enforcedoze.doze.CorruptLedgerLine> = emptyList(),
     ) = SystemReset.restoreOutcome(exitComplete, remaining, loadFailed, corrupt)
 
+    @Test fun throwingJobReturnsFailureAndReportsExactExceptionOnce() {
+        val exception = IllegalStateException("reset failed")
+        val reported = mutableListOf<Throwable>()
+
+        val result = SystemReset.runJob({ throw exception }, onError = reported::add)
+
+        assertTrue(result.failed)
+        assertEquals(listOf(exception), reported)
+    }
+
+    @Test fun throwingRestoreReturnsFailureAndReportsException() {
+        val exception = IllegalStateException("restore failed")
+        val reported = mutableListOf<Throwable>()
+
+        val result = SystemReset.run(resetRunner(), 36, PACKAGE, restore = { throw exception },
+            onError = reported::add)
+
+        assertTrue(result.failed)
+        assertEquals(listOf(exception), reported)
+    }
+
+    @Test fun successfulJobDoesNotReportError() {
+        val reported = mutableListOf<Throwable>()
+        val expected = SystemResetResult(ResetRestoreOutcome.COMPLETE, emptyList())
+
+        val result = SystemReset.runJob({ expected }, onError = reported::add)
+
+        assertSame(expected, result)
+        assertTrue(reported.isEmpty())
+    }
+
     @Test fun restoreOutcomeAllClearIsComplete() =
         assertEquals(ResetRestoreOutcome.COMPLETE, outcome())
 
