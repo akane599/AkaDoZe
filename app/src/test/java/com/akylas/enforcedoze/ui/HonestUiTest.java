@@ -274,10 +274,20 @@ public class HonestUiTest {
                 job.contains("SystemReset.run(control") && job.contains("controller.reconcile(") && job.contains("store.load()"));
         String report = source("src/main/java/com/akylas/enforcedoze/ui/ResetReport.java");
         String message = between(report, "public static String message(", "private static String step(");
-        assertTrue("a failed report must not promise an automatic restart",
-                message.indexOf("if (result.getFailed()) return text.toString();") >= 0
-                        && message.indexOf("if (result.getFailed()) return text.toString();")
-                        < message.indexOf("R.string.reset_restart_text"));
+        String failedReturn = "if (result.getFailed()) return context.getString(R.string.reset_failed_not_run);";
+        assertTrue("a failed report says the reset did not run and returns before any restart text",
+                message.indexOf(failedReturn) >= 0
+                        && message.indexOf(failedReturn) < message.indexOf("R.string.reset_restart_text"));
+        assertTrue("a failed job must not show the debt line, the unconfirmed steps or the prefs-failed line",
+                message.indexOf(failedReturn) < message.indexOf("R.string.reset_debt_remaining")
+                        && message.indexOf(failedReturn) < message.indexOf("R.string.reset_steps_unconfirmed")
+                        && message.indexOf(failedReturn) < message.indexOf("R.string.reset_prefs_failed"));
+        assertTrue("a non-failed debt result still shows the debt line",
+                message.contains("if (result.getRestoreOutcome() == ResetRestoreOutcome.REMAINING_DEBT) {\n            text.append(context.getString(R.string.reset_debt_remaining));"));
+        assertFalse("the old late failed return is gone",
+                message.contains("if (result.getFailed()) return text.toString();"));
+        assertTrue("the new string lives in values/strings.xml",
+                source("src/main/res/values/strings.xml").contains("name=\"reset_failed_not_run\""));
         String finish = between(source("src/main/java/com/akylas/enforcedoze/SettingsActivity.java"),
                 "private void finishReset()", "private void applyCapabilities(");
         assertTrue("a failed confirmation renders IDLE instead of starting a rebirth",
