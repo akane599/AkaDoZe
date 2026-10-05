@@ -142,6 +142,9 @@ before, and nothing should be reset.
     visible until it is restored. Restart Shizuku: the session upgrades back to full forcing without a new session.
   - Screen on, charging, stop and unlock still restore sensors to NORMAL.
   - With TalkBack on, the status line, both test buttons and the debt/downgrade notices read distinctly.
+- *Cold-start "checking" status (SQ-126).* Root mode, with the su prompt left pending for a few seconds after a
+  cold start (force-stop, then open). The status and access card read "checking" with no access-repair
+  prompt, then resolve to the real state. Deny su: the repair action appears only after that definitive answer.
 
 **If something fails:** Doze monitor → "Share report", plus
 `adb logcat -d --pid=$(adb shell pidof -s com.akylas.enforcedoze) | tail -200`.
