@@ -54,15 +54,3 @@ class RootProbeRetry {
         return 1_000L shl attempts++
     }
 }
-
-object BootRestorePolicy {
-    @JvmStatic
-    fun shouldRestore(serviceEnabled: Boolean, encoded: String, retained: String): Boolean =
-        !serviceEnabled && hasPending(encoded, retained)
-
-    private fun hasPending(encoded: String, retained: String): Boolean {
-        val decoded = com.akylas.enforcedoze.doze.RestoreLedgerCodec.decode(encoded)
-        val damaged = decoded.corruptLines + com.akylas.enforcedoze.doze.RestoreLedgerCodec.decode(retained).corruptLines
-        return decoded.ledger.entries.isNotEmpty() || damaged.any(LedgerRecovery::recoverable)
-    }
-}

@@ -144,12 +144,12 @@ class AccessDiscoveryRepairTest {
     @Test fun retainedNonRecoverableDamageDoesNotBuildRuntime() {
         val retained = "1|APP_SUSPEND|broken\n1|LOCATION|broken\nunknown"
         var builds = 0
-        val pending = BootRestorePolicy.shouldRestore(false, retained, retained)
-        if (pending) builds++ // The receivers gate getDozeRuntime on this exact policy.
+        val pending = BootRestorePolicy.restoreIfPending(false, retained, retained, Runnable { builds++ })
+        assertEquals("non-recoverable damage must not construct the runtime", 0, builds)
         assertFalse("non-recoverable damage cannot be restored", pending)
-        assertEquals(0, builds)
-        assertTrue(BootRestorePolicy.shouldRestore(false, "", "1|FORCE_DOZE|broken"))
-        assertTrue(BootRestorePolicy.shouldRestore(false, "", "1|MOTION_SENSORS|broken"))
+        assertTrue(BootRestorePolicy.restoreIfPending(false, "", "1|FORCE_DOZE|broken", Runnable { builds++ }))
+        assertTrue(BootRestorePolicy.restoreIfPending(false, "", "1|MOTION_SENSORS|broken", Runnable { builds++ }))
+        assertEquals("recoverable retained intent invokes the real preflight callback", 2, builds)
     }
 
     @Test fun rootRefreshDoesNotWithdrawResolvedPrivilege() {

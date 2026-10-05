@@ -3,16 +3,20 @@ package com.akylas.enforcedoze.service
 import android.content.Context
 import com.akylas.enforcedoze.access.Prefs
 
-/** Lightweight receiver preflight: never constructs AccessManager or the runtime for an empty ledger. */
+/** Lightweight receiver preflight: runtime construction stays inside the admitted callback. */
 object BootRestore {
     @JvmStatic
-    fun hasPending(context: Context): Boolean = try {
+    fun restoreIfPending(context: Context, restore: Runnable): Boolean {
+        val snapshot = readSnapshot(context)
+        return BootRestorePolicy.restoreIfPending(false, snapshot?.first, snapshot?.second, restore)
+    }
+
+    private fun readSnapshot(context: Context): Pair<String, String>? = try {
         val prefs = context.getSharedPreferences("doze_ledger", Context.MODE_PRIVATE)
-        BootRestorePolicy.shouldRestore(false,
-            prefs.getString(Prefs.RESTORE_LEDGER, "").orEmpty(),
-            prefs.getString("restoreLedgerCorruptLines", "").orEmpty())
+        prefs.getString(Prefs.RESTORE_LEDGER, "").orEmpty() to
+            prefs.getString("restoreLedgerCorruptLines", "").orEmpty()
     } catch (_: Exception) {
         // Unreadable restoration intent must be retained and checked, not treated as an empty ledger.
-        true
+        null
     }
 }
