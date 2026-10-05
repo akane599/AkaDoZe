@@ -89,6 +89,24 @@ before, and nothing should be reset.
     - A damaged record for anything other than forced Doze or motion sensors shows "Dismiss damaged
       records" on the access card and in the monitor. Confirming removes it. Cancelling keeps it.
 
+**Device-only findings to confirm (SQ-92):**
+- *Deferred watchdog timing (F5).*
+  - Setup: root or Shizuku, screen off, "Keep Doze enforced" on. Trigger two non-maintenance idle exits within
+    60 s so the watchdog defers (`DEFER` in the journal). Then unplug USB and let the CPU suspend.
+  - Compare the scheduled re-force time with the actual one, and note how long the device was suspended.
+  - Repeat with the CPU kept awake as a control.
+  - Screen-on or access loss must cancel the pending re-force.
+  - Only a measured late re-force justifies a wake/alarm change.
+- *Mobile data on dual-SIM (A3).*
+  - On a device with two active SIM/eSIM subscriptions, note:
+    - the API level and OEM;
+    - the default-data SIM;
+    - each SIM's mobile-data switch.
+  - Let AkaDoZe disable and restore mobile data. Compare `settings get global mobile_data` with each SIM's
+    own switch and with the journal/ledger outcome.
+  - Repeat after swapping the default-data SIM, including a swap between Doze entry and restore.
+  - If the global bit and the affected SIM disagree, file it with these outputs.
+
 **If something fails:** Doze monitor → "Share report", plus
 `adb logcat -d --pid=$(adb shell pidof -s com.akylas.enforcedoze) | tail -200`.
 
