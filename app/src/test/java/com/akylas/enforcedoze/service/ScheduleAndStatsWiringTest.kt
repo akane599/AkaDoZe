@@ -44,6 +44,34 @@ class ScheduleAndStatsWiringTest {
         assertNoServiceOrPreferenceMutation(receiver)
     }
 
+    @Test fun processRestartAfterExactAlarmRevocationRequeriesOnceWithoutConstructingRuntime() {
+        val application = File("src/main/java/com/akylas/enforcedoze/MyApplication.java").readText()
+        val startup = application.substringAfter("public void onCreate() {", "")
+            .substringBefore("public static Context getAppContext()")
+        val requery = "Utils.requeryExactAlarmAccess(MyApplication.context);"
+        assertTrue("a listener rebind after revoke must re-arm without opening Main", startup.contains(requery))
+        assertEquals("startup must not arm the same boundary twice", 1, startup.windowed(requery.length).count { it == requery })
+        assertTrue("application context must be ready before requery",
+            startup.indexOf("MyApplication.context = getApplicationContext();") in 0 until startup.indexOf(requery))
+        for (forbidden in listOf("getDozeRuntime(", "new DozeRuntime(", "AccessManager", "getJournal(",
+            "scheduleNextCustomDozePeriodBoundary(", "isInsideCustomDozePeriod(", "Shizuku", "Shell.")) {
+            assertFalse("process-start rearm must not call $forbidden", startup.contains(forbidden))
+        }
+        assertNoServiceOrPreferenceMutation(startup)
+    }
+
+    @Test fun lockedProcessStartSkipsRequeryBeforeCredentialProtectedPreferencesAreRead() {
+        val startup = File("src/main/java/com/akylas/enforcedoze/MyApplication.java").readText()
+            .substringAfter("public void onCreate() {", "").substringBefore("public static Context getAppContext()")
+        val locked = startup.indexOf("Build.VERSION.SDK_INT >= Build.VERSION_CODES.N")
+        val unlock = startup.indexOf("isUserUnlocked()")
+        val requery = startup.indexOf("Utils.requeryExactAlarmAccess(")
+        assertTrue("API 23 must not call the API 24 unlock check", locked >= 0 && unlock > locked)
+        assertTrue("locked credential storage must be checked before requery", requery > unlock)
+        assertTrue(startup.substring(locked, requery).contains("return;"))
+        assertTrue("skip when locked, not when unlocked", startup.contains("!((UserManager) getSystemService(Context.USER_SERVICE)).isUserUnlocked()"))
+    }
+
     @Test fun requeryReadsCapabilityAndPersistedIntentWithoutApplyingCurrentWindow() {
         val utils = File("src/main/java/com/akylas/enforcedoze/Utils.java").readText()
         val requery = utils.substringAfter("public static ExactAlarmAccessPolicy.Access requeryExactAlarmAccess(", "")

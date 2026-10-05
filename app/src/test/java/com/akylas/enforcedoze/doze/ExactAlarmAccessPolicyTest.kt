@@ -15,6 +15,22 @@ class ExactAlarmAccessPolicyTest {
         }
     }
 
+    @Test fun processStartAfterRevokeRetainsBestEffortBoundaryOnlyForEnabledConfiguredIntent() {
+        // F9: Android removes the exact alarm and kills the process on revoke; a listener rebind
+        // restarts it without a grant broadcast or foreground return. Only persisted intent survives.
+        val beforeRevoke = ExactAlarmAccessPolicy.requery(36, true, true, true)
+        assertEquals(ExactAlarmAccessPolicy.Access(true, true), beforeRevoke)
+        for ((userEnabled, hasPeriods) in listOf(true to true, false to true, true to false, false to false)) {
+            val restarted = ExactAlarmAccessPolicy.requery(36, false, userEnabled, hasPeriods)
+            assertFalse("process start must use the revoked capability", restarted.exactAllowed)
+            assertEquals("only enabled, configured intent can replace the lost boundary",
+                userEnabled && hasPeriods, restarted.shouldRearm)
+        }
+        val periods = listOf("22:33-22:43")
+        assertEquals("a restart before the missed start arms that start, not the current window",
+            SchedulePolicy.Boundary(22 * 60 + 33, 0, 1), SchedulePolicy.nextBoundary(periods, 22 * 60 + 32))
+    }
+
     @Test fun api23Through30DoNotRequireSpecialAccess() {
         for (api in 23..30) {
             assertEquals(
