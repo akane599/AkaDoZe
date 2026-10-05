@@ -5,15 +5,15 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.*
 import org.junit.Test
 
 class CommandLaneTest {
     private fun result(command: String) = CommandResult(0, listOf(command), emptyList(), 0, false)
 
-    @Test(timeout = 5_000)
+    @Test(timeout = 20_000)
     fun concurrentSubmittersExecuteInAdmissionOrderWithoutOverlap() {
         val executed = Collections.synchronizedList(mutableListOf<String>())
         val expected = mutableListOf<String>()
@@ -47,8 +47,8 @@ class CommandLaneTest {
                     }
                 }
                 start.countDown()
-                submissions.forEach { it.get(2, TimeUnit.SECONDS) }
-                futures.forEach { assertTrue(it.get(2, TimeUnit.SECONDS).ok) }
+                submissions.forEach { it.get(5, TimeUnit.SECONDS) }
+                futures.forEach { assertTrue(it.get(5, TimeUnit.SECONDS).ok) }
                 assertEquals(expected, executed)
                 assertEquals(0, overlap.get())
                 assertEquals(AccessLevel.SHELL, lane.level)
@@ -56,7 +56,7 @@ class CommandLaneTest {
         } finally { submitters.shutdownNow() }
     }
 
-    @Test(timeout = 5_000)
+    @Test(timeout = 20_000)
     fun timeoutResetsBackendBeforeNextCommandAndNextCommandRuns() {
         val started = CountDownLatch(1)
         val release = CountDownLatch(1)
@@ -74,20 +74,20 @@ class CommandLaneTest {
             override fun reset() { events.add("reset"); release.countDown() }
         }
         CommandLane(backend).use { lane ->
-            val wedged = lane.submit("wedged", 150)
-            assertTrue(started.await(1, TimeUnit.SECONDS))
-            val next = lane.submit("next", 1_000)
-            val timeout = wedged.get(2, TimeUnit.SECONDS)
+            val wedged = lane.submit("wedged", 1_000)
+            assertTrue("Backend actually started", started.await(5, TimeUnit.SECONDS))
+            val next = lane.submit("next", 5_000)
+            val timeout = wedged.get(5, TimeUnit.SECONDS)
             assertTrue(timeout.timedOut)
             assertFalse(timeout.ok)
             assertEquals(-1, timeout.exitCode)
-            assertTrue(timeout.durationMs >= 100)
-            assertEquals(listOf("next"), next.get(2, TimeUnit.SECONDS).stdout)
+            assertTrue("Timeout duration includes its execution budget", timeout.durationMs >= 1_000)
+            assertEquals(listOf("next"), next.get(5, TimeUnit.SECONDS).stdout)
             assertEquals(listOf("wedged", "reset", "next"), events)
         }
     }
 
-    @Test(timeout = 5_000)
+    @Test(timeout = 20_000)
     fun timeoutExcludesQueueWaitAndControlNeverQueuesBehindReads() {
         val readStarted = CountDownLatch(1)
         val releaseRead = CountDownLatch(1)
@@ -102,30 +102,34 @@ class CommandLaneTest {
         }
         val controlBackend = object : CommandBackend {
             override val level = AccessLevel.SHELL
-            override fun execute(command: String): CommandResult {
-                Thread.sleep(100) // Longer than the queued read's 50 ms execution timeout.
-                return result(command)
-            }
+            override fun execute(command: String): CommandResult = result(command)
             override fun reset() = Unit
         }
         CommandLane(readBackend, "reads").use { reads ->
             CommandLane(controlBackend, "control").use { control ->
-                val first = reads.submit("read", 1_000)
-                assertTrue(readStarted.await(1, TimeUnit.SECONDS))
-                val queued = reads.submit("queued", 50)
-                assertEquals(listOf("unforce"), control.run("unforce", 500).stdout)
-                assertFalse(first.isDone)
+                val first = reads.submit("read", 10_000)
+                assertTrue("First read holds its lane", readStarted.await(5, TimeUnit.SECONDS))
+                val queued = reads.submit("queued", 1_000)
+                assertEquals(listOf("unforce"), control.run("unforce", 5_000).stdout)
+                assertFalse("Control completed while the read is still blocked", first.isDone)
+                // Keep the read lane blocked beyond the queued command's whole execution budget.
+                // A bounded Future wait, rather than a sleep in the unrelated control backend,
+                // also asserts that the queued command has not completed or timed out early.
+                try {
+                    queued.get(2, TimeUnit.SECONDS)
+                    fail("Queued read completed before its blocker was released")
+                } catch (_: TimeoutException) { }
                 releaseRead.countDown()
-                assertTrue(first.get(2, TimeUnit.SECONDS).ok)
-                assertTrue(queued.get(2, TimeUnit.SECONDS).ok)
+                assertTrue(first.get(5, TimeUnit.SECONDS).ok)
+                assertTrue("Queue wait must not consume the execution budget", queued.get(5, TimeUnit.SECONDS).ok)
             }
         }
     }
 
-    @Test(timeout = 5_000)
+    @Test(timeout = 20_000)
     fun concurrentPipeDrainsCompleteAndReturnedListsAreImmutableSnapshots() {
         CommandLane(ShellCommandRunner()).use { lane ->
-            val output = lane.run("i=0; while [ \"\$i\" -lt 4000 ]; do echo out; echo err >&2; i=\$((i+1)); done", 3_000)
+            val output = lane.run("i=0; while [ \"\$i\" -lt 4000 ]; do echo out; echo err >&2; i=\$((i+1)); done", 10_000)
             assertTrue(output.toString(), output.ok)
             assertEquals(4000, output.stdout.size)
             assertEquals(4000, output.stderr.size)
@@ -150,7 +154,7 @@ class CommandLaneTest {
         }
     }
 
-    @Test(timeout = 5_000)
+    @Test(timeout = 20_000)
     fun deadlineIncludesQueueWaitAndExpiredExternalMutationNeverExecutes() {
         val started = CountDownLatch(1)
         val release = CountDownLatch(1)
@@ -165,19 +169,19 @@ class CommandLaneTest {
             override fun reset() { release.countDown() }
         }
         CommandLane(backend).use { lane ->
-            val blocker = lane.submit("blocker", 2_000)
-            assertTrue(started.await(1, TimeUnit.SECONDS))
-            val timeout = lane.runWithDeadline("external-mutation", System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(100)) { true }
+            val blocker = lane.submit("blocker", 10_000)
+            assertTrue("Blocker actually started", started.await(5, TimeUnit.SECONDS))
+            val timeout = lane.runWithDeadline("external-mutation", System.nanoTime() + TimeUnit.SECONDS.toNanos(1)) { true }
             assertTrue("Queue wait consumes the external deadline", timeout.timedOut)
             assertFalse(blocker.isDone)
             release.countDown()
-            assertTrue(blocker.get(1, TimeUnit.SECONDS).ok)
-            assertTrue(lane.run("marker", 1_000).ok)
+            assertTrue(blocker.get(5, TimeUnit.SECONDS).ok)
+            assertTrue(lane.run("marker", 5_000).ok)
             assertEquals("Expired request cannot run after PendingResult would be finished", listOf("blocker", "marker"), executed)
         }
     }
 
-    @Test(timeout = 5_000)
+    @Test(timeout = 20_000)
     fun deadlineRechecksAdmissionAtBackendAndRejectsExpiredDeadline() {
         val backend = object : CommandBackend {
             override val level = AccessLevel.SHELL
@@ -185,7 +189,7 @@ class CommandLaneTest {
             override fun reset() = Unit
         }
         CommandLane(backend).use { lane ->
-            val denied = lane.runWithDeadline("mutation", System.nanoTime() + TimeUnit.SECONDS.toNanos(1)) { false }
+            val denied = lane.runWithDeadline("mutation", System.nanoTime() + TimeUnit.SECONDS.toNanos(5)) { false }
             assertFalse(denied.ok)
             assertFalse(denied.timedOut)
             assertEquals(listOf("ADMISSION_DENIED"), denied.stderr)
@@ -193,37 +197,60 @@ class CommandLaneTest {
         }
     }
 
-    @Test(timeout = 5_000)
+    @Test(timeout = 20_000)
     fun deadlineAbortsRunningBackendAndLeavesLaneUsable() {
+        val started = CountDownLatch(1)
         val release = CountDownLatch(1)
         val resets = AtomicInteger()
         val backend = object : CommandBackend {
             override val level = AccessLevel.SHELL
             override fun execute(command: String): CommandResult {
-                if (command == "wedged") release.await()
+                if (command == "wedged") {
+                    started.countDown()
+                    release.await()
+                }
                 return result(command)
             }
             override fun reset() { resets.incrementAndGet(); release.countDown() }
         }
-        CommandLane(backend).use { lane ->
-            assertTrue(lane.runWithDeadline("wedged", System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(150)) { true }.timedOut)
-            assertEquals(listOf("next"), lane.run("next", 1_000).stdout)
-            assertEquals(1, resets.get())
+        val callers = Executors.newSingleThreadExecutor()
+        try {
+            CommandLane(backend).use { lane ->
+                val wedged = callers.submit<CommandResult> {
+                    lane.runWithDeadline("wedged", System.nanoTime() + TimeUnit.SECONDS.toNanos(1)) { true }
+                }
+                assertTrue("Deadline must abort a running backend, not just an unstarted request", started.await(5, TimeUnit.SECONDS))
+                assertTrue(wedged.get(5, TimeUnit.SECONDS).timedOut)
+                assertEquals(listOf("next"), lane.run("next", 5_000).stdout)
+                assertEquals(1, resets.get())
+            }
+        } finally {
+            release.countDown()
+            callers.shutdownNow()
         }
     }
 
-    @Test(timeout = 5_000)
+    @Test(timeout = 20_000)
     fun realProcessIsDestroyedOnTimeoutAndLaneRemainsUsable() {
-        val process = AtomicReference<Process>()
-        val backend = ShellCommandRunner({ AccessLevel.APP }) { command ->
-            ProcessBuilder("sh", "-c", command).start().also { process.set(it) }
+        val command = "exec sleep 60"
+        // Start outside the short execution budget, so process creation cannot race the timeout.
+        // The process outlives the whole test unless the runner actually destroys it.
+        val process = ProcessBuilder("sh", "-c", command).start()
+        val backend = ShellCommandRunner({ AccessLevel.APP }) { requested ->
+            if (requested == command) process else ProcessBuilder("sh", "-c", requested).start()
         }
-        CommandLane(backend).use { lane ->
-            assertTrue(lane.run("exec sleep 5", 100).timedOut)
-            assertTrue("Timed-out process must be dead", process.get().waitFor(1, TimeUnit.SECONDS))
-            val next = lane.run("echo alive", 1_000)
-            assertTrue(next.ok)
-            assertEquals(listOf("alive"), next.stdout)
+        try {
+            CommandLane(backend).use { lane ->
+                assertTrue("Timeout starts with a live process", process.isAlive)
+                assertTrue(lane.run(command, 1_000).timedOut)
+                assertTrue("Timed-out process must be dead", process.waitFor(5, TimeUnit.SECONDS))
+                val next = lane.run("echo alive", 5_000)
+                assertTrue(next.ok)
+                assertEquals(listOf("alive"), next.stdout)
+            }
+        } finally {
+            process.destroyForcibly()
+            assertTrue("Owned process ended", process.waitFor(5, TimeUnit.SECONDS))
         }
     }
 }
