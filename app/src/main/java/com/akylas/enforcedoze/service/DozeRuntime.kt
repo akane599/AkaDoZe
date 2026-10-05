@@ -418,6 +418,7 @@ class DozeRuntime(context: Context) {
                     }
                 },
                 shared,
+                { journal.emit(DozeEvent(EventType.RECOVERY_DEBT, "RESTORE_WINDOW_STARVED")) },
             ).start(deadline)
         }
     }

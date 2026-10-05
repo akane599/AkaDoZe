@@ -253,6 +253,23 @@ class AccessDiscoveryRepairTest {
         assertTrue(fixture.access.listeners.isEmpty())
     }
 
+    @Test fun followUpBelowMinimumBudgetSkipsWithoutDispatching() {
+        val fixture = WindowFixture()
+        val jobs = mutableListOf<() -> Unit>()
+        fixture.postRestore = { jobs += it }
+        fixture.start(allowContinuation = false)
+        fixture.now = 7_001L
+        fixture.access.publish(fixture.access.state.copy(resolved = true, level = AccessLevel.SHELL))
+        assertTrue("a starved follow-up must not dispatch worker work", jobs.isEmpty())
+        fixture.timeout()
+        repeat(3) { fixture.access.publish(fixture.access.state) }
+        assertEquals("a starved follow-up reports its skip exactly once", 1, fixture.skips)
+        assertEquals(0, fixture.restores)
+        assertEquals(0, fixture.retries)
+        assertEquals(1, fixture.finished)
+        assertTrue(fixture.access.listeners.isEmpty())
+    }
+
     @Test fun queuedFollowUpBelowMinimumBudgetDoesNotArmAnotherContinuation() {
         val fixture = WindowFixture()
         val jobs = mutableListOf<() -> Unit>()
@@ -261,9 +278,33 @@ class AccessDiscoveryRepairTest {
         fixture.start(allowContinuation = false)
         fixture.now = 7_001L
         jobs.removeAt(0)()
+        fixture.timeout()
+        repeat(3) { fixture.access.publish(fixture.access.state) }
+        assertEquals("an exhausted follow-up reports its skip exactly once", 1, fixture.skips)
         assertEquals("an exhausted follow-up does not run", 0, fixture.restores)
         assertEquals(0, fixture.retries)
         assertEquals(1, fixture.finished)
+        assertTrue(fixture.access.listeners.isEmpty())
+    }
+
+    @Test fun starvedWindowWithContinuationHandsOffWithoutReportingSkip() {
+        val fixture = WindowFixture()
+        fixture.start()
+        fixture.now = 7_001L
+        fixture.access.publish(fixture.access.state.copy(resolved = true, level = AccessLevel.SHELL))
+        assertEquals("a continuation owns recovery instead of a skip notice", 0, fixture.skips)
+        assertEquals(1, fixture.retries)
+        assertEquals("only the fresh follow-up restores", listOf(9_000L), fixture.restoreBudgets)
+        assertTrue(fixture.access.listeners.isEmpty())
+    }
+
+    @Test fun admittedFollowUpAppRestoreDoesNotReportSkip() {
+        val fixture = WindowFixture()
+        fixture.access.state = fixture.access.state.copy(resolved = true)
+        fixture.start(allowContinuation = false)
+        assertEquals(1, fixture.restores)
+        assertEquals("an admitted APP restore is not a skipped window", 0, fixture.skips)
+        assertEquals(0, fixture.retries)
         assertTrue(fixture.access.listeners.isEmpty())
     }
 
@@ -337,6 +378,7 @@ class AccessDiscoveryRepairTest {
         assertEquals("skipping cannot increment attempts or alter intent", intent, store.load())
         assertFalse("skipping creates no RESTORE_FAILED", events.any { it.type == EventType.RESTORE_FAILED })
         assertFalse("skipping creates no RECOVERY_DEBT", events.any { it.type == EventType.RECOVERY_DEBT })
+        assertEquals("the continuation handoff must not report a terminal skip", 0, fixture.skips)
         assertEquals("the shared continuation fires once", 1, fixture.retries)
         assertEquals("the old window finishes once", 1, fixture.finished)
         repeat(3) { fixture.access.publish(fixture.access.state) }
@@ -398,6 +440,7 @@ class AccessDiscoveryRepairTest {
         var finished = 0
         var retries = 0
         var debts = 0
+        var skips = 0
         var restores = 0
         val restoreBudgets = mutableListOf<Long>()
         var duringRestore: () -> Unit = {}
@@ -414,7 +457,7 @@ class AccessDiscoveryRepairTest {
             }, { action -> postRestore(action) }, { deadline ->
                 restores++; restoreBudgets += deadline - now; duringRestore()
             },
-                { finished++ }, if (allowContinuation) continuation else null).start()
+                { finished++ }, if (allowContinuation) continuation else null, { skips++ }).start()
         }
     }
 }
