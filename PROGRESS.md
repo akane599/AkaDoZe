@@ -59,7 +59,7 @@ _Work items, stories and blockers live on the Sidequest board. This file keeps w
 | Code audit | 2026-10-05 | `/code-audit` (8 reviewers, fable/high, run in a separate environment) over 61f061a..112cf3c: 7 verified findings (1 P2, 6 P3), fixed in US-4 (SQ-93..SQ-99); bound reviews SQ-100 PASS, SQ-101 PASS; low review notes held in SQ-92 | `/code-audit` |
 | PR review | 2026-10-05 | review of 61f061a..5aa3e68 + post-release backlog → US-5 (SQ-104..SQ-135); bound reviews SQ-130 PASS, SQ-131 FAIL→SQ-132, SQ-134 FAIL→SQ-135; 623 JVM tests green at 15091cb | `/code-review` + `review-audit` (Opus) |
 | Emulator QA | 2026-10-06 | `docs/device-test-1.11.0.md` on an emulator (run elsewhere, Shizuku): 9 findings F1–F9 → US-6 (SQ-136..SQ-153); bound reviews SQ-146 FAIL→SQ-148, SQ-152 PASS; 697 JVM tests green at c9abb12 | emulator, `docs/device-test-emulator-status.md` |
-| Coverage / CRAP | 2026-10-06 | 352 of 794 functions at CRAP ≥ 6 vs Base 42f8e73 (0 unmeasured); 23 of them touched by US-6, held in a backlog ticket | `quartermaster crap --json` |
+| Coverage / CRAP | 2026-10-06 | 352 of 794 functions at CRAP ≥ 6 vs Base 42f8e73 (0 unmeasured); 25 of them touched by US-6, held undispatched in SQ-154 for the user's pick | `quartermaster crap --json` |
 | Security | — | — | `/claude-security` |
 | UI / design | — | — | `/ui-overhaul` phase review |
 | Lint | 2026-10-03 | baseline captured: 160 pre-existing issues in app/lint-baseline.xml (only new issues fail) | `./gradlew :app:lintDebug -q` |
