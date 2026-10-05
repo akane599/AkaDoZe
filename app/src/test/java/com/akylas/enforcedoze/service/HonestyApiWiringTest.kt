@@ -18,7 +18,7 @@ class HonestyApiWiringTest {
         val reset = runtime.substringAfter("fun resetSystemState(callback: SystemResetCallback)")
             .substringBefore("fun requestSafetyCheck()")
         assertTrue("generation is invalidated on caller before work is queued",
-            reset.indexOf("bumpGeneration()") < reset.indexOf("worker().post"))
+            reset.indexOf("bumpGeneration()") < reset.indexOf("resets.resetSystemState("))
         assertTrue("runtime restores through controller, checks safety, and inspects damaged intent",
             reset.contains("controller.reconcile(") && reset.contains("checkSafety()") &&
                 reset.contains("SystemReset.restoreOutcome(exit.complete, remaining, store.loadFailed, store.corruptLines)"))
