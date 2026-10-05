@@ -232,6 +232,122 @@ class AccessDiscoveryRepairTest {
         assertTrue(fixture.access.listeners.isEmpty())
     }
 
+    @Test fun queuedReadyRestorePastDeadlineLeavesIntentUntouchedAndRetriesOnce() {
+        assertQueuedRestoreSkipped(9_001L)
+    }
+
+    @Test fun queuedReadyRestoreBelowMinimumBudgetLeavesIntentUntouchedAndRetriesOnce() {
+        assertQueuedRestoreSkipped(7_001L)
+    }
+
+    @Test fun queuedRestoreAtMinimumBudgetRunsWithoutContinuation() {
+        val fixture = WindowFixture()
+        val jobs = mutableListOf<() -> Unit>()
+        fixture.postRestore = { jobs += it }
+        fixture.access.state = fixture.access.state.copy(resolved = true, level = AccessLevel.SHELL)
+        fixture.start()
+        fixture.now = 7_000L
+        jobs.removeAt(0)()
+        assertEquals("exactly 2 s is enough to restore", listOf(2_000L), fixture.restoreBudgets)
+        assertEquals(0, fixture.retries)
+        assertTrue(fixture.access.listeners.isEmpty())
+    }
+
+    @Test fun queuedFollowUpBelowMinimumBudgetDoesNotArmAnotherContinuation() {
+        val fixture = WindowFixture()
+        val jobs = mutableListOf<() -> Unit>()
+        fixture.postRestore = { jobs += it }
+        fixture.access.state = fixture.access.state.copy(resolved = true, level = AccessLevel.SHELL)
+        fixture.start(allowContinuation = false)
+        fixture.now = 7_001L
+        jobs.removeAt(0)()
+        assertEquals("an exhausted follow-up does not run", 0, fixture.restores)
+        assertEquals(0, fixture.retries)
+        assertEquals(1, fixture.finished)
+        assertTrue(fixture.access.listeners.isEmpty())
+    }
+
+    @Test fun queuedRestoreWhoseTimerFiredBeforeWorkerStartsStillRetriesOnlyOnce() {
+        val fixture = WindowFixture()
+        val jobs = mutableListOf<() -> Unit>()
+        fixture.postRestore = { jobs += it }
+        fixture.access.state = fixture.access.state.copy(resolved = true, level = AccessLevel.SHELL)
+        fixture.start()
+        fixture.timeout()
+        assertEquals("timer arms the shared continuation", 1, fixture.retries)
+        assertEquals("old restore and fresh follow-up are queued", 2, jobs.size)
+        jobs.removeAt(0)()
+        assertEquals("expired work never restores", 0, fixture.restores)
+        assertEquals("worker completion cannot re-arm", 1, fixture.retries)
+        jobs.removeAt(0)()
+        assertEquals(listOf(9_000L), fixture.restoreBudgets)
+        assertTrue(fixture.access.listeners.isEmpty())
+    }
+
+    @Test fun admittedReadyRestoreReachingTimeoutDoesNotQueueAnotherWindow() {
+        val fixture = WindowFixture()
+        fixture.access.state = fixture.access.state.copy(resolved = true, level = AccessLevel.SHELL)
+        fixture.duringRestore = { fixture.timeout() }
+        fixture.start()
+        assertEquals(1, fixture.restores)
+        assertEquals("an already-started ready restore needs no continuation", 0, fixture.retries)
+        assertEquals(1, fixture.finished)
+        assertTrue(fixture.access.listeners.isEmpty())
+    }
+
+    @Test fun admittedAppRestoreReachingTimeoutDoesNotRepeatItsAnnouncement() {
+        val fixture = WindowFixture()
+        fixture.access.state = fixture.access.state.copy(resolved = true)
+        fixture.duringRestore = { fixture.timeout() }
+        fixture.start()
+        assertEquals(1, fixture.restores)
+        assertEquals("the active APP restore owns the no-access announcement", 0, fixture.debts)
+        assertEquals("the continuation does not duplicate APP recovery", 1, fixture.restores)
+        assertEquals(1, fixture.access.listeners.size)
+    }
+
+    private fun assertQueuedRestoreSkipped(startedAt: Long) {
+        val fixture = WindowFixture()
+        val jobs = mutableListOf<() -> Unit>()
+        fixture.postRestore = { jobs += it }
+        val store = InMemoryLedgerStore()
+        val intent = RestoreLedger(listOf(LedgerEntry(Feature.FORCE_DOZE, null, "0", 0, apiLevel = 36)))
+        store.save(intent)
+        val events = mutableListOf<DozeEvent>()
+        val commands = mutableListOf<String>()
+        val runner = object : CommandRunner {
+            override val level = AccessLevel.SHELL
+            override fun run(command: String, timeoutMs: Long): CommandResult {
+                commands += command
+                return CommandResult(-1, emptyList(), emptyList(), 0, timedOut = true)
+            }
+        }
+        val core = DozeController(runner, CommandCatalog, CapabilityResolver, store, FakeClock(),
+            DozeEventSink { events += it }, 36, grants)
+        var reconciles = 0
+        fixture.duringRestore = { reconciles++; core.reconcile() }
+        fixture.start()
+        fixture.access.publish(fixture.access.state.copy(resolved = true, level = AccessLevel.SHELL))
+        assertEquals("ready restore waits behind worker work", 1, jobs.size)
+        fixture.now = startedAt
+        jobs.removeAt(0)()
+
+        assertEquals("a queued restore with too little budget never reconciles", 0, reconciles)
+        assertTrue("no command is attempted", commands.isEmpty())
+        assertEquals("skipping cannot increment attempts or alter intent", intent, store.load())
+        assertFalse("skipping creates no RESTORE_FAILED", events.any { it.type == EventType.RESTORE_FAILED })
+        assertFalse("skipping creates no RECOVERY_DEBT", events.any { it.type == EventType.RECOVERY_DEBT })
+        assertEquals("the shared continuation fires once", 1, fixture.retries)
+        assertEquals("the old window finishes once", 1, fixture.finished)
+        repeat(3) { fixture.access.publish(fixture.access.state) }
+        assertEquals("repeated readiness cannot arm a second continuation", 1, fixture.retries)
+        assertEquals("exactly one fresh restore is queued", 1, jobs.size)
+        fixture.duringRestore = {}
+        jobs.removeAt(0)()
+        assertEquals("only the fresh window restores", listOf(9_000L), fixture.restoreBudgets)
+        assertTrue("the follow-up drops its subscription", fixture.access.listeners.isEmpty())
+    }
+
     @Test fun appRestoreOvertakenByShellHandsOffOnce() {
         val fixture = WindowFixture()
         fixture.access.state = fixture.access.state.copy(resolved = true)
@@ -272,6 +388,7 @@ class AccessDiscoveryRepairTest {
         var restores = 0
         val restoreBudgets = mutableListOf<Long>()
         var duringRestore: () -> Unit = {}
+        var postRestore: (() -> Unit) -> Unit = { it() }
         lateinit var timeout: () -> Unit
         /** Mirrors DozeRuntime: one shared continuation for every window that may arm it. */
         private val continuation = RestoreContinuation(access, { it() }, { retries++; start(false) }, { debts++ }, {
@@ -281,7 +398,9 @@ class AccessDiscoveryRepairTest {
         fun start(allowContinuation: Boolean = true) {
             RestoreOnlyRequest(access, { now }, { it() }, { deadline, callback ->
                 timeout = { now = deadline; callback() }; ({})
-            }, { deadline, done -> restores++; restoreBudgets += deadline - now; duringRestore(); done() },
+            }, { action -> postRestore(action) }, { deadline ->
+                restores++; restoreBudgets += deadline - now; duringRestore()
+            },
                 { finished++ }, if (allowContinuation) continuation else null).start()
         }
     }
