@@ -28,7 +28,9 @@
 - **Wakelocks.**
   - `forcedoze:tempWakelock` (10 min cap) covers delayed entry.
   - `forcedoze:restore` (30 s cap) covers the teardown follow-up and every restore-only window.
-- **Singletons**: `AccessManager`, `MyApplication.getDozeRuntime()`, `DozeTunableHandler.getInstance`,
+- **minSdk 23 SAMs**: no `java.util.function` in production; use project interfaces (`MyApplication.Factory`/`Callback`,
+  `ExternalControlReceiver.Admission.Policy`/`Summary`) or Kotlin function types.
+- **Singletons**: `AccessManager`, `MyApplication.getDozeRuntime()`, `MyApplication.getJournal()`, `DozeTunableHandler.getInstance`,
   `NotificationService.getInstance`.
 
 ## Style
@@ -40,23 +42,24 @@
 
 ## Testing
 
-`app/src/test/java/com/akylas/enforcedoze/` has 60 JVM sources with 487 `@Test` methods (JUnit 4.13.2, no mocking library):
+`app/src/test/java/com/akylas/enforcedoze/` has 73 JVM sources with 623 `@Test` methods (JUnit 4.13.2, no mocking library):
 
 | Package | Files | Tests |
 |---------|-------|-------|
 | root | 2 | 22 |
-| access | 11 | 50 |
-| doze | 9 | 114 |
+| access | 12 | 68 |
+| doze | 10 | 123 |
 | doze/parse | 7 | 36 |
-| monitor | 5 | 29 |
-| service | 22 | 190 |
-| ui | 4 | 46 |
+| monitor | 6 | 31 |
+| service | 30 | 266 |
+| ui | 6 | 77 |
 
 The suites use these styles:
 - fake-backed behaviour tests: `FakeRunner` (a `CommandRunner`), `FakeClock` and an in-memory ledger store, in
   `doze/DozeControllerTest.kt`;
 - `*JavaApiTest.java` files, which pin the Kotlin API as Java callers see it;
-- source-text wiring tests in `service/` that assert `ForceDozeService` wiring.
+- source-text wiring tests in `service/` that assert `ForceDozeService` wiring. They break when a call moves, so update
+  the anchor in the same change.
 
 The parser fixture is `app/src/test/resources/doze/deviceidle.txt`, and `ParserFixtures.kt` holds inline samples.
 

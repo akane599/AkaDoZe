@@ -25,7 +25,7 @@ is no longer inside one god service. Pure Kotlin policies and an engine sit behi
    DozeReceiver: SCREEN_OFF/ON, USER_PRESENT, POWER_CONNECTED, (LIGHT_)DEVICE_IDLE_MODE_CHANGED
                       │  generation bump on receive, work posted to doze-worker
                       ▼
-          DozeRuntime (MyApplication.getDozeRuntime, lazy)  ──►  JournalSink ──► JournalDb (SQLite)
+          DozeRuntime (MyApplication.getDozeRuntime, lazy)  ──►  JournalSink (app-owned, MyApplication.getJournal) ──► JournalDb
           SessionLifecycle · SessionAccess · SelfTest                 └──► NoticeSink (notifications)
                       │
                       ▼
@@ -45,9 +45,17 @@ is no longer inside one god service. Pure Kotlin policies and an engine sit behi
 
 Two rules decide what works:
 - `CapabilityResolver.status(feature, level, api, grants)` decides per feature what is available.
-- `service/SessionAccess.canRunSessions(level)` decides whether Doze sessions run at all, and **requires SHELL or ROOT**. APP+DUMP is
-  read-only plus recovery: it can read Doze state and undo the app's own sensor restriction after Shizuku dies, but it never
-  starts a session. The UI applies the same rule through `ui/AccessUi.sessionsAvailable`.
+- `service/SessionAccess.mode(level, grants, sensorsEnabled, resolved)` picks the forward `SessionMode`:
+  - **FORCE**: SHELL or ROOT (`canRunSessions`). This is the full session: force-idle, sensors and feature groups.
+  - **SENSOR_ONLY**: APP + adb-granted DUMP, with "Disable motion sensors" on. The session only restricts motion sensors
+    while Android's natural Doze decides when to idle. `canRunFeature` admits `MOTION_SENSORS` only, and external REAPPLY
+    is skipped (`reapplySkip`).
+  - **RESTORE_ONLY**: unresolved access or nothing usable. No forward mutation; recovery still runs per feature.
+
+  A session that loses Shizuku mid-session first recovers what it can't keep, then continues as SENSOR_ONLY in the same
+  epoch (same session, same delay). It upgrades back to FORCE when access returns. `SafetyNet` exempts only healthy
+  intent owned by the admitted session (`keepsSafetyIntent`). The UI shows the same three states honestly
+  (`ui/AccessUi`), including a "checking" status while cold-start discovery is unresolved.
 
 ## Core flow
 
@@ -76,11 +84,15 @@ debt (`ui/DamagedRecords` → `DozeRuntime.clearRetainedCorruption`).
   required ownership flag to `finishRootDiscovery(detached)`: the runtime passes `true` and the two service give-ups pass
   `false`. Any definitive root answer (grant, denial, exception) consumes that handoff. A detached close with no probe
   pending or timed out records nothing, so a later ROOT mode switch keeps its own 1+3. Known root, exhausted budgets and
-  service-owned closes never reopen. Unresolved access never touches durable intent.
+  service-owned closes never reopen. Unresolved access never touches durable intent. The service re-evaluates readiness only when
+  `AccessReadiness.sameCapability` changes (level, resolved, and the `SessionAccess`-derived mode), not on every access
+  refresh.
 - **Restore-only windows.** `DozeRuntime.requestRestoreOnly` runs without a foreground service: a 9 s
   `RestoreOnlyRequest` window under the 30 s `forcedoze:restore` wakelock that reconciles and runs the safety check once
   SHELL/ROOT is ready. The worker job re-checks its remaining budget when it starts; below `MIN_READY_BUDGET_MS` it runs
-  nothing, records no attempts and lets the window finish (arming the continuation). Triggers: boot and package update with the service off (gated by `service/BootRestore.hasPending`),
+  nothing, records no attempts and lets the window finish (arming the continuation). Triggers: boot and package update with the service off (gated by `service/BootRestore.restoreIfPending`: the runtime is
+  built only inside its callback; `BootRestorePolicy` admits pending entries, recoverable damage and an unreadable ledger, never
+  an empty ledger or unrecoverable damage),
   `requestSafetyCheck` (Main / Monitor / access card resume, mode switch) and the teardown follow-up when access is still unresolved.
 - **One continuation.** Windows that end without SHELL/ROOT arm the runtime's single process-level
   `RestoreContinuation`: one subscription, one follow-up window when access arrives, then disarmed.
@@ -101,7 +113,10 @@ See [database.md](./database.md): default SharedPreferences, the restore ledger 
 
 Custom Doze periods: `Utils.applyForceDozeSchedule` / `scheduleNextCustomDozePeriodBoundary` (pure logic in
 `doze/SchedulePolicy.kt`) set an exact `RTC_WAKEUP` alarm when allowed (`SCHEDULE_EXACT_ALARM` is declared; on 13+ the user grants it), else an inexact
-one → `CustomDozePeriodReceiver` → start/stop the service. Boot re-arms it. Boundaries run only while the user intent
+one → `CustomDozePeriodReceiver` → start/stop the service. `ExactAlarmPermissionReceiver` (not exported) re-queries the
+grant on `SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED` and re-arms the next boundary (`doze/ExactAlarmAccessPolicy`);
+it never starts the service or applies the current window. Settings shows an "Exact alarms" row (API 31+, only with
+periods) that opens the app's own "Alarms & reminders" page and refreshes on resume. Boot re-arms it. Boundaries run only while the user intent
 `serviceUserEnabled` is on (`SchedulePolicy.shouldRunService`): explicit OFF cancels the alarm; explicit ON (master switch,
 tile, external ENABLE, notification) starts the service at once, then persists the intent and arms the next boundary.
 

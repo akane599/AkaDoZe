@@ -1,6 +1,6 @@
 # Onboarding
 
-*Last Updated: 2026-10-04*
+*Last Updated: 2026-10-05*
 
 ## Build and verify
 
@@ -41,7 +41,7 @@ whitelist & settings" is on. Every call is journaled; see the Monitor.
 | Root / Shizuku plumbing | `access/AccessManager.kt`, `CommandLane.kt`, `RootCommandRunner.kt`, `ShellCommandRunner.kt` |
 | Screen events, admission, teardown | `ForceDozeService.java` (`receiveOnWorker`, `admitted`, `onDestroy`), `service/SessionLifecycle.kt` |
 | Recovery and debt | `service/LedgerRecovery.kt`, `AccessRecovery.kt`, `doze/SafetyNet.kt`, `ui/DebtRules.java`, `ui/DamagedRecords.java` |
-| Restore after boot / update / cold start | `service/BootRestore.kt`, `RestoreOnlyRequest.kt`, `AccessReadiness.kt`, `access/AccessResolution.kt`, `DozeRuntime.requestRestoreOnly` (+ `AccessDiscoveryRepairTest`, `AccessReadinessTest`) |
+| Restore after boot / update / cold start | `service/BootRestore.kt` + `BootRestorePolicy.kt` (`BootRestorePolicyTest`), `RestoreOnlyRequest.kt`, `AccessReadiness.kt`, `access/AccessResolution.kt`, `DozeRuntime.requestRestoreOnly` (+ `AccessDiscoveryRepairTest`, `AccessReadinessTest`) |
 | Settings reset | `service/SystemReset.kt`, `DozeRuntime.resetSystemState`, `ui/ResetReport.java` (+ `SystemResetTest`, `HonestUiTest`) |
 | External reapply limits | `doze/WatchdogPolicy.kt` (+ `ExternalReapplyPolicyTest`) |
 | Journal, Monitor, reports | `monitor/` + `ui/DozeMonitorActivity.java`, `MonitorFormat.java` |

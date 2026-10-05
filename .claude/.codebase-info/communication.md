@@ -14,7 +14,7 @@ discovery (`AccessResolution.kt`). Listeners get updates on main; blocking comma
 
 | Backend | File | Mechanism |
 |---------|------|-----------|
-| Root | `RootCommandRunner.kt` | Persistent libsuperuser shell, owned by one lane |
+| Root | `RootCommandRunner.kt` | Persistent libsuperuser shell behind the internal `RootSession` seam, owned by one lane. An interrupted command kills the session before `execute` unwinds, so a timed-out change can't land later |
 | Shizuku | `AccessManager` + `ShellCommandRunner.kt` | Reflective `Shizuku.newProcess(["sh","-c",cmd], …)` (kept by `app/proguard-rules.pro`) |
 | App shell | `ShellCommandRunner.kt` | Plain `sh`; useful only with adb-granted `DUMP` / `WRITE_SECURE_SETTINGS` |
 
@@ -35,7 +35,8 @@ The README "Shizuku vs root" section describes it by hand. In short:
 - SHELL/ROOT: almost everything.
 - Root only: all-sensor privacy, `setprop` Doze, `pm disable`, and the legacy notification block below Android 13.
 
-Doze **sessions** additionally need SHELL or ROOT (`service/SessionAccess.kt`).
+Doze **sessions** need SHELL or ROOT for full forcing; APP + DUMP with sensors enabled runs a sensor-only session
+(`service/SessionAccess.mode`, see architecture.md).
 
 ## Command catalogue (`access/CommandCatalog.kt`)
 
@@ -68,9 +69,11 @@ interpolated into a shell string.
 - SENSORS_RESTRICTED, SENSORS_RESTORED, SKIPPED, RESTORE_FAILED, RECOVERY_DEBT;
 - ACCESS_CHANGED, EXTERNAL_CALL, ERROR.
 
-Logic emits typed `DozeEvent(type, detail, …, reason)`. The UI turns them into strings (`ui/MonitorFormat`).
+Logic emits typed `DozeEvent(type, detail, …, reason)`. Detail codes are persisted wire format and live in
+`monitor/EventCodes.kt` (never rename an existing value). The UI turns them into strings (`ui/MonitorFormat`).
 
-Fan-out: `service/EventSinks.kt` (exception-isolated) → `service/JournalSink.kt`, which records them in `monitor/JournalDb`
+Fan-out: `service/EventSinks.kt` (exception-isolated) → `service/JournalSink.kt` (one app-owned lazy instance,
+`MyApplication.getJournal`, so denied external calls are journaled without building the runtime), which records them in `monitor/JournalDb`
 and also feeds `ui/NoticeSink`. Notices go out on the existing tips channel:
 - access lost or resumed;
 - recovery debt;

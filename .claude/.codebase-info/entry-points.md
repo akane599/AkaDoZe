@@ -1,6 +1,6 @@
 # Entry Points
 
-*Last Updated: 2026-10-04*
+*Last Updated: 2026-10-05*
 
 All components are declared in `app/src/main/AndroidManifest.xml`. Classes live in
 `app/src/main/java/com/akylas/enforcedoze/` unless prefixed `ui.`.
@@ -11,7 +11,7 @@ All components are declared in `app/src/main/AndroidManifest.xml`. Classes live 
 |-------|----------|---------|
 | `MainActivity` | yes (launcher, shortcuts) | Master switch, access card (`ui/AccessCard`), navigation, safety check on resume |
 | `ui.DozeMonitorActivity` | yes (`QS_TILE_PREFERENCES`: long-press a tile) | Live Doze state, self-tests ("Test Doze now", "Test sensor restriction"), session list/timeline, "Restore system state", "Share report". Long-presses on other tiles are forwarded |
-| `SettingsActivity` | no | Capability-aware preferences (`res/xml/prefs.xml`), mode switch root ↔ Shizuku (`ui/ModeSwitchRules`), "Other apps" gates, readback-verified reset (`DozeRuntime.resetSystemState` → `ui/ResetReport`) |
+| `SettingsActivity` | no | Capability-aware preferences (`res/xml/prefs.xml`, incl. the exact-alarm status row), mode switch root ↔ Shizuku (`ui/ModeSwitchRules`), "Other apps" gates, readback-verified reset (`DozeRuntime.resetSystemState` → `ui/ResetReport`) |
 | `DozeTunablesActivity` | no | `device_idle` tunables with per-key apply result |
 | `WhitelistAppsActivity` | no | System Doze whitelist, readback-verified (`access/WhitelistParser`, `ui/WhitelistUi`) |
 | `BlockAppsActivity` / `BlockNotificationsActivity` | no | App-suspend / notification-block lists |
@@ -43,7 +43,9 @@ All components are declared in `app/src/main/AndroidManifest.xml`. Classes live 
 
 - **Gates.** Pref `allowExternalBasicControl` (default **on**) and `allowExternalPrivilegedControl` (default **off**) are
   independent; both live in `access/Prefs.kt`.
-- **Checks.** `ExternalControlReceiver` checks the gate before reading extras, then validates input. Work runs in
+- **Checks.** `ExternalControlReceiver.Admission` checks the gate before reading extras, then validates input. Denied
+  calls never build `DozeRuntime` (they journal through the app-owned `JournalSink`), and CHANGE_SETTING writes only a
+  parsed boolean/integer value (`Admission.setting`; anything else is `UNVERIFIED_SETTING_VALUE`). Work runs in
   `goAsync` on a bounded queue with a deadline, and trust and capability are re-checked at backend admission.
 - **CHANGE_SETTING.** Only accepts the scalar keys listed by `access/ExternalControlPolicy.kt` (booleans,
   `dozeEnterDelay` 0..1800). Gates, mode, ledger and access keys are rejected.
@@ -55,9 +57,10 @@ All components are declared in `app/src/main/AndroidManifest.xml`. Classes live 
 
 | Trigger | Receiver |
 |---------|----------|
-| `BOOT_COMPLETED` (locked boot is ignored: credential-protected prefs aren't readable yet) | `BootCompleteReceiver`: start the service if enabled, else a `goAsync` restore-only window when `BootRestore.hasPending`; re-arm schedule |
+| `BOOT_COMPLETED` (locked boot is ignored: credential-protected prefs aren't readable yet) | `BootCompleteReceiver`: start the service if enabled, else a `goAsync` restore-only window inside the `BootRestore.restoreIfPending` callback; re-arm schedule |
 | `MY_PACKAGE_REPLACED` | `AutoRestartOnUpdate`: restart the service if enabled, else the same restore-only window |
 | Schedule alarm | `CustomDozePeriodReceiver` (not exported); runs only while the user intent `serviceUserEnabled` is on |
+| `SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED` (API 31+) | `ExactAlarmPermissionReceiver` (not exported): re-query exact access and re-arm the next boundary; never starts the service |
 | "Disabled, tap to enable" notification | `InternalEnableReceiver` (not exported): same explicit-ON flow as the master switch, never journaled as an external call |
 | Dynamic, not exported | `ForceDozeService.DozeReceiver`: screen/power/unlock/(light) idle changes |
 | Launcher shortcuts | `res/xml/shortcuts.xml` |
