@@ -21,7 +21,7 @@ class HonestyApiWiringTest {
             reset.indexOf("bumpGeneration()") < reset.indexOf("worker().post"))
         assertTrue("runtime restores through controller, checks safety, and inspects damaged intent",
             reset.contains("controller.reconcile(") && reset.contains("checkSafety()") &&
-                reset.contains("!store.loadFailed && store.corruptLines.isEmpty()"))
+                reset.contains("SystemReset.restoreOutcome(exit.complete, remaining, store.loadFailed, store.corruptLines)"))
         assertTrue("runtime injects own-app permission readback, not transport-only revocation success",
             reset.contains("permissionGranted = { permission ->") &&
                 reset.contains("app.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED"))
