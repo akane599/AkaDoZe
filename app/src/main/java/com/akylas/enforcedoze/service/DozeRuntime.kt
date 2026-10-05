@@ -85,6 +85,7 @@ class DozeRuntime(context: Context) {
     @Synchronized
     fun attachService(): Handler {
         selfTests.attach()
+        access.startServiceRootDiscovery()
         return worker()
     }
 

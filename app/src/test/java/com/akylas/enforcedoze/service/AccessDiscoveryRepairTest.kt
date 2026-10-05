@@ -245,6 +245,19 @@ class AccessDiscoveryRepairTest {
         assertTrue(fixture.access.listeners.isEmpty())
     }
 
+    @Test fun serviceAttachStartsFreshRootDiscoveryThroughAccessManager() {
+        val runtime = listOf(File("src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt"),
+            File("app/src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt")).first { it.isFile }.readText()
+        val attach = runtime.substringAfter("fun attachService(): Handler {").substringBefore("\n    }")
+        assertTrue("service attachment starts its root discovery owner", attach.contains("access.startServiceRootDiscovery()"))
+        val manager = listOf(File("src/main/java/com/akylas/enforcedoze/access/AccessManager.kt"),
+            File("app/src/main/java/com/akylas/enforcedoze/access/AccessManager.kt")).first { it.isFile }.readText()
+        val hook = manager.substringAfter("fun startServiceRootDiscovery() {").substringBefore("\n    }")
+        assertTrue("owner handoff waits for the existing probe to finish publishing", hook.contains("probes.execute {"))
+        assertTrue("only root mode reopens a closed discovery", hook.contains("mode == Prefs.MODE_ROOT && resolution.startServiceRootDiscovery()"))
+        assertTrue("the service publishes fresh discovery and starts the initial probe", hook.contains("publish()") && hook.contains("probeRoot()"))
+    }
+
     @Test fun runtimeSharesOneProcessContinuation() {
         val runtime = listOf(File("src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt"),
             File("app/src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt")).first { it.isFile }.readText()

@@ -9,6 +9,7 @@ class AccessResolution {
     private var rootTimedOut = false
     private var rootAttempts = 0
     private var rootDiscoveryClosed = false
+    private var rootProbeInFlight = false
 
     @Synchronized fun startDiscovery(now: Long) {
         if (discoveryDeadline == null) discoveryDeadline = now + 10_000L
@@ -27,9 +28,11 @@ class AccessResolution {
         // A refresh is not a second cold start. Keep the published state until its result arrives.
         if (!rootCompleted) rootTimedOut = false
         rootAttempts++
+        rootProbeInFlight = true
     }
 
     @Synchronized fun rootProbeFinished(available: Boolean, timedOut: Boolean) {
+        rootProbeInFlight = false
         rootAvailable = available
         rootCompleted = rootCompleted || !timedOut || rootAttempts >= 4 || rootDiscoveryClosed
         rootTimedOut = timedOut && !rootCompleted
@@ -44,6 +47,16 @@ class AccessResolution {
             rootCompleted = true
             rootTimedOut = false
         }
+    }
+
+    /** A service owns a fresh bounded discovery after a previous owner closed it. */
+    @Synchronized fun startServiceRootDiscovery(): Boolean {
+        if (!rootDiscoveryClosed) return false
+        rootDiscoveryClosed = false
+        rootCompleted = rootAvailable // Do not withdraw a root grant while refreshing it.
+        rootTimedOut = false
+        rootAttempts = if (rootProbeInFlight) 1 else 0
+        return true
     }
 
     @Synchronized fun root(grants: Grants, appUid: Int): AccessState = AccessState(
