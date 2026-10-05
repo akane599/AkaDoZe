@@ -1,5 +1,6 @@
 package com.akylas.enforcedoze.monitor
 
+import com.akylas.enforcedoze.access.Feature
 import com.akylas.enforcedoze.doze.DeepState
 import com.akylas.enforcedoze.doze.EventType
 import com.akylas.enforcedoze.doze.LightState
@@ -56,7 +57,7 @@ object SessionAggregator {
                 }
                 segment += event
             }
-            if (segment.isNotEmpty()) result += summarizeSession(segment)
+            if (segment.any { it.type == EventType.SCREEN_OFF }) result += summarizeSession(segment)
         }
         return result
     }
@@ -81,7 +82,6 @@ object SessionAggregator {
         var firstIdle: Long? = null
         var maintenance = false
         var maintenanceCount = 0
-        var lastSensor: SensorMode? = null
         val exits = linkedMapOf<String, Int>()
         val exitKeys = mutableListOf<Pair<String, Long>>()
         for (event in events) {
@@ -126,12 +126,13 @@ object SessionAggregator {
                     exitKeys += reason to at
                 }
             }
-            // Restoration at/after SCREEN_ON is not evidence that restriction failed while screen-off.
-            if (event.sensor != null && (on == null || event.elapsedRealtime < end)) lastSensor = event.sensor
         }
         val category = coverage(deep, light)
         times[category] = times.getValue(category) + (end - previous).coerceAtLeast(0)
         if (firstIdle == null) problems += Problem.NEVER_REACHED_DEEP
+        val lastSensor = screenOffSensor(events.filter {
+            it.elapsedRealtime >= start && (on == null || it.elapsedRealtime < end)
+        })
         val sensors = when (lastSensor) {
             SensorMode.RESTRICTED -> SensorVerification.YES
             SensorMode.NORMAL, SensorMode.OTHER -> SensorVerification.NO
@@ -147,6 +148,26 @@ object SessionAggregator {
             battery.first, battery.first?.let { if (battery.second > 0) it * 3_600_000.0 / battery.second else null },
             battery.second, problems.toList(),
         )
+    }
+
+    /** Restore markers identify the immediately preceding app VERIFY as a restore readback. */
+    private fun screenOffSensor(events: List<JournalEvent>): SensorMode? {
+        var restoring = false
+        // OS history can be interleaved with app rows, but never carries sensor observations.
+        for (event in events.filter { it.source == Source.APP }.asReversed()) {
+            val sensors = event.detail?.substringBefore(':') == Feature.MOTION_SENSORS.name
+            if (event.type == EventType.SENSORS_RESTORED) {
+                restoring = sensors
+                continue
+            }
+            if (restoring && event.type == EventType.VERIFY && sensors) {
+                restoring = false
+                continue
+            }
+            restoring = false
+            if (event.sensor != null) return event.sensor
+        }
+        return null
     }
 
     private fun coverage(deep: DeepState?, light: LightState?): Coverage = when {

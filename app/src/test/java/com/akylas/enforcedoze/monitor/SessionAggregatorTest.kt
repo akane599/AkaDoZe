@@ -166,18 +166,16 @@ class SessionAggregatorTest {
         assertEquals(3_000L, summary.coverageMs.getValue(Coverage.UNKNOWN))
     }
 
-    @Test fun bootChangeSplitsSessionAndNeverSubtractsDifferentBootClocks() {
+    @Test fun bootChangeDoesNotSummarizeOrphansOrSubtractDifferentBootClocks() {
         val summaries = SessionAggregator.summarize(listOf(
             event(90_000, EventType.SCREEN_OFF, deep = DeepState.IDLE),
             event(100_000, EventType.REFORCE),
             event(100, deep = DeepState.ACTIVE, light = LightState.ACTIVE, boot = 2),
             event(1_000, EventType.SCREEN_ON, boot = 2),
         ))
-        assertEquals(2, summaries.size)
-        assertEquals(10_000L, summaries[0].durationMs)
-        assertEquals(900L, summaries[1].durationMs)
-        assertTrue(summaries.all { Problem.PARTIAL_SESSION in it.problems })
-        assertEquals(0L, summaries[1].coverageMs.getValue(Coverage.DEEP_IDLE))
+        assertEquals(1, summaries.size)
+        assertEquals(10_000L, summaries.single().durationMs)
+        assertTrue(Problem.PARTIAL_SESSION in summaries.single().problems)
     }
 
     @Test fun noStateEvidenceIs100PercentUnknownNotActive() {
@@ -213,6 +211,136 @@ class SessionAggregatorTest {
         assertTrue(Problem.HISTORY_TRUNCATED in summary.problems)
         assertEquals(10_000L, summary.coverageMs.getValue(Coverage.UNKNOWN))
         assertEquals(90_000L, summary.coverageMs.getValue(Coverage.DEEP_IDLE))
+    }
+
+    @Test fun teardownReadbackBeforeScreenOnKeepsVerifiedRestriction() {
+        val summary = SessionAggregator.summarize(listOf(
+            event(0, EventType.SCREEN_OFF),
+            event(85_000, EventType.SENSORS_RESTRICTED, sensor = SensorMode.RESTRICTED, detail = "MOTION_SENSORS"),
+            event(1_910_529, sensor = SensorMode.NORMAL, detail = "MOTION_SENSORS"),
+            event(1_910_530, EventType.SENSORS_RESTORED, sensor = SensorMode.NORMAL, detail = "MOTION_SENSORS"),
+            event(1_910_846, EventType.SCREEN_ON),
+        )).single()
+        assertEquals(SensorVerification.YES, summary.sensorsRestricted)
+        assertEquals(1_910_846L, summary.durationMs)
+        assertFalse(Problem.SENSORS_UNVERIFIED in summary.problems)
+    }
+
+    @Test fun normalDuringScreenOffIsNotHiddenBySuccessfulRestore() {
+        val summary = SessionAggregator.summarize(listOf(
+            event(0, EventType.SCREEN_OFF),
+            event(1_000, EventType.SENSORS_RESTRICTED, sensor = SensorMode.RESTRICTED),
+            event(2_000, sensor = SensorMode.NORMAL, detail = "MOTION_SENSORS: UNVERIFIED"),
+            event(3_000, EventType.ENTER_STEP, detail = "FORCE_DOZE"),
+            event(4_000, sensor = SensorMode.NORMAL, detail = "MOTION_SENSORS"),
+            event(4_001, EventType.SENSORS_RESTORED, sensor = SensorMode.NORMAL, detail = "MOTION_SENSORS"),
+            event(5_000, EventType.SCREEN_ON),
+        )).single()
+        assertEquals(SensorVerification.NO, summary.sensorsRestricted)
+    }
+
+    @Test fun sensorsThatStayedNormalStillReportNo() {
+        val summary = SessionAggregator.summarize(listOf(
+            event(0, EventType.SCREEN_OFF),
+            event(1_000, sensor = SensorMode.NORMAL, detail = "MOTION_SENSORS: UNVERIFIED"),
+            event(3_000, sensor = SensorMode.NORMAL, detail = "MOTION_SENSORS"),
+            event(3_001, EventType.SENSORS_RESTORED, sensor = SensorMode.NORMAL, detail = "MOTION_SENSORS"),
+            event(4_000, EventType.SCREEN_ON),
+        )).single()
+        assertEquals(SensorVerification.NO, summary.sensorsRestricted)
+    }
+
+    @Test fun restoreReadbackAloneDoesNotVerifyScreenOffSensors() {
+        val summary = SessionAggregator.summarize(listOf(
+            event(0, EventType.SCREEN_OFF),
+            event(1_000, sensor = SensorMode.NORMAL, detail = "MOTION_SENSORS"),
+            event(1_001, EventType.SENSORS_RESTORED, sensor = SensorMode.NORMAL, detail = "MOTION_SENSORS"),
+            event(2_000, EventType.SCREEN_ON),
+        )).single()
+        assertEquals(SensorVerification.UNVERIFIED, summary.sensorsRestricted)
+        assertTrue(Problem.SENSORS_UNVERIFIED in summary.problems)
+    }
+
+    @Test fun carryInSensorRestrictionDoesNotVerifyScreenOffWindow() {
+        val summary = SessionAggregator.summarize(listOf(
+            event(0, sensor = SensorMode.RESTRICTED),
+            event(1_000, EventType.SCREEN_OFF),
+            event(2_000, EventType.SCREEN_ON),
+        )).single()
+        assertEquals(SensorVerification.UNVERIFIED, summary.sensorsRestricted)
+    }
+
+    @Test fun unverifiedReadbackDuringScreenOffStillClearsRestrictionEvidence() {
+        val summary = SessionAggregator.summarize(listOf(
+            event(0, EventType.SCREEN_OFF),
+            event(1_000, EventType.SENSORS_RESTRICTED, sensor = SensorMode.RESTRICTED),
+            event(2_000, sensor = SensorMode.UNVERIFIED, detail = "MOTION_SENSORS: UNVERIFIED"),
+            event(3_000, EventType.SCREEN_ON),
+        )).single()
+        assertEquals(SensorVerification.UNVERIFIED, summary.sensorsRestricted)
+        assertTrue(Problem.SENSORS_UNVERIFIED in summary.problems)
+    }
+
+    @Test fun failedRestoreWithoutReadbackDoesNotHideFailedSensorRestriction() {
+        val summary = SessionAggregator.summarize(listOf(
+            event(0, EventType.SCREEN_OFF),
+            event(1_000, sensor = SensorMode.NORMAL, detail = "MOTION_SENSORS: UNVERIFIED"),
+            event(2_000, EventType.RESTORE_FAILED, detail = "MOTION_SENSORS: NO_ACCESS"),
+            event(3_000, EventType.SCREEN_ON),
+        )).single()
+        assertEquals(SensorVerification.NO, summary.sensorsRestricted)
+        assertTrue(Problem.RESTORE_FAILED in summary.problems)
+    }
+
+    @Test fun safetyRestoreMarkerDoesNotHideAnEarlierNormalObservation() {
+        val summary = SessionAggregator.summarize(listOf(
+            event(0, EventType.SCREEN_OFF),
+            event(1_000, sensor = SensorMode.NORMAL, detail = "MOTION_SENSORS: UNVERIFIED"),
+            event(2_000, EventType.SENSORS_RESTORED, detail = "RESTORE_SENSORS"),
+            event(3_000, EventType.SCREEN_ON),
+        )).single()
+        assertEquals(SensorVerification.NO, summary.sensorsRestricted)
+    }
+
+    @Test fun restoreMarkerPairsWithAppReadbackAcrossInterleavedHistory() {
+        val summary = SessionAggregator.summarize(listOf(
+            event(0, EventType.SCREEN_OFF),
+            event(1_000, EventType.SENSORS_RESTRICTED, sensor = SensorMode.RESTRICTED),
+            event(2_000, sensor = SensorMode.NORMAL, detail = "MOTION_SENSORS"),
+            history(2_001, HistoryKind.NORMAL),
+            event(2_002, EventType.SENSORS_RESTORED, sensor = SensorMode.NORMAL, detail = "MOTION_SENSORS"),
+            event(3_000, EventType.SCREEN_ON),
+        )).single()
+        assertEquals(SensorVerification.YES, summary.sensorsRestricted)
+    }
+
+    @Test fun accessOnlyIdentityZeroIsNotASessionButRemainsInReport() {
+        val rows = listOf(
+            event(0, EventType.ACCESS_CHANGED, session = 0, detail = "NO_ACCESS"),
+            event(1_000, EventType.ACCESS_CHANGED, session = 0, detail = "SHELL"),
+        )
+        val summaries = SessionAggregator.summarize(rows)
+        assertTrue(summaries.isEmpty())
+        val report = ReportFormatter.format(summaries, rows, "test", emptyMap())
+        assertTrue(report.contains("Timeline (2)"))
+        assertTrue(report.contains("kind=ACCESS_CHANGED"))
+    }
+
+    @Test fun restoreOnlyGroupsWithoutScreenOffAreNotSessions() {
+        val rows = listOf(
+            event(0, EventType.SENSORS_RESTORED, sensor = SensorMode.NORMAL, session = 0),
+            event(1_000, EventType.RESTORE_FAILED, session = 0),
+            event(2_000, EventType.SCREEN_ON, session = 12),
+        )
+        assertTrue(SessionAggregator.summarize(rows).isEmpty())
+    }
+
+    @Test fun identityZeroWithScreenOffIsStillARealSession() {
+        val rows = listOf(
+            event(0, EventType.SCREEN_OFF, session = 0),
+            event(1_000, EventType.SCREEN_ON, session = 0),
+        )
+        assertEquals(1_000L, SessionAggregator.summarize(rows).single().durationMs)
     }
 
     @Test fun restorationDiagnosticsAfterScreenOnDoNotExtendDurationOrNegateRestriction() {
