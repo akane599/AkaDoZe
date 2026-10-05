@@ -95,6 +95,23 @@ class ScheduleAndStatsWiringTest {
         assertTrue(failure.contains("return false;"))
     }
 
+    @Test fun foregroundReturnRequeriesThroughTheSharedSeamWithoutRestartingOrPrompting() {
+        val activity = File("src/main/java/com/akylas/enforcedoze/MainActivity.java").readText()
+        val resume = activity.substringAfter("protected void onResume()", "").substringBefore("protected void onPause()")
+        assertTrue("foreground return must requery actual access and re-arm via 2A's seam",
+            resume.contains("Utils.requeryExactAlarmAccess(this);"))
+        val settings = File("src/main/java/com/akylas/enforcedoze/SettingsActivity.java").readText()
+        val settingsResume = settings.substringAfter("public void onResume()", "").substringBefore("public void onPause()")
+        assertTrue(settingsResume.contains("Utils.requeryExactAlarmAccess(requireContext())"))
+        for (source in listOf(resume, settingsResume)) {
+            // Master-off and no-period gating stays in the seam's pure policy; resume must not bypass it.
+            for (forbidden in listOf("scheduleNextCustomDozePeriodBoundary(", "applyForceDozeSchedule(",
+                "startForceDozeService(", "ACTION_REQUEST_SCHEDULE_EXACT_ALARM", "requestExactAlarmAccess(")) {
+                assertFalse("foreground return cannot call $forbidden", source.contains(forbidden))
+            }
+        }
+    }
+
     private fun assertNoServiceOrPreferenceMutation(source: String) {
         for (forbidden in listOf("applyForceDozeSchedule(", "startForceDozeService(", "startForegroundService(",
             "startService(", "stopForceDozeService(", "updateSettingBool(", "putBoolean(", ".edit()")) {
