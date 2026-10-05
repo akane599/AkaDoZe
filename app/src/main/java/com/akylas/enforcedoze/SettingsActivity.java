@@ -901,8 +901,7 @@ public class SettingsActivity extends AppCompatActivity {
                 CharSequence base = baseSummaries.get(key);
                 if (unavailable == null) {
                     pref.setEnabled(true);
-                    pref.setSummary(shizukuMode && base != null && AccessUi.isRootOnly(feature, state)
-                            ? getString(R.string.root_tag_summary, base) : base);
+                    pref.setSummary(availableSummary(feature, state, shizukuMode, base));
                 } else {
                     pref.setEnabled(false);
                     pref.setSummary(unavailable);
@@ -920,6 +919,13 @@ public class SettingsActivity extends AppCompatActivity {
                 access.setSummary(getString(R.string.access_settings_summary,
                         AccessUi.modeLabel(context, state, shizukuMode), AccessUi.statusText(context, state, shizukuMode)));
             }
+        }
+
+        private CharSequence availableSummary(Feature feature, AccessState state, boolean shizukuMode, CharSequence base) {
+            if (base == null) return null;
+            // APP+DUMP: the only screen-off change, and Android still decides when Doze starts.
+            if (AccessUi.sensorOnlyFeature(feature, state)) return getString(R.string.sensors_only_setting_summary, base);
+            return shizukuMode && AccessUi.isRootOnly(feature, state) ? getString(R.string.root_tag_summary, base) : base;
         }
 
         /** Shows progress until Shizuku reports the permission result; a denial reverts the selection. */

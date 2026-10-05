@@ -105,14 +105,24 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         renderServiceStatus();
     }
 
-    /** On without Shizuku or root (DUMP only) reads and restores but never enforces: say so. */
+    /** Forcing, sensor-only (Android keeps the idle timing), passive or still checking: say which. */
+    private AccessUi.ServiceStatus serviceStatus() {
+        return AccessUi.serviceStatus(serviceEnabled, lastAccess, AccessUi.sensorsEnabled(this));
+    }
+
     private void renderServiceStatus() {
-        switch (AccessUi.serviceStatus(serviceEnabled, lastAccess)) {
-            case ACTIVE:
+        switch (serviceStatus()) {
+            case FORCING:
                 textViewStatus.setText(R.string.service_active);
                 break;
-            case NEEDS_SESSION_ACCESS:
+            case SENSORS_ONLY:
+                textViewStatus.setText(R.string.service_sensors_only);
+                break;
+            case PASSIVE:
                 textViewStatus.setText(R.string.service_needs_session_access);
+                break;
+            case CHECKING:
+                textViewStatus.setText(R.string.service_checking);
                 break;
             default:
                 textViewStatus.setText(R.string.service_inactive);
@@ -309,7 +319,7 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         boolean usable = isSuAvailable || isShizukuAvailable || isDumpPermGranted;
         toggleForceDozeSwitch.setEnabled(usable);
         if (usable) doAfterSuCheckSetup();
-        else textViewStatus.setText(R.string.service_disabled);
+        else textViewStatus.setText(state.getResolved() ? R.string.service_disabled : R.string.access_status_checking);
     }
 
     public void doAfterSuCheckSetup() {
@@ -369,11 +379,7 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
             Utils.scheduleNextCustomDozePeriodBoundary(this);
             serviceEnabled = true;
             renderServiceStatus();
-            if (AccessUi.sessionsAvailable(lastAccess != null ? lastAccess : accessManager.getState())) {
-                showForceDozeActiveDialog();
-            } else {
-                showSessionsNeedAccessDialog();
-            }
+            showSwitchedOnDialog(lastAccess != null ? lastAccess : accessManager.getState());
         } else {
             editor = settings.edit();
             editor.putBoolean("serviceEnabled", false);
@@ -492,11 +498,37 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         builder.show();
     }
 
-    /** Switched on with DUMP only: the service runs for readback and recovery, but no session starts. */
+    /** Passive: the service runs for readback and recovery, but nothing changes at screen-off. */
     public void showSessionsNeedAccessDialog() {
         new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.sessions_need_access_dialog_title)
                 .setMessage(R.string.sessions_need_access_dialog_text)
+                .setPositiveButton(R.string.okay_button_text, null)
+                .show();
+    }
+
+    /** What switching on does now. Still checking: the status line says so and updates once access resolves. */
+    private void showSwitchedOnDialog(AccessState access) {
+        switch (AccessUi.serviceStatus(true, access, AccessUi.sensorsEnabled(this))) {
+            case FORCING:
+                showForceDozeActiveDialog();
+                break;
+            case SENSORS_ONLY:
+                showSensorsOnlyDialog();
+                break;
+            case PASSIVE:
+                showSessionsNeedAccessDialog();
+                break;
+            default:
+                break;
+        }
+    }
+
+    /** Switched on with DUMP and the sensor setting: motion sensors only, Android keeps the idle timing. */
+    public void showSensorsOnlyDialog() {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.sensors_only_dialog_title)
+                .setMessage(R.string.sensors_only_dialog_text)
                 .setPositiveButton(R.string.okay_button_text, null)
                 .show();
     }

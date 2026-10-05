@@ -137,7 +137,7 @@ public final class AccessCard {
         mode.setText(activity.getString(R.string.access_mode_line, AccessUi.modeLabel(activity, next, shizukuMode)));
         status.setText(AccessUi.statusText(activity, next, shizukuMode));
         boolean music = PreferenceManager.getDefaultSharedPreferences(activity).getBoolean("whitelistMusicAppNetwork", false);
-        List<String> list = AccessUi.problems(activity, next, shizukuMode, music);
+        List<String> list = AccessUi.problems(activity, next, shizukuMode, music, AccessUi.sensorsEnabled(activity));
         problems.setVisibility(list.isEmpty() ? View.GONE : View.VISIBLE);
         problems.setText(TextUtils.join("\n", list));
         action.setText(AccessUi.actionLabel(AccessUi.primaryAction(next, shizukuMode)));

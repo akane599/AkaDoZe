@@ -15,7 +15,7 @@
     <string name="okay_button_text">Okay</string>
     <string name="copy_command_button_text">Copy Command</string>
     <string name="share_command_button_text">Share command</string>
-    <string name="no_root_workaround_dialog_text">Without root, EnforceDoze needs Shizuku to force Doze. Granting \'android.permission.DUMP\' (and \'android.permission.WRITE_SECURE_SETTINGS\') with the ADB commands below only lets it read the Doze state and restore sensors; Doze sessions still need Shizuku or root.</string>
+    <string name="no_root_workaround_dialog_text">Without root, EnforceDoze needs Shizuku to force Doze. Granting \'android.permission.DUMP\' (and \'android.permission.WRITE_SECURE_SETTINGS\') with the ADB commands below lets it read the Doze state, restore sensors and restrict motion sensors at screen-off. Forcing Doze and the other screen-off changes still need Shizuku or root.</string>
     <string name="lockscreen_timeout_dialog_title">Lockscreen timeout</string>
     <string name="open_security_settings_button_text">Open Security Settings</string>
     <string name="lockscreen_timeout_dialog_text_p1">The lockscreen timeout value on your device is too high (</string>
@@ -248,6 +248,7 @@
     <string name="access_mode_shizuku_shell">Shizuku (shell)</string>
     <string name="access_mode_shizuku_root">Shizuku (root)</string>
     <string name="access_mode_none">No privileged access</string>
+    <string name="access_mode_dump">DUMP permission only</string>
     <string name="access_mode_line">Mode: %1$s</string>
     <string name="access_status_ready">Ready. EnforceDoze can force Doze and restrict motion sensors.</string>
     <string name="access_status_root_unavailable">Root access isn\'t available. Grant root to EnforceDoze, or switch to Shizuku in Settings.</string>
@@ -260,7 +261,9 @@
     <string name="access_problem_helpers_missing">Helper permissions not granted: %1$s</string>
     <string name="access_problem_notifications_off">Notifications are off, so EnforceDoze can\'t warn you about problems</string>
     <string name="access_problem_music_listener">Music detection needs notification access</string>
-    <string name="access_problem_sessions">Doze sessions need Shizuku or root. Until then EnforceDoze doesn\'t force Doze or change anything at screen-off</string>
+    <string name="access_problem_sessions">Forcing Doze needs Shizuku or root, and restricting motion sensors needs the DUMP permission. Until then EnforceDoze doesn\'t change anything at screen-off</string>
+    <string name="access_problem_sensors_only">Motion sensors only: EnforceDoze restricts them at screen-off, but forcing Doze and the other screen-off changes need Shizuku or root. Android still decides when the device enters Doze</string>
+    <string name="access_problem_sensors_off">“Disable motion sensors on screen off” is off, and forcing Doze needs Shizuku or root, so EnforceDoze doesn\'t change anything at screen-off</string>
     <string name="access_action_grant_helpers">Grant helper permissions</string>
     <string name="access_action_request_shizuku">Grant Shizuku permission</string>
     <string name="access_action_open_shizuku">Open Shizuku</string>
@@ -293,7 +296,7 @@
     <string name="reason_unverified">Unverified on this device</string>
     <string name="reason_no_access_root">Root access not available</string>
     <string name="reason_no_access_shizuku">Needs Shizuku access</string>
-    <string name="reason_sessions_need_access">Doze sessions need Shizuku or root</string>
+    <string name="reason_sessions_need_access">Needs Shizuku or root (the DUMP permission covers motion sensors only)</string>
     <string name="root_tag_summary">Root · %1$s</string>
     <string name="rotate_brightness_fix_retired_summary">No longer used. EnforceDoze now restores sensors from its own records, so this workaround isn\'t needed. Your saved choice is kept.</string>
     <string name="whitelist_music_needs_listener_summary">%1$s. Needs notification access: without it, music is treated as not playing.</string>
@@ -524,9 +527,18 @@
 
     <string name="tasker_change_setting_desc">Broadcast values required:\nsettingName\nsettingValue\n\nsettingName can be one of the following:\n%1$s\n\nsettingValue is true or false, or a number of seconds from 0 to 1800 for dozeEnterDelay. Other settings are rejected.</string>
     <!-- SQ-51: honest results from the 2.0 review -->
-    <string name="service_needs_session_access">EnforceDoze is on, but not enforcing: Doze sessions need Shizuku or root</string>
+    <string name="service_needs_session_access">EnforceDoze is on, but not enforcing anything at screen-off</string>
+    <!-- SQ-118: sensor-only sessions at APP+DUMP, and the checking state -->
+    <string name="service_sensors_only">EnforceDoze is on and restricts motion sensors at screen-off. Android still decides when the device enters Doze</string>
+    <string name="service_checking">EnforceDoze is on. Checking access…</string>
+    <string name="sensors_only_dialog_title">Motion sensors only</string>
+    <string name="sensors_only_dialog_text">EnforceDoze is on. With the DUMP permission it restricts motion sensors at screen-off, so moving the device doesn\'t wake it from Doze. It can\'t force Doze: Android still decides when the device enters Doze, which can take a while. Forcing Doze and the other screen-off changes start once Shizuku or root is available.</string>
+    <string name="sensors_only_setting_summary">%1$s. Without Shizuku or root this is the only screen-off change: Android still decides when the device enters Doze.</string>
+    <string name="notice_sensors_only_title">Doze forcing stopped</string>
+    <string name="notice_sensors_only_shizuku_text">Shizuku stopped while the device was dozing. EnforceDoze still restricts motion sensors, but Android decides when the device enters Doze until Shizuku is running again.</string>
+    <string name="notice_sensors_only_root_text">Root access was lost while the device was dozing. EnforceDoze still restricts motion sensors, but Android decides when the device enters Doze until access returns.</string>
     <string name="sessions_need_access_dialog_title">Not enforcing yet</string>
-    <string name="sessions_need_access_dialog_text">EnforceDoze is on, but it can\'t force Doze yet. With the DUMP permission alone it can read the Doze state and restore sensors, nothing more. Doze sessions start once Shizuku or root is available.</string>
+    <string name="sessions_need_access_dialog_text">EnforceDoze is on, but it doesn\'t change anything at screen-off yet. Forcing Doze needs Shizuku or root. With the DUMP permission it can read the Doze state and restore sensors, and it restricts motion sensors when “Disable motion sensors on screen off” is on.</string>
 
     <string name="whitelist_system_package">System package</string>
     <string name="whitelist_read_problem_title">Whitelist not fully read</string>

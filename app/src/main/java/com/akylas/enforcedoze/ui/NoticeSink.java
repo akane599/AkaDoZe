@@ -21,6 +21,7 @@ import com.akylas.enforcedoze.R;
 import com.akylas.enforcedoze.SettingsActivity;
 import com.akylas.enforcedoze.Utils;
 import com.akylas.enforcedoze.access.AccessLevel;
+import com.akylas.enforcedoze.access.Grants;
 import com.akylas.enforcedoze.doze.DozeEvent;
 import com.akylas.enforcedoze.doze.DozeEventSink;
 import com.akylas.enforcedoze.access.Prefs;
@@ -29,6 +30,8 @@ import com.akylas.enforcedoze.monitor.JournalEvent;
 import com.akylas.enforcedoze.monitor.SessionAggregator;
 import com.akylas.enforcedoze.monitor.SessionSummary;
 import com.akylas.enforcedoze.service.JournalSink;
+import com.akylas.enforcedoze.service.SessionAccess;
+import com.akylas.enforcedoze.service.SessionMode;
 
 import android.os.AsyncTask;
 
@@ -149,8 +152,10 @@ public final class NoticeSink implements DozeEventSink {
         if (previous == null) return;
         if (previous && !privileged && MyApplication.getDozeRuntime(app).getSessionActive()) {
             boolean shizuku = Utils.isShizukuMode(app);
-            NotificationCompat.Builder builder = builder(R.string.notice_paused_title,
-                    shizuku ? R.string.notice_paused_shizuku_text : R.string.notice_paused_root_text)
+            // A downgrade to sensor-only still runs: not "paused", but Android now times Doze.
+            SessionMode mode = modeAfterLoss(level, MyApplication.getDozeRuntime(app).grants().getDump(),
+                    AccessUi.sensorsEnabled(app));
+            NotificationCompat.Builder builder = builder(accessLossTitle(mode), accessLossText(mode, shizuku))
                     .setContentIntent(openMain(0, null));
             Intent shizukuIntent = shizuku ? AccessUi.shizukuLaunchIntent(app) : null;
             if (shizukuIntent != null) {
@@ -166,6 +171,22 @@ public final class NoticeSink implements DozeEventSink {
                     .setContentIntent(openMain(0, null))
                     .build());
         }
+    }
+
+    /** What still runs after Shizuku or root is lost: the live DUMP grant and the sensor setting decide. */
+    static SessionMode modeAfterLoss(AccessLevel level, boolean dump, boolean sensorsEnabled) {
+        return SessionAccess.mode(level, new Grants(dump, false), sensorsEnabled, true);
+    }
+
+    static int accessLossTitle(SessionMode mode) {
+        return mode == SessionMode.SENSOR_ONLY ? R.string.notice_sensors_only_title : R.string.notice_paused_title;
+    }
+
+    static int accessLossText(SessionMode mode, boolean shizuku) {
+        if (mode == SessionMode.SENSOR_ONLY) {
+            return shizuku ? R.string.notice_sensors_only_shizuku_text : R.string.notice_sensors_only_root_text;
+        }
+        return shizuku ? R.string.notice_paused_shizuku_text : R.string.notice_paused_root_text;
     }
 
     private static AccessLevel parseLevel(String detail) {

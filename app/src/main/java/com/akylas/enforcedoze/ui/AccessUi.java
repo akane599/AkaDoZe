@@ -21,6 +21,7 @@ import androidx.annotation.NonNull;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.lifecycle.DefaultLifecycleObserver;
 import androidx.lifecycle.LifecycleOwner;
+import androidx.preference.PreferenceManager;
 
 import com.afollestad.materialdialogs.MaterialDialog;
 import com.akylas.enforcedoze.R;
@@ -33,7 +34,9 @@ import com.akylas.enforcedoze.access.CommandResult;
 import com.akylas.enforcedoze.access.Feature;
 import com.akylas.enforcedoze.access.FeatureStatus;
 import com.akylas.enforcedoze.access.Reason;
+import com.akylas.enforcedoze.service.SelfTestKind;
 import com.akylas.enforcedoze.service.SessionAccess;
+import com.akylas.enforcedoze.service.SessionMode;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.lang.ref.WeakReference;
@@ -58,7 +61,11 @@ public final class AccessUi {
      * transport's actual problem (Shizuku not running / not permitted), which is what the user can fix.
      */
     public static Reason unavailableReason(Feature feature, AccessState state, boolean shizukuMode) {
-        FeatureStatus status = CapabilityResolver.status(feature, state.getLevel(), Build.VERSION.SDK_INT, state.getGrants());
+        return unavailableReason(feature, state, shizukuMode, Build.VERSION.SDK_INT);
+    }
+
+    static Reason unavailableReason(Feature feature, AccessState state, boolean shizukuMode, int apiLevel) {
+        FeatureStatus status = CapabilityResolver.status(feature, state.getLevel(), apiLevel, state.getGrants());
         if (!(status instanceof FeatureStatus.Unavailable)) return null;
         Reason reason = ((FeatureStatus.Unavailable) status).getReason();
         Reason transport = state.getReason();
@@ -70,21 +77,40 @@ public final class AccessUi {
         return reason;
     }
 
-    /** Doze sessions are admitted only with Shizuku or root (ForceDozeService.admitted()). */
+    /** Full sessions (force Doze and every in-Doze change) need Shizuku or root. */
     public static boolean sessionsAvailable(AccessState state) {
         return SessionAccess.canRunSessions(state.getLevel());
     }
 
-    public enum ServiceStatus { ACTIVE, INACTIVE, NEEDS_SESSION_ACCESS }
+    /**
+     * The session the service runs for this access, the same rule as DozeRuntime.sessionMode(): the
+     * published grants are read live on every refresh, and {@code sensorsEnabled} is the user's
+     * disableMotionSensors setting.
+     */
+    public static SessionMode sessionMode(AccessState state, boolean sensorsEnabled) {
+        return SessionAccess.mode(state.getLevel(), state.getGrants(), sensorsEnabled, state.getResolved());
+    }
+
+    /** The disableMotionSensors setting, with the service's own default. */
+    public static boolean sensorsEnabled(Context context) {
+        return PreferenceManager.getDefaultSharedPreferences(context).getBoolean("disableMotionSensors", true);
+    }
 
     /**
-     * The main switch's status. Switched on without Shizuku or root (e.g. DUMP granted over ADB) the
-     * service only reads state and restores; it never runs a session, so it is not reported as enforcing.
-     * A null state (access not known yet) keeps the plain on/off status.
+     * The main switch's status. FORCING needs Shizuku or root. SENSORS_ONLY (DUMP plus the sensor setting)
+     * only restricts motion sensors: Android still decides when the device dozes. PASSIVE reads state and
+     * restores, nothing more. CHECKING: access isn't known yet, so nothing is claimed.
      */
-    public static ServiceStatus serviceStatus(boolean enabled, AccessState state) {
+    public enum ServiceStatus { INACTIVE, CHECKING, FORCING, SENSORS_ONLY, PASSIVE }
+
+    public static ServiceStatus serviceStatus(boolean enabled, AccessState state, boolean sensorsEnabled) {
         if (!enabled) return ServiceStatus.INACTIVE;
-        return state == null || sessionsAvailable(state) ? ServiceStatus.ACTIVE : ServiceStatus.NEEDS_SESSION_ACCESS;
+        if (state == null || !state.getResolved()) return ServiceStatus.CHECKING;
+        switch (sessionMode(state, sensorsEnabled)) {
+            case FORCE: return ServiceStatus.FORCING;
+            case SENSOR_ONLY: return ServiceStatus.SENSORS_ONLY;
+            default: return ServiceStatus.PASSIVE;
+        }
     }
 
     /** Features that only act inside an admitted Doze session (force Doze and every in-Doze change). */
@@ -111,15 +137,40 @@ public final class AccessUi {
 
     /**
      * True when the session rule is why a feature can't be offered. The resolver may still call it
-     * available below SHELL (motion sensors with DUMP, biometrics with WRITE_SECURE_SETTINGS: the restore
-     * path needs that), but no session runs there. The feature's own platform limit, when it has one,
-     * stays the more precise reason.
+     * available below SHELL (biometrics with WRITE_SECURE_SETTINGS: the restore path needs that), but no
+     * full session runs there. At APP level motion sensors run in a sensor-only session, so the resolver's
+     * own answer (available with DUMP, NEEDS_DUMP without) stands. The feature's own platform limit, when it
+     * has one, stays the more precise reason.
      */
     public static boolean sessionBlocked(Feature feature, AccessState state, Reason resolverReason) {
-        return isSessionFeature(feature) && !sessionsAvailable(state)
-                && resolverReason != Reason.REQUIRES_ROOT
-                && resolverReason != Reason.API_TOO_OLD
-                && resolverReason != Reason.NOT_EFFECTIVE_ON_THIS_VERSION;
+        return isSessionFeature(feature) && !sessionsAvailable(state) && !sensorOnlyFeature(feature, state)
+                && !isPlatformLimit(resolverReason);
+    }
+
+    /** Below SHELL, motion sensors are the one feature a (sensor-only) session runs. */
+    public static boolean sensorOnlyFeature(Feature feature, AccessState state) {
+        return feature == Feature.MOTION_SENSORS && state.getLevel() == AccessLevel.APP;
+    }
+
+    private static boolean isPlatformLimit(Reason reason) {
+        return reason == Reason.REQUIRES_ROOT || reason == Reason.API_TOO_OLD
+                || reason == Reason.NOT_EFFECTIVE_ON_THIS_VERSION;
+    }
+
+    /** The UI can offer the feature as working. Independent of the feature's own on/off setting. */
+    static boolean offered(Feature feature, AccessState state, boolean shizukuMode, int apiLevel) {
+        Reason reason = unavailableReason(feature, state, shizukuMode, apiLevel);
+        return reason == null && !sessionBlocked(feature, state, reason);
+    }
+
+    /** The feature a self-test applies: the DOZE test forces idle, the SENSORS test restricts sensors. */
+    public static Feature selfTestFeature(SelfTestKind kind) {
+        return kind == SelfTestKind.DOZE ? Feature.FORCE_DOZE : Feature.MOTION_SENSORS;
+    }
+
+    /** Judged per kind: SENSORS runs at APP+DUMP whatever the sensor setting, DOZE needs Shizuku or root. */
+    public static boolean selfTestOffered(SelfTestKind kind, AccessState state, boolean shizukuMode, int apiLevel) {
+        return offered(selfTestFeature(kind), state, shizukuMode, apiLevel);
     }
 
     /** Why the UI can't offer the feature as working, or null when it can. */
@@ -166,12 +217,16 @@ public final class AccessUi {
                 return context.getString(shizukuMode ? R.string.access_mode_shizuku_root : R.string.access_mode_root);
             case SHELL:
                 return context.getString(R.string.access_mode_shizuku_shell);
+            case APP:
+                if (state.getGrants().getDump()) return context.getString(R.string.access_mode_dump);
+                return context.getString(R.string.access_mode_none);
             default:
                 return context.getString(R.string.access_mode_none);
         }
     }
 
     public static String statusText(Context context, AccessState state, boolean shizukuMode) {
+        if (!state.getResolved()) return context.getString(R.string.access_status_checking);
         if (isPrivileged(state)) return context.getString(R.string.access_status_ready);
         if (shizukuMode) {
             Reason reason = state.getReason() == null ? Reason.NO_ACCESS : state.getReason();
@@ -181,14 +236,15 @@ public final class AccessUi {
     }
 
     /** Problems the user can act on; empty when everything core is available. */
-    public static List<String> problems(Context context, AccessState state, boolean shizukuMode, boolean musicWhitelist) {
+    public static List<String> problems(Context context, AccessState state, boolean shizukuMode, boolean musicWhitelist,
+                                        boolean sensorsEnabled) {
         List<String> problems = new ArrayList<>();
         if (sessionsAvailable(state)) {
             addFeatureProblem(problems, context, state, shizukuMode, Feature.FORCE_DOZE, R.string.access_feature_force_doze);
             addFeatureProblem(problems, context, state, shizukuMode, Feature.MOTION_SENSORS, R.string.access_feature_motion_sensors);
-        } else {
-            // One reason for every session feature; the status line above names the transport problem.
-            problems.add(context.getString(R.string.access_problem_plain, context.getString(R.string.access_problem_sessions)));
+        } else if (state.getResolved()) {
+            // One reason for the session features; the status line above names the transport problem.
+            problems.add(context.getString(R.string.access_problem_plain, context.getString(sessionProblem(state, sensorsEnabled))));
         }
         addFeatureProblem(problems, context, state, shizukuMode, Feature.DOZE_STATE_READ, R.string.access_feature_doze_state);
         if (isPrivileged(state)) {
@@ -216,6 +272,13 @@ public final class AccessUi {
             problems.add(context.getString(R.string.access_problem_line, context.getString(label),
                     reasonText(context, reason, shizukuMode)));
         }
+    }
+
+    /** Below SHELL: what runs at screen-off, from the live DUMP grant and the sensor setting. */
+    static int sessionProblem(AccessState state, boolean sensorsEnabled) {
+        if (sessionMode(state, sensorsEnabled) == SessionMode.SENSOR_ONLY) return R.string.access_problem_sensors_only;
+        if (state.getLevel() == AccessLevel.APP && state.getGrants().getDump()) return R.string.access_problem_sensors_off;
+        return R.string.access_problem_sessions;
     }
 
     public static Action primaryAction(AccessState state, boolean shizukuMode) {
