@@ -35,8 +35,8 @@ class MusicSelectionTest {
             assertFalse(path, selection.complete(false))
         }
         val source = File("src/main/java/com/akylas/enforcedoze/ForceDozeService.java").readText()
-        assertTrue(source.contains("if (selection.complete(null)) runtime.getJournal().emit(new DozeEvent(EventType.ERROR, \"MUSIC_SELECTION_TIMEOUT\"))"))
-        assertTrue(source.contains("if (selection.complete(null)) {\n                                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, \"MUSIC_SELECTION_FAILED\"))"))
+        assertTrue(source.contains("if (selection.complete(null)) runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.MUSIC_SELECTION_TIMEOUT))"))
+        assertTrue(source.contains("if (selection.complete(null)) {\n                                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.MUSIC_SELECTION_FAILED))"))
     }
 
     @Test fun missingListenerCannotApplyCancelledOrStaleSelection() {
