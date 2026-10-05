@@ -31,7 +31,7 @@ _Work items, stories and blockers live on the Sidequest board. This file keeps w
 - 2026-10-04: App-suspend restore counts any shell, root or `android` suspender as ours, whichever mode is current, because the execution mode can change between apply and restore. Other suspenders (e.g. Digital Wellbeing) don't block restore. (US-3; SQ-80)
 - 2026-10-05: A reset requested while the service is attached is held and posted right after that service's teardown runnable (ServiceResetQueue), so teardown never waits behind the reset. TEARDOWN_TIMEOUT is emitted only when teardown started and did not finish. The hold has no bound because the only caller stops the service first (held as SQ-92 note). (US-4; SQ-93, review SQ-101 PASS)
 - 2026-10-05: A restore-only window re-checks its remaining budget when its worker job starts. Below MIN_READY_BUDGET_MS it runs nothing, records no attempts, and lets the window finish, so the one shared continuation is armed. A starved follow-up window is skipped without a record (SQ-92 note). (US-4; SQ-94, review SQ-100 PASS)
-- 2026-10-05: A service attaching after a detached restore window closed root discovery gets a fresh 1+3 probe budget (AccessResolution.startServiceRootDiscovery). A detached window still settles on its first timeout. (US-4; SQ-95)
+- 2026-10-05: A service gets a fresh 1+3 root probe budget only when a detached restore window cut discovery short on a timeout, including an in-flight probe timing out after the window closed (AccessResolution.startServiceRootDiscovery). Known root, an exhausted 1+3 budget, and service-owned closure never reopen on attach. A detached window still settles on its first timeout. (US-4; SQ-95, repaired by SQ-102)
 
 ## Audit status
 | Area | Last run | Result | How |

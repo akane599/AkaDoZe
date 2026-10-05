@@ -350,7 +350,7 @@ public class ForceDozeService extends Service {
         Long delay = rootProbeRetry.nextDelay(runtime.getAccess().getState().getRootProbeTimedOut(),
                 runtime.getSessionActive() || runtime.hasPendingRestore());
         if (delay == null) {
-            runtime.getAccess().finishRootDiscovery();
+            runtime.getAccess().finishRootDiscovery(false);
             return;
         }
         pendingRootRetry = () -> {
@@ -358,7 +358,7 @@ public class ForceDozeService extends Service {
             if (!destroyed && (runtime.getSessionActive() || runtime.hasPendingRestore())) {
                 runtime.getAccess().retryRootProbe();
             } else {
-                runtime.getAccess().finishRootDiscovery();
+                runtime.getAccess().finishRootDiscovery(false);
             }
         };
         worker.postDelayed(pendingRootRetry, delay);
