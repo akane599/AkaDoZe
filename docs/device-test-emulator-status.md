@@ -2,7 +2,7 @@
 
 Live status of the emulator-runnable parts of the device checklist. This file is updated and pushed as the run goes on.
 
-**Last update:** 2026-10-05 20:55 (+03) · **Run state:** IN PROGRESS
+**Last update:** 2026-10-05 21:00 (+03) · **Run state:** IN PROGRESS
 
 ## Setup
 - Build: `akadoze-2.0` @ 896e778, `:app:assembleDebug`
@@ -16,8 +16,8 @@ Legend: ✅ pass · ❌ fail (finding below) · ⚠️ partial / emulator-limite
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| 0 | Install over old version, settings preserved | ⏳ | |
-| 1 | Self-tests under Shizuku | ⏳ | |
+| 0 | Install over old version, settings preserved | ✅ | 1.10.2 (Base 42f8e73) → 1.11.0. 11 seeded non-default prefs (mode, delay, Wi-Fi, saver, period, tunable…) byte-identical after upgrade; Shizuku grant kept |
+| 1 | Self-tests under Shizuku | ✅ | buttons disabled with reason while stopped; Test Doze → PASSED; Test sensors → PASSED; afterwards `Mode : NORMAL`, `mForceIdle=false` |
 | 2 | 30+ min screen-off session with movement | ⏳ | movement simulated through emulator sensors |
 | 3 | Kill Shizuku mid-doze | ⏳ | |
 | 4 | Honest settings (Shizuku) | ⏳ | |
@@ -39,7 +39,10 @@ Legend: ✅ pass · ❌ fail (finding below) · ⚠️ partial / emulator-limite
 | SQ-126 | Cold-start "checking" (root) | ⏭️ | needs app root |
 
 ## Findings
-_None yet._
+- **F1 (low, monitor UI): phantom session card from pre-session events.** Before the first screen-off, journal rows carry `sessionId=0` (here two `ACCESS_CHANGED` rows written at install/first launch). `SessionAggregator.summarize` keeps `sessionId >= 0` (`monitor/SessionAggregator.kt:47`), so the monitor shows "Session from 8:52 PM, 0 minutes … Partial session, Never reached deep Doze, Sensors unverified" though no screen-off ever happened. Likely one such card per boot. Fix idea: drop `sessionId == 0` from session grouping (keep them in the journal).
+- **O1 (observation, wording):** with the screen on, the monitor reads "Deep Doze: Active / Light Doze: Active". That's the deviceidle state name (`ACTIVE` = *not* dozing), but it reads as "Doze is active". Consider "Not idle (screen/device active)".
 
 ## Log
 - 20:50 emulator booted, debug APK built.
+- 20:51 old 1.10.2 installed, prefs seeded, Shizuku 13.6.0 started over adb, upgraded to 1.11.0.
+- 20:58 service on, both self-tests passed.
