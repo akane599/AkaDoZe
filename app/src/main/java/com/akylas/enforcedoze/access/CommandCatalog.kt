@@ -117,6 +117,8 @@ object CommandCatalog {
             Feature.DOZE_STATE_READ, Feature.TUNABLES -> "dumpsys deviceidle"
             Feature.MOTION_SENSORS -> "dumpsys sensorservice"
             Feature.BATTERY_SAVER -> "settings get global low_power"
+            // Airplane policy settles these settings asynchronously; FeatureReadback limits retries
+            // to WIFI/MOBILE_DATA/BLUETOOTH after a verified airplane restore in the same pass.
             Feature.WIFI -> "settings get global wifi_on"
             Feature.MOBILE_DATA -> "settings get global mobile_data"
             Feature.BLUETOOTH -> "settings get global bluetooth_on"
