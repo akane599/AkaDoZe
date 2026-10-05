@@ -1,5 +1,7 @@
 package com.akylas.enforcedoze.doze
 
+import com.akylas.enforcedoze.service.SessionMode
+
 import com.akylas.enforcedoze.access.*
 import org.junit.Assert.*
 import org.junit.Test
@@ -23,6 +25,27 @@ class DozeFeatureGroupsTest {
         }
     }
     private fun enter(config: DozeConfig = this.config) = controller.enter(config, controller.currentGeneration) { true }
+
+    @Test fun sensorOnlyRejectsEveryGroupEvenAtRootAndNaturalIdle() {
+        runner.level = AccessLevel.ROOT
+        runner.replies("cmd deviceidle get deep", "IDLE")
+        val requested = config.copy(level = AccessLevel.ROOT, restrictSensors = true, batterySaver = true,
+            features = setOf(Feature.WIFI, Feature.MOBILE_DATA, Feature.BLUETOOTH, Feature.AIRPLANE,
+                Feature.LOCATION, Feature.BIOMETRICS, Feature.SENSOR_PRIVACY_ALL, Feature.SETPROP_DOZE),
+            appsToSuspend = setOf("com.example.app"), packagesToBlockNotifications = setOf("com.example.app"),
+            mode = SessionMode.SENSOR_ONLY)
+        val result = controller.enterGroups(requested, controller.currentGeneration) { true }
+        assertEquals(EnterStatus.COMPLETED, result.status)
+        assertTrue(result.steps.isEmpty())
+        assertTrue(runner.commands.isEmpty())
+        assertTrue(store.load().entries.isEmpty())
+        assertTrue(events.isEmpty())
+
+        runner.replies("dumpsys sensorservice", "Mode : NORMAL", "Mode : RESTRICTED : com.akylas.enforcedoze")
+        assertEquals(listOf(Feature.MOTION_SENSORS), enter(requested).steps.map { it.feature })
+        assertEquals(listOf("dumpsys sensorservice restrict com.akylas.enforcedoze"), runner.mutations())
+        assertTrue(runner.commands.all { "sensorservice" in it })
+    }
 
     @Test fun exitWithoutLedgerCannotMutateUserAirplaneRotationBrightnessOrPackages() {
         assertTrue(controller.exit().complete)

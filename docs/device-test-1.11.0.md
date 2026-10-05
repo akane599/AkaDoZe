@@ -112,6 +112,21 @@ before, and nothing should be reset.
   - After the timeout, `ps -A | grep -E ' su|sh$'` must show no leftover su session from AkaDoZe. The
     interrupted change must not land afterwards (check its readback).
   - The next root command opens a fresh su session and succeeds.
+- *Exact-alarm access lifecycle (SQ-115), API 31+.*
+  - Configure a custom Doze period whose start is a few minutes away.
+  - Revoke "Alarms & reminders" for AkaDoZe in Settings. Android kills the app.
+  - Grant it again, then confirm `adb shell dumpsys alarm | grep -A3 com.akylas.enforcedoze` shows a re-armed
+    exact boundary. This proves the non-exported grant receiver got the system broadcast.
+  - Let the boundary fire with the app in the background and the screen off. The service must start (granted).
+  - Repeat with access denied: the boundary is inexact, and if the service start is denied the existing notice
+    appears.
+  - The master switch off means no re-arm.
+- *Exact-alarm row in Settings (SQ-117), API 31+.*
+  - With a custom Doze period configured, Settings shows the exact-alarm row: exact when "Alarms & reminders"
+    is granted, best-effort when it is denied. Without periods (or below API 31) the row is hidden.
+  - Tapping it opens AkaDoZe's own "Alarms & reminders" page. Toggle access, press Back: the row and the Main
+    screen update on resume without restarting the app.
+  - With TalkBack on, the row reads its title and current status, and it is reachable and activatable by swipe.
 
 **If something fails:** Doze monitor → "Share report", plus
 `adb logcat -d --pid=$(adb shell pidof -s com.akylas.enforcedoze) | tail -200`.

@@ -254,7 +254,7 @@ class TeardownRecoveryTest {
         assertEquals(100L, identity.forEvent(null))
     }
 
-    @Test fun appWithDumpSelfTestIsUnavailableWithoutCommandsOrSubscriptions() {
+    @Test fun appWithDumpSensorSelfTestRestoresThroughExistingLedger() {
         val runner = FakeRunner().apply {
             level = AccessLevel.APP
             replies("dumpsys sensorservice", "Mode : NORMAL", "Mode : RESTRICTED : $TOKEN", "Mode : NORMAL")
@@ -265,9 +265,11 @@ class TeardownRecoveryTest {
         val test = SelfTest(core, CapabilityResolver, { subscriptions++; sinks.addSink(it) }, sinks::removeSink, { false }, {})
         assertEquals(FeatureStatus.Available, CapabilityResolver.status(Feature.MOTION_SENSORS, AccessLevel.APP, 36, grants))
         val result = test.run(SelfTestKind.SENSORS, DozeConfig(36, AccessLevel.APP, grants, allowToken = TOKEN))
-        assertEquals(SelfTestOutcome.UNAVAILABLE, result.outcome)
-        assertTrue(runner.commands.isEmpty())
-        assertEquals(0, subscriptions)
+        assertEquals(SelfTestOutcome.PASSED, result.outcome)
+        assertTrue(result.restoreComplete)
+        assertTrue(store.load().entries.isEmpty())
+        assertEquals(listOf("dumpsys sensorservice restrict $TOKEN", "dumpsys sensorservice enable"), runner.mutations())
+        assertEquals(1, subscriptions)
     }
 
     @Test fun teardownStartsBudgetOnWorkerAndQueuesDeadlineFreeWakeProtectedRestoreBeforeRetirement() {

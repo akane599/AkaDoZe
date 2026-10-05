@@ -71,6 +71,9 @@
     <string name="custom_doze_period_end_title">End time</string>
     <string name="remove_custom_doze_period_dialog_text">Remove this custom Doze period?</string>
     <string name="custom_doze_period_same_time_error">Start and end times must be different.</string>
+    <string name="exact_alarm_setting_title">Exact period timing</string>
+    <string name="exact_alarm_status_exact">Exact alarms are available, so period starts and ends are timed precisely. Some devices may still delay or block a restart.</string>
+    <string name="exact_alarm_status_best_effort">Exact alarms aren\'t available, so periods use best-effort (inexact) timing. A boundary can run late and may not restart the service while the app is in the background. Tap to allow Alarms &amp; reminders.</string>
     <string name="whitelist_apps_setting_summary">Whitelist apps from Doze mode</string>
     <string name="whitelist_apps_setting_text">Whitelist apps</string>
     <string name="reset_forcedoze_setting_summary">Reset EnforceDoze to the default state</string>

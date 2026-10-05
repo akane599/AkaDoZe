@@ -1,5 +1,8 @@
 package com.akylas.enforcedoze.doze
 
+import com.akylas.enforcedoze.service.SessionMode
+import com.akylas.enforcedoze.service.SessionAccess
+
 import com.akylas.enforcedoze.access.AccessLevel
 import com.akylas.enforcedoze.access.CapabilityResolver
 import com.akylas.enforcedoze.access.CommandCatalog
@@ -69,7 +72,8 @@ class DozeController @JvmOverloads constructor(
         grants = config.grants
         val steps = mutableListOf<StepResult>()
         if (!accessResolved() || generation != currentGeneration || !admission()) return EnterResult(EnterStatus.CANCELLED, steps)
-        var groupsAdmitted = !core && DozeStateParser.parseDeep(read(Feature.FORCE_DOZE, null, false)) == DeepState.IDLE
+        var groupsAdmitted = config.mode == SessionMode.FORCE && !core &&
+            DozeStateParser.parseDeep(read(Feature.FORCE_DOZE, null, false)) == DeepState.IDLE
         val requests = buildList {
             if (core) {
                 if (config.batterySaver) add(Feature.BATTERY_SAVER to null)
@@ -79,7 +83,7 @@ class DozeController @JvmOverloads constructor(
             config.features.sortedBy { it.ordinal }.forEach { add(it to null) }
             config.appsToSuspend.sorted().forEach { add((if (apiLevel >= 24) Feature.APP_SUSPEND else Feature.PM_DISABLE) to it) }
             config.packagesToBlockNotifications.sorted().forEach { add(Feature.NOTIFICATION_BLOCK to it) }
-        }
+        }.filter { SessionAccess.canRunFeature(config.mode, it.first) }
         fun admitted(): Boolean = accessResolved() && generation == currentGeneration && admission()
         requestsLoop@ for ((feature, target) in requests) {
             if (!admitted()) return EnterResult(EnterStatus.CANCELLED, steps.toList())

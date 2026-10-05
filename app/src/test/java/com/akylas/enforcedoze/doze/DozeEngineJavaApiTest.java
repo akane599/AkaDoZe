@@ -39,6 +39,16 @@ public class DozeEngineJavaApiTest {
         DozeController controller = new DozeController(runner, CommandCatalog.INSTANCE,
                 CapabilityResolver.INSTANCE, store, clock, events::add, 36, new Grants(true, false));
         DozeConfig config = new DozeConfig(36, AccessLevel.APP, new Grants(true, false), false);
+        assertEquals(com.akylas.enforcedoze.service.SessionMode.FORCE, config.getMode());
+        // Every pre-mode positional constructor remains callable from Java.
+        DozeConfig oldFull = new DozeConfig(36, AccessLevel.APP, new Grants(true, false), false,
+                "com.akylas.enforcedoze", true, Collections.emptySet(), Collections.emptySet(),
+                Collections.emptySet(), true, null);
+        assertEquals(com.akylas.enforcedoze.service.SessionMode.FORCE, oldFull.getMode());
+        DozeConfig sensors = new DozeConfig(36, AccessLevel.APP, new Grants(true, false), false,
+                "com.akylas.enforcedoze", true, Collections.emptySet(), Collections.emptySet(),
+                Collections.emptySet(), true, null, com.akylas.enforcedoze.service.SessionMode.SENSOR_ONLY);
+        assertTrue(controller.enter(sensors, controller.getCurrentGeneration(), () -> true).getSteps().isEmpty());
         EnterResult result = controller.enter(config, controller.getCurrentGeneration(), () -> true);
         assertEquals(EnterStatus.COMPLETED, result.getStatus());
         assertEquals(StepStatus.SKIPPED, result.getSteps().get(0).getStatus());

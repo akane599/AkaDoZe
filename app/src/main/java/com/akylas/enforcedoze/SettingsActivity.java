@@ -58,6 +58,7 @@ import com.akylas.enforcedoze.access.Reason;
 import com.akylas.enforcedoze.access.CommandRunner;
 import com.akylas.enforcedoze.access.Prefs;
 import com.akylas.enforcedoze.access.ShizukuState;
+import com.akylas.enforcedoze.doze.ExactAlarmAccessPolicy;
 import com.akylas.enforcedoze.ui.AccessUi;
 import com.akylas.enforcedoze.ui.ModeSwitchRules;
 import com.akylas.enforcedoze.ui.ResetReport;
@@ -143,6 +144,9 @@ public class SettingsActivity extends AppCompatActivity {
         };
         private static final String ACCESS_STATUS = "accessStatus";
         private static final String MUSIC_WHITELIST = "whitelistMusicAppNetwork";
+        private static final String EXACT_ALARM_ACCESS = "exactAlarmAccess";
+        /** Last requeried exact-alarm capability; null until the first resume. */
+        private ExactAlarmAccessPolicy.Access exactAlarmAccess;
         private final Map<String, CharSequence> baseSummaries = new HashMap<>();
         // A pending mode switch survives recreation (rotation while the Shizuku prompt is up).
         private static final String STATE_PENDING_MODE = "modeSwitchPending";
@@ -221,6 +225,10 @@ public class SettingsActivity extends AppCompatActivity {
                 accessManager.refreshShizuku();
                 resolveShizukuWait(shizukuPromptSettled);
             }
+            // Back from Alarms & reminders (granted, denied or untouched) or any other cover: ask the platform
+            // again and re-arm through the shared seam, which never re-arms after master-off.
+            exactAlarmAccess = Utils.requeryExactAlarmAccess(requireContext());
+            renderExactAlarmStatus();
         }
 
         @Override
@@ -484,6 +492,16 @@ public class SettingsActivity extends AppCompatActivity {
                 return true;
             });
 
+            Preference exactAlarm = findPreference(EXACT_ALARM_ACCESS);
+            if (exactAlarm != null) {
+                exactAlarm.setOnPreferenceClickListener(preference -> {
+                    // The status changes only when onResume requeries; opening the page is not a grant.
+                    AccessUi.requestExactAlarmAccess(requireActivity());
+                    return true;
+                });
+                renderExactAlarmStatus();
+            }
+
             autoRotateFixPref.setOnPreferenceChangeListener((preference, o) -> {
                 if (!Utils.isWriteSettingsPermissionGranted(getActivity())) {
                     requestWriteSettingsPermission();
@@ -728,6 +746,17 @@ public class SettingsActivity extends AppCompatActivity {
             } else {
                 preference.setSummary(getString(R.string.custom_doze_periods_setting_summary, android.text.TextUtils.join(", ", periods)));
             }
+        }
+
+        /** Shown with custom periods on API 31+ only; reads the last requery and never re-arms itself. */
+        private void renderExactAlarmStatus() {
+            Preference exactAlarm = findPreference(EXACT_ALARM_ACCESS);
+            if (exactAlarm == null || !isAdded()) return;
+            AccessUi.ExactAlarmStatus status = exactAlarmAccess == null ? AccessUi.ExactAlarmStatus.HIDDEN
+                    : AccessUi.exactAlarmStatus(Build.VERSION.SDK_INT, Utils.hasCustomDozePeriods(requireContext()),
+                            exactAlarmAccess.getExactAllowed());
+            exactAlarm.setVisible(status != AccessUi.ExactAlarmStatus.HIDDEN);
+            if (status != AccessUi.ExactAlarmStatus.HIDDEN) exactAlarm.setSummary(AccessUi.exactAlarmStatusText(status));
         }
 
         private String formatTime(int hour, int minute) {
@@ -1025,6 +1054,7 @@ public class SettingsActivity extends AppCompatActivity {
             }
             if ("customDozePeriods".equals(key)) {
                 updateCustomDozePeriodsSummary(findPreference("customDozePeriods"), sharedPreferences);
+                renderExactAlarmStatus();
             }
             if (getActivity() != null) {
                 reloadSettings(getActivity());

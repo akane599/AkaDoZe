@@ -27,6 +27,98 @@ class ScheduleAndStatsWiringTest {
             .contains("Utils.applyForceDozeSchedule(context)"))
     }
 
+    @Test fun grantReceiverIsPrivateAndOnlyRequeriesActualAccess() {
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+        val declaration = manifest.substringAfter("android:name=\"com.akylas.enforcedoze.ExactAlarmPermissionReceiver\"", "")
+            .substringBefore("</receiver>")
+        assertTrue("system grant receiver must not be exported", declaration.contains("android:exported=\"false\""))
+        assertTrue(declaration.contains("android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED"))
+        val file = File("src/main/java/com/akylas/enforcedoze/ExactAlarmPermissionReceiver.java")
+        assertTrue("grant receiver must exist", file.isFile)
+        val receiver = file.readText()
+        val actionGuard = receiver.indexOf("AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED.equals(action)")
+        val requery = receiver.indexOf("Utils.requeryExactAlarmAccess(context)")
+        assertTrue("ignore unrelated actions before any requery", actionGuard >= 0 && requery > actionGuard)
+        assertTrue(receiver.substring(actionGuard, requery).contains("return;"))
+        assertFalse("broadcast extras are not permission authority", receiver.contains("getExtras(") || receiver.contains("Extra("))
+        assertNoServiceOrPreferenceMutation(receiver)
+    }
+
+    @Test fun requeryReadsCapabilityAndPersistedIntentWithoutApplyingCurrentWindow() {
+        val utils = File("src/main/java/com/akylas/enforcedoze/Utils.java").readText()
+        val requery = utils.substringAfter("public static ExactAlarmAccessPolicy.Access requeryExactAlarmAccess(", "")
+            .substringBefore("public static void scheduleNextCustomDozePeriodBoundary(")
+        assertTrue("requery must guard the API 31-only capability read",
+            requery.contains("Build.VERSION.SDK_INT < Build.VERSION_CODES.S") && requery.contains("alarmManager.canScheduleExactAlarms()"))
+        assertTrue(requery.contains("ExactAlarmAccessPolicy.requery("))
+        assertTrue(requery.contains("Prefs.SERVICE_USER_ENABLED,"))
+        assertTrue(requery.contains("Prefs.DEFAULT_SERVICE_USER_ENABLED"))
+        assertTrue(requery.contains("hasCustomDozePeriods(context)"))
+        val guard = requery.indexOf("if (access.getShouldRearm())")
+        assertTrue("rearm only when the pure policy admits persisted intent",
+            guard >= 0 && requery.indexOf("scheduleNextCustomDozePeriodBoundary(context)") > guard)
+        assertTrue("foreground return must be able to use the refreshed access snapshot", requery.contains("return access;"))
+        assertFalse("grant must not catch up to the current period", requery.contains("isInsideCustomDozePeriod("))
+        assertNoServiceOrPreferenceMutation(requery)
+    }
+
+    @Test fun duplicateGrantReplacesOneImmutableExplicitBoundaryAndRetainsRevocationFallback() {
+        val utils = File("src/main/java/com/akylas/enforcedoze/Utils.java").readText()
+        val schedule = utils.substringAfter("public static void scheduleNextCustomDozePeriodBoundary(")
+            .substringBefore("public static void cancelCustomDozePeriodAlarm(")
+        assertTrue("replace, do not accumulate, the boundary alarm",
+            schedule.indexOf("cancelCustomDozePeriodAlarm(context)") in 0 until schedule.indexOf("getCustomDozePeriodPendingIntent(context)"))
+        val target = utils.substringAfter("private static PendingIntent getCustomDozePeriodPendingIntent(")
+            .substringBefore("private static Set<String> getCustomDozePeriods(")
+        assertTrue(target.contains("new Intent(context, CustomDozePeriodReceiver.class)"))
+        assertTrue(target.contains("intent.setAction(ACTION_CUSTOM_DOZE_PERIOD_BOUNDARY)"))
+        assertTrue(target.contains("PendingIntent.getBroadcast(context, CUSTOM_DOZE_PERIOD_REQUEST_CODE, intent,"))
+        assertTrue(target.contains("PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE"))
+        assertTrue(utils.contains("CUSTOM_DOZE_PERIOD_REQUEST_CODE = 9012"))
+        val cancel = utils.substringAfter("public static void cancelCustomDozePeriodAlarm(")
+            .substringBefore("public static boolean hasCustomDozePeriods(")
+        assertTrue(cancel.contains("alarmManager.cancel(getCustomDozePeriodPendingIntent(context))"))
+        val fallback = schedule.substringAfter("catch (SecurityException e)", "")
+        assertTrue("grant-then-revoke race must retain the inexact fallback", fallback.contains("alarmManager.setAndAllowWhileIdle"))
+        assertNoServiceOrPreferenceMutation(schedule)
+    }
+
+    @Test fun bootRearmAndBoundaryForegroundStartDenialOutcomesRemainIntact() {
+        assertTrue(File("src/main/java/com/akylas/enforcedoze/BootCompleteReceiver.java").readText()
+            .contains("Utils.scheduleNextCustomDozePeriodBoundary(context)"))
+        val start = File("src/main/java/com/akylas/enforcedoze/Utils.java").readText()
+            .substringAfter("public static boolean startForceDozeService(")
+            .substringBefore("public static void stopForceDozeService(")
+        val failure = start.substringAfter("catch (IllegalStateException e)").substringBefore("// Hide disabled notification")
+        assertTrue(start.contains("ContextCompat.startForegroundService(context, intent)"))
+        assertTrue(failure.contains("EventType.ERROR, \"FOREGROUND_START_DENIED\""))
+        assertTrue(failure.contains("return false;"))
+    }
+
+    @Test fun foregroundReturnRequeriesThroughTheSharedSeamWithoutRestartingOrPrompting() {
+        val activity = File("src/main/java/com/akylas/enforcedoze/MainActivity.java").readText()
+        val resume = activity.substringAfter("protected void onResume()", "").substringBefore("protected void onPause()")
+        assertTrue("foreground return must requery actual access and re-arm via 2A's seam",
+            resume.contains("Utils.requeryExactAlarmAccess(this);"))
+        val settings = File("src/main/java/com/akylas/enforcedoze/SettingsActivity.java").readText()
+        val settingsResume = settings.substringAfter("public void onResume()", "").substringBefore("public void onPause()")
+        assertTrue(settingsResume.contains("Utils.requeryExactAlarmAccess(requireContext())"))
+        for (source in listOf(resume, settingsResume)) {
+            // Master-off and no-period gating stays in the seam's pure policy; resume must not bypass it.
+            for (forbidden in listOf("scheduleNextCustomDozePeriodBoundary(", "applyForceDozeSchedule(",
+                "startForceDozeService(", "ACTION_REQUEST_SCHEDULE_EXACT_ALARM", "requestExactAlarmAccess(")) {
+                assertFalse("foreground return cannot call $forbidden", source.contains(forbidden))
+            }
+        }
+    }
+
+    private fun assertNoServiceOrPreferenceMutation(source: String) {
+        for (forbidden in listOf("applyForceDozeSchedule(", "startForceDozeService(", "startForegroundService(",
+            "startService(", "stopForceDozeService(", "updateSettingBool(", "putBoolean(", ".edit()")) {
+            assertFalse("permission rearm cannot call $forbidden", source.contains(forbidden))
+        }
+    }
+
     @Test fun explicitMasterOffPersistsIntentAndCancelsBoundaryAlarm() {
         val activity = File("src/main/java/com/akylas/enforcedoze/MainActivity.java").readText()
         val toggle = activity.substringAfter("public void onCheckedChanged(")

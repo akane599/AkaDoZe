@@ -113,6 +113,13 @@
             android:enabled="true"
             android:exported="true" />
         <receiver
+            android:name="com.akylas.enforcedoze.ExactAlarmPermissionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+        <receiver
             android:name="com.akylas.enforcedoze.CustomDozePeriodReceiver"
             android:enabled="true"
             android:exported="false" />

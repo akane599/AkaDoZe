@@ -1,15 +1,18 @@
 package com.akylas.enforcedoze.ui;
 
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
+import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
+import android.provider.Settings;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.TextView;
@@ -372,5 +375,39 @@ public final class AccessUi {
     /** The user's grant, not whether the listener is bound right now (it can still be rebinding). */
     public static boolean hasListenerAccess(Context context) {
         return NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.getPackageName());
+    }
+
+    /** Custom-period timing as the scheduler will arm it. HIDDEN: no periods, or no special access below API 31. */
+    public enum ExactAlarmStatus { HIDDEN, EXACT, BEST_EFFORT }
+
+    /** Alarms & reminders special access, and its Settings action, exist from API 31. */
+    public static boolean canRequestExactAlarm(int apiLevel) {
+        return apiLevel >= Build.VERSION_CODES.S;
+    }
+
+    /** {@code exactAllowed} is the effective capability from a fresh requery, never a launch result. */
+    public static ExactAlarmStatus exactAlarmStatus(int apiLevel, boolean hasPeriods, boolean exactAllowed) {
+        if (!canRequestExactAlarm(apiLevel) || !hasPeriods) return ExactAlarmStatus.HIDDEN;
+        return exactAllowed ? ExactAlarmStatus.EXACT : ExactAlarmStatus.BEST_EFFORT;
+    }
+
+    public static int exactAlarmStatusText(ExactAlarmStatus status) {
+        return status == ExactAlarmStatus.EXACT ? R.string.exact_alarm_status_exact : R.string.exact_alarm_status_best_effort;
+    }
+
+    /**
+     * Opens this app's Alarms &amp; reminders page. Call only from an explicit tap: whatever the user does
+     * there, the caller learns it by requerying on return, not from this launch.
+     */
+    public static boolean requestExactAlarmAccess(Activity activity) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false;
+        Uri pkg = Uri.fromParts("package", activity.getPackageName(), null);
+        try {
+            activity.startActivity(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, pkg));
+        } catch (ActivityNotFoundException missing) {
+            // The screen is in AOSP Settings only; some OEM builds lack it.
+            activity.startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg));
+        }
+        return true;
     }
 }
