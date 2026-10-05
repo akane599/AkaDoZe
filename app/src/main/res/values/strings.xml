@@ -549,6 +549,7 @@
 
     <string name="reset_running_text">Restoring what EnforceDoze changed, then resetting…</string>
     <string name="reset_incomplete_title">Reset incomplete</string>
+    <string name="reset_almost_done_title">Reset almost done</string>
     <string name="reset_debt_remaining">Some changes EnforceDoze made couldn\'t be confirmed as restored. Their restore records and your execution mode were kept, so EnforceDoze can still restore them: use Restore now on the main screen once root or Shizuku is available.</string>
     <string name="reset_steps_unconfirmed">These reset steps weren\'t confirmed:</string>
     <string name="reset_step_line">• %1$s: %2$s</string>

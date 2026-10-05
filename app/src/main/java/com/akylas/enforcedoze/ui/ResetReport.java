@@ -68,13 +68,18 @@ public final class ResetReport {
         return problems;
     }
 
-    /** "Reset complete" only when restore finished, every step was readback-confirmed and settings cleared. */
+    /**
+     * Restore finished, every step that ran was readback-confirmed and settings cleared. Deferred steps have
+     * not run yet, so they are not covered: see {@link #title}.
+     */
     public static boolean complete(SystemResetResult result, boolean prefsCleared) {
         return result.getComplete() && prefsCleared;
     }
 
+    /** "Reset complete" only when {@link #complete} and no deferred step is still pending; "almost done" while one is. */
     public static int title(SystemResetResult result, boolean prefsCleared) {
-        return complete(result, prefsCleared) ? R.string.reset_complete_dialog_title : R.string.reset_incomplete_title;
+        if (!complete(result, prefsCleared)) return R.string.reset_incomplete_title;
+        return result.getDeferred().isEmpty() ? R.string.reset_complete_dialog_title : R.string.reset_almost_done_title;
     }
 
     public static String message(Context context, SystemResetResult result, boolean prefsCleared) {
