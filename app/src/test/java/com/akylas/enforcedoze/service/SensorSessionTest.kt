@@ -100,7 +100,7 @@ class SensorSessionTest {
                         void checkSafety() { actions.add("safety"); }
                         void announceAccess() {}
                         boolean getSessionActive() { return true; }
-                        void setSessionActive(boolean active) {}
+                        void deactivateSession() {}
                         void importHistory() {}
                     }
                     $methods
