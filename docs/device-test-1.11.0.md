@@ -127,6 +127,21 @@ before, and nothing should be reset.
   - Tapping it opens AkaDoZe's own "Alarms & reminders" page. Toggle access, press Back: the row and the Main
     screen update on resume without restarting the app.
   - With TalkBack on, the row reads its title and current status, and it is reachable and activatable by swipe.
+- *Sensor-only sessions and honest status (SQ-114/SQ-116/SQ-118).*
+  - Setup: no root, Shizuku stopped, DUMP granted over ADB
+    (`adb shell pm grant com.akylas.enforcedoze android.permission.DUMP`), "Disable motion sensors" on.
+  - Main and the access card say sensor-only / natural Doze, not "forced Doze" and not "paused". They also say
+    Android still decides when to idle. "Test sensor restriction" is enabled; "Test Doze now" is disabled
+    with its reason.
+  - Run the sensor test. Expect PASSED, and the app-UID transcript (restrict → `Mode :` readback → enable) in the
+    journal. `adb shell dumpsys sensorservice` from the shell is not proof that the app UID could mutate.
+  - Repeat without DUMP: passive status, both tests disabled with distinct reasons. Repeat with sensors off:
+    nothing is offered as enforcement.
+  - Downgrade mid-session: on Shizuku, screen off for 2+ minutes, then stop Shizuku. Expect recovery first, then
+    the same session continuing as sensor-only: no new session and the same delay. A force debt notice stays
+    visible until it is restored. Restart Shizuku: the session upgrades back to full forcing without a new session.
+  - Screen on, charging, stop and unlock still restore sensors to NORMAL.
+  - With TalkBack on, the status line, both test buttons and the debt/downgrade notices read distinctly.
 
 **If something fails:** Doze monitor → "Share report", plus
 `adb logcat -d --pid=$(adb shell pidof -s com.akylas.enforcedoze) | tail -200`.
