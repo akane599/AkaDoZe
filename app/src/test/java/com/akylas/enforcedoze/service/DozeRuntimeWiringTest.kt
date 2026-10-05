@@ -31,6 +31,16 @@ class DozeRuntimeWiringTest {
         assertTrue(denied.contains("if (shown) notices.edit().putBoolean(key, true).apply()"))
     }
 
+    @Test fun controllerReceivesLiveCommandDeadlineRemainingBudget() {
+        val runtime = File("src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt").readText()
+        val controller = runtime.substringAfter("val controller = DozeController(").substringBefore("val watchdog")
+        assertTrue("controller must share the command runner's live remaining budget",
+            controller.contains("{ commandDeadline?.minus(clock.elapsedRealtime()) },"))
+        val runner = runtime.substringAfter("val control: CommandRunner").substringBefore("private val diagnosticLogger")
+        assertTrue(runner.contains("val remaining = commandDeadline?.minus(clock.elapsedRealtime())"))
+        assertTrue(runner.contains("minOf(timeoutMs, remaining ?: timeoutMs)"))
+    }
+
     private fun shellReadState(): String =
         File("src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt").readText()
             .substringAfter("fun readState(): DozeStateReading {")
