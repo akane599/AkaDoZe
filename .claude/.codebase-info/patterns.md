@@ -8,7 +8,7 @@
   - `doze/DozeController.kt`, `SafetyNet.kt`, `WatchdogPolicy.kt`, `SchedulePolicy.kt`;
   - `access/CapabilityResolver.kt`, `ExternalControlPolicy.kt`;
   - `service/SessionLifecycle.kt`, `FeatureSelection.kt`;
-  - `ui/DebtRules.java`, `ModeSwitchRules.java`, `SettingsRules.java`, `AccessUi.AccessUpdate`.
+  - `ui/DebtRules.java`, `ModeSwitchRules.java`, `SettingsRules.java`, `MainRules.java`, `AccessUi.AccessUpdate`.
 
   Android classes (`ForceDozeService`, Activities, `JournalDb`, `SharedPrefsLedgerStore`) only adapt.
 - **Readback is the oracle.** A command's exit code never proves an effect, so every mutation is confirmed by a state read
@@ -42,18 +42,18 @@
 
 ## Testing
 
-`app/src/test/java/com/akylas/enforcedoze/` has 101 JVM sources with 843 `@Test` methods (JUnit 4.13.2 plus Robolectric 4.16,
+`app/src/test/java/com/akylas/enforcedoze/` has 103 JVM sources with 903 `@Test` methods (JUnit 4.13.2 plus Robolectric 4.16,
 no mocking library):
 
 | Package | Files | Tests |
 |---------|-------|-------|
-| root | 7 | 46 |
+| root | 8 | 96 |
 | access | 17 | 92 |
 | doze | 12 | 151 |
 | doze/parse | 7 | 36 |
 | monitor | 9 | 73 |
 | service | 36 | 323 |
-| ui | 13 | 122 |
+| ui | 14 | 132 |
 
 The suites use these styles:
 - fake-backed behaviour tests: `FakeRunner` (a `CommandRunner`), `FakeClock` and an in-memory ledger store, in
@@ -70,7 +70,7 @@ The suites use these styles:
 
   A deliberate behaviour change updates the golden in the same commit.
 - Robolectric classes cover Android glue on the JVM. Most are named `*RobolectricTest` (root package: ForceDozeService,
-  MyApplication, ExternalControlReceiver, ExactAlarmPermissionReceiver, TestAppState; `ui/`: NoticeSink, ResetReport,
+  ForceDozeServiceEnter, MyApplication, ExternalControlReceiver, ExactAlarmPermissionReceiver, TestAppState; `ui/`: NoticeSink, ResetReport,
   SettingsFragment; `monitor/JournalDbRobolectricTest`); `service/ResetErrorSinkTest`, `RestoreWindowDeadlineTest` and
   `RuntimeDebtNoticeTest` also run under Robolectric. They follow these rules:
   - Use `@Config(application = Application.class)`, so `MyApplication` never builds DozeRuntime or the journal.
@@ -84,7 +84,10 @@ The suites use these styles:
 
   SettingsActivity is hosted only in Shizuku mode with no binder, and its key → enabled/visible/summary goldens pin the
   preference wiring. MainActivity isn't hosted, because its `onCreate` starts AccessManager discovery; its glue is cc1
-  over `AccessUi` rules. ForceDozeService is built without `onCreate`, with its narrow adapter methods overridden.
+  over `AccessUi` rules. ForceDozeService is built without `onCreate`, with its narrow adapter methods overridden. Its five CC-1 adapters
+  (`enterCore`, `enterGroupsSafely`, `maintenance`, `musicListener`, `requestPlayingPackage`) are the test seams. Never
+  shadow or list a `com.akylas.enforcedoze` class in `instrumentedPackages`: Robolectric then rewrites production
+  bytecode, JaCoCo reports a class-ID mismatch and the native CRAP gate exits 2.
 
 The parser fixture is `app/src/test/resources/doze/deviceidle.txt`, and `ParserFixtures.kt` holds inline samples.
 

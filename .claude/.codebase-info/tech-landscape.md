@@ -35,6 +35,10 @@ SharedPreferences. There is no DI, Room, networking, coroutines, Compose or form
 
 ## Tooling outside Gradle
 
+- `.github/workflows/ci.yml`: runs the full gate (`testDebugUnitTest`, `assembleDebug`, `lintDebug`,
+  `assembleRelease`) on every push and pull request on JDK 21. Release is debug-signed there, because no keystore
+  secrets are passed. It uploads both APKs as a 14-day artifact, plus test and lint reports on failure. The manual
+  `.github/workflows/release.yml` (fastlane, keystore secrets) is unchanged.
 - `fastlane/Fastfile`: lanes `setup`, `build_and_publish`, `build_flavor`, `get_changelog`, `write_changelog`, `get_version`; Ruby via `Gemfile`.
 - `fastlane/metadata/android/`: store listing + changelogs.
 - `.weblate`: translations from hosted Weblate (`enforcedoze/application-strings`).

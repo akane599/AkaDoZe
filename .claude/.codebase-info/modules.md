@@ -9,7 +9,7 @@ Single Gradle module `:app`, base package `com.akylas.enforcedoze` at
 
 | Role | Files |
 |------|-------|
-| Service | `ForceDozeService.java` (foreground lifecycle, receivers, admission, engine wiring; teardown in `runTeardown` / `finishTeardown` / `awaitTeardown` / `reportTeardownWait`) |
+| Service | `ForceDozeService.java` (foreground lifecycle, receivers, admission, engine wiring; teardown in `runTeardown` / `finishTeardown` / `awaitTeardown` / `reportTeardownWait`; enter, reapply and idle-change paths split into named helpers behind five overridable adapters: `enterCore`, `enterGroupsSafely`, `maintenance`, `musicListener`, `requestPlayingPackage`) |
 | App | `MyApplication.java` (context, lazy `getDozeRuntime()` that also attaches `NoticeSink`, app-owned lazy `getJournal()`; project SAMs `Factory`/`Callback` because `java.util.function` is API 24+) |
 | Automation | `ExternalControlReceiver.java` (abstract trust/execution boundary; an unexpected failure is journaled as `INTERNAL_ERROR`; ENABLE starts the service first and persists intent only after the start is accepted, stopping that start if the write fails) and its aliases `EnableForceDozeService`, `DisableForceDozeService`, `ReenterDoze`, `AddWhiteListReceiver`, `RemoveWhiteListReceiver`, `SettingsChangeReceiver` |
 | System receivers | `BootCompleteReceiver`, `AutoRestartOnUpdate` (both run a restore-only window when the service is off and the ledger has work), `CustomDozePeriodReceiver`, `ExactAlarmPermissionReceiver` (re-arms the next boundary after an exact-alarm grant change), `InternalEnableReceiver` (non-exported target of the app's own "tap to enable" notification) |
@@ -56,13 +56,13 @@ runtime only inside the admitted callback) ·
 `RestoreOnlyRequest.kt` (9 s receiver window + the single process-level `RestoreContinuation`) · `SystemReset.kt`
 (readback-verified reset plan and result types; deferred revokes report per-command status markers).
 
-## `ui/` (13 Java): new screens and presentation
+## `ui/` (14 Java): new screens and presentation
 
 `AccessCard.java` (Main access/debt card) · `AccessUi.java` (capability/session presentation, Main status text and the
 pure `AccessUpdate` access-change decision) · `DozeMonitorActivity.java`
 · `MonitorAdapter.java` · `MonitorData.java` (off-main loading) · `MonitorFormat.java` (localized text) ·
-`NoticeSink.java` (app-owned notifications, attached to the journal by `MyApplication.java`) · `DebtRules.java` (debt rules, `LedgerState` DEBT / CLEAN / EMPTY and the notified-key `NoticeGate`), `ModeSwitchRules.java` and `SettingsRules.java` (pure rules,
-unit-tested) ·
+`NoticeSink.java` (app-owned notifications, attached to the journal by `MyApplication.java`) · `DebtRules.java` (debt rules, `LedgerState` DEBT / CLEAN / EMPTY and the notified-key `NoticeGate`), `ModeSwitchRules.java`, `SettingsRules.java` and `MainRules.java` (pure rules,
+unit-tested; `MainRules` holds the Main screen's permission order, Shizuku prompt, lockscreen-timeout notice and Doze-item visibility) ·
 `DamagedRecords.java` (dismissible damaged ledger lines) · `ResetReport.java` (Settings reset result text and pref
 clearing) · `WhitelistUi.java` (whitelist outcomes as text).
 

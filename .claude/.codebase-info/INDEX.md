@@ -7,7 +7,7 @@ optional radio, location, biometrics, app-suspend and notification-block toggles
 root (libsuperuser) or Shizuku, and every change is verified by readback and undone from a durable restore ledger. The
 package is `com.akylas.enforcedoze`, and the current version is 1.11.0 (AkaDoZe 2.0).
 
-**Stack:** Java (56 files) + Kotlin (55) · XML Views + AndroidX Preference · platform SQLite · Groovy Gradle 8.13 / AGP 8.13.2 · minSdk 23, target/compile 36
+**Stack:** Java (57 files) + Kotlin (55) · XML Views + AndroidX Preference · platform SQLite · Groovy Gradle 8.13 / AGP 8.13.2 · minSdk 23, target/compile 36
 **Shape:** a single `:app` module in seven packages. The root package is the Android shell; pure Kotlin logic lives in
 `access/`, `doze/` (+ `parse/`), `monitor/` and `service/`; the newer screens are in `ui/`.
 
@@ -20,7 +20,7 @@ package is `com.akylas.enforcedoze`, and the current version is 1.11.0 (AkaDoZe 
 | [communication.md](./communication.md) | Transports and lanes, capability matrix, command catalogue, engine events, local broadcasts |
 | [database.md](./database.md) | Preferences, restore ledger format, notice store, SQLite journal schema, backup rules |
 | [modules.md](./modules.md) | Every source file grouped by package and role, with directory layout |
-| [tech-landscape.md](./tech-landscape.md) | Build setup, dependencies, lint baseline, R8, tooling (fastlane, Weblate) |
+| [tech-landscape.md](./tech-landscape.md) | Build setup, dependencies, lint baseline, R8, CI workflow, tooling (fastlane, Weblate) |
 | [patterns.md](./patterns.md) | Design patterns, style, test suites and counts, known oddities |
 | [onboarding.md](./onboarding.md) | Gate commands, device testing, automation examples, where to change things |
 
