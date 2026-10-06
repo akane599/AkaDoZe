@@ -48,7 +48,7 @@ class RestoreWindowDeadlineTest {
                 }
                 "runWithDeadline" -> {
                     submitted?.countDown()
-                    lane.runWithDeadline(args[0] as String, args[1] as Long, args[2] as CommandLane.Admission)
+                    lane.runWithDeadline(args[0] as String, args[1] as Long, args[2] as Long, args[3] as CommandLane.Admission)
                 }
                 else -> error("Unexpected runner method ${method.name}")
             }
@@ -95,6 +95,44 @@ class RestoreWindowDeadlineTest {
             lane.run("marker", 5_000)
             assertEquals("expired queued restore must never reach backend", listOf("blocker", "marker"), executed)
             assertTrue("queue wait consumes the shared budget", result!!.timedOut)
+        } finally { release.countDown() }
+    }
+
+    @Test(timeout = 20_000) fun shortRestoreReadKeepsExecutionBudgetAfterControlQueueWait() {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val submitted = CountDownLatch(1)
+        val executed = Collections.synchronizedList(mutableListOf<String>())
+        val core = runtime(object : CommandBackend {
+            override val level = AccessLevel.SHELL
+            override fun execute(command: String): CommandResult {
+                executed.add(command)
+                if (command == "blocker") { started.countDown(); release.await() }
+                return CommandResult(0, listOf(command), emptyList(), 0, false)
+            }
+            override fun reset() { release.countDown() }
+        }, submitted)
+        val lane = lanes.single()
+        val blocker = lane.submit("blocker", 10_000)
+        try {
+            assertTrue(started.await(5, TimeUnit.SECONDS))
+            val read = onWorker(core) {
+                var result: CommandResult? = null
+                core.withDeadline(core.clock.elapsedRealtime() + 5_000, Runnable {
+                    result = core.control.run("settings get global wifi_on", 100)
+                })
+                result
+            }
+            assertTrue("short read reached the real control lane", submitted.await(5, TimeUnit.SECONDS))
+            // Keep the holder beyond the read's entire execution timeout, without sleeping.
+            assertFalse(CountDownLatch(1).await(250, TimeUnit.MILLISECONDS))
+            assertFalse("the holder is still executing", blocker.isDone)
+            release.countDown()
+            assertTrue(blocker.get(5, TimeUnit.SECONDS).ok)
+            val result = read.get(5, TimeUnit.SECONDS)!!
+            assertFalse("queue wait must not consume the short read execution budget", result.timedOut)
+            assertEquals(listOf("settings get global wifi_on"), result.stdout)
+            assertEquals(listOf("blocker", "settings get global wifi_on"), executed)
         } finally { release.countDown() }
     }
 

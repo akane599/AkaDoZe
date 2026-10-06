@@ -83,7 +83,16 @@ class AccessManager private constructor(context: Context) : com.akylas.enforcedo
 
     /** External receivers use an absolute System.nanoTime deadline, including control queue wait. */
     fun controlWithDeadline(command: String, deadlineNanos: Long, admission: CommandLane.Admission): CommandResult =
-        controlRunner.runWithDeadline(command, deadlineNanos, admission)
+        controlWithDeadline(command, deadlineNanos, Long.MAX_VALUE, admission)
+
+    fun controlWithDeadline(
+        command: String,
+        deadlineNanos: Long,
+        executionTimeoutNanos: Long,
+        admission: CommandLane.Admission,
+    ): CommandResult {
+        return controlRunner.runWithDeadline(command, deadlineNanos, executionTimeoutNanos, admission)
+    }
 
     override fun addListener(listener: Listener) {
         synchronized(lock) {
@@ -266,7 +275,12 @@ class AccessManager private constructor(context: Context) : com.akylas.enforcedo
     }
 
     private interface DeadlineRunner : CommandRunner {
-        fun runWithDeadline(command: String, deadlineNanos: Long, admission: CommandLane.Admission): CommandResult
+        fun runWithDeadline(
+            command: String,
+            deadlineNanos: Long,
+            executionTimeoutNanos: Long,
+            admission: CommandLane.Admission,
+        ): CommandResult
     }
 
     private fun guardedLane(name: String): DeadlineRunner {
@@ -301,9 +315,14 @@ class AccessManager private constructor(context: Context) : com.akylas.enforcedo
                 requireBackgroundThread()
                 return lane.run(command, timeoutMs)
             }
-            override fun runWithDeadline(command: String, deadlineNanos: Long, admission: CommandLane.Admission): CommandResult {
+            override fun runWithDeadline(
+                command: String,
+                deadlineNanos: Long,
+                executionTimeoutNanos: Long,
+                admission: CommandLane.Admission,
+            ): CommandResult {
                 requireBackgroundThread()
-                return lane.runWithDeadline(command, deadlineNanos, admission)
+                return lane.runWithDeadline(command, deadlineNanos, executionTimeoutNanos, admission)
             }
         }
     }

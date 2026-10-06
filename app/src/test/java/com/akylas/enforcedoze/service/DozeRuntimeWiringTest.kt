@@ -38,8 +38,10 @@ class DozeRuntimeWiringTest {
             controller.contains("{ commandDeadline?.minus(clock.elapsedRealtime()) },"))
         val runner = runtime.substringAfter("val control: CommandRunner").substringBefore("private val diagnosticLogger")
         assertTrue(runner.contains("val remaining = deadline - clock.elapsedRealtime()"))
-        assertTrue(runner.contains("minOf(timeoutMs, remaining)"))
-        assertTrue(runner.contains("access.controlWithDeadline(command, deadlineNanos) { clock.elapsedRealtime() < deadline }"))
+        assertFalse("execution timeout must not shorten the shared queue deadline", runner.contains("minOf(timeoutMs, remaining)"))
+        assertTrue(runner.contains("TimeUnit.MILLISECONDS.toNanos(remaining)"))
+        assertTrue(runner.contains("TimeUnit.MILLISECONDS.toNanos(timeoutMs)"))
+        assertTrue(runner.contains("access.controlWithDeadline(command, deadlineNanos, executionTimeoutNanos) { clock.elapsedRealtime() < deadline }"))
         assertTrue("no shared deadline retains the execution-only timeout", runner.contains(
             "return access.control().run(command, timeoutMs)"))
     }
