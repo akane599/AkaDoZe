@@ -7,6 +7,7 @@
 ```bash
 bash .claude/kit/gradle-check.sh :app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:assembleRelease  # full gate
 bash .claude/kit/gradle-check.sh :app:testDebugUnitTest --tests '*DozeControllerTest'                           # narrow run
+bash .claude/kit/gradle-check.sh :app:testDebugUnitTest --tests '*RobolectricTest' --max-workers=2               # Android glue on the JVM (SDK 36)
 ./gradlew :app:installDebug -q && adb shell am start -n com.akylas.enforcedoze/.MainActivity
 adb logcat -d --pid=$(adb shell pidof -s com.akylas.enforcedoze) | tail -80
 node ~/.claude/plugins/cache/eigenwise-toolshed/quartermaster/0.11.10/bin/quartermaster.js crap --json            # CRAP gate (see tech-landscape.md)

@@ -13,7 +13,8 @@
 | Repos | `jcenter()`, `google()`, jitpack | `build.gradle` |
 | Gradle props | `-Xmx2048m`, Jetifier on, non-transitive R | `gradle.properties` |
 | Lint | `lint { baseline = file("lint-baseline.xml") }` (159 pre-existing issues; only new ones fail) | `app/build.gradle`, `app/lint-baseline.xml` |
-| Coverage | Opt-in only: `-PcrapCoverage` turns on `debug.enableUnitTestCoverage` (JaCoCo pinned to 0.8.13 via `testCoverage`). Normal builds are byte-identical | `app/build.gradle` |
+| Coverage | Opt-in only: `-PcrapCoverage` turns on `debug.enableUnitTestCoverage` (JaCoCo pinned to 0.8.13 via `testCoverage`). The same flag sets `includeNoLocationClasses = true` and `excludes = ['jdk.internal.*']`, so classes Robolectric loads are measured. Normal builds are byte-identical | `app/build.gradle` |
+| Unit tests | `testOptions.unitTests.includeAndroidResources = true`. Robolectric's SDK is pinned in `app/src/test/resources/robolectric.properties` (`sdk=36`). `app/src/test/AndroidManifest.xml` repeats the Shizuku `overrideLibrary`, which the unit-test manifest merge doesn't inherit | `app/build.gradle`, `app/src/test/` |
 | R8 | release is minified; keeps `rikka.shizuku.Shizuku` / `ShizukuRemoteProcess` for the reflective `newProcess` call | `app/proguard-rules.pro` |
 
 Build scripts are Groovy (`apply plugin:`), no version catalog, no build-logic. Signing: debug key by
@@ -26,9 +27,10 @@ default; release signing from env vars when `-PuseExternalSigning` is passed.
 | UI | `androidx.appcompat:appcompat:1.7.0`, `com.google.android.material:material:1.12.0`, `com.afollestad.material-dialogs:core:0.9.3.0`, `androidx.preference:preference-ktx:1.2.1`, `androidx.browser:browser:1.8.0` |
 | Privilege | `eu.chainfire:libsuperuser:1.1.0.+` (dynamic version), `dev.rikka.shizuku:api` + `provider` 13.1.5 |
 | Misc | `androidx.media2:media2-session:1.3.0` (media controller for playing-app detection), `androidx.localbroadcastmanager:1.1.0`, `com.fabiendevos:nanotasks:1.1.0` (async tasks), `com.jakewharton:process-phoenix:2.1.2` (app restart) |
-| Test | `junit:junit:4.13.2` (testImplementation) |
+| Test | `junit:junit:4.13.2`, `org.robolectric:robolectric:4.16` (testImplementation; Robolectric resolves from jcenter) |
 
-AkaDoZe 2.0 added no dependencies. Storage is platform SQLite (`android.database.sqlite`, see database.md) and
+AkaDoZe 2.0 added no runtime dependencies. US-8 added Robolectric as a test-only dependency; the release and debug runtime
+classpaths are unchanged. Storage is platform SQLite (`android.database.sqlite`, see database.md) and
 SharedPreferences. There is no DI, Room, networking, coroutines, Compose or formatter config.
 
 ## Tooling outside Gradle
@@ -60,7 +62,10 @@ against `Base`.
     - it omits expression-body functions (`fun f() = ...`);
     - it merges local or nested functions into one row (a local `fun admitted()` took its enclosing body);
     - it truncates a function at an inline lambda;
-    - it gives an unchanged expression-body function a bogus span (`DozeController.enterGroupsSafely` 59–284, cc6).
+    - it gives an unchanged expression-body function a bogus span (`DozeController.enterGroupsSafely` 59–284, cc6);
+    - a lambda added just above a function can swallow it. `DozeRuntime.(anonymous)@470` cc27 is really the unchanged
+      `checkSafetyLocked`, and `sessionMode@265-439` cc4 is really the restore-only window's completion callback
+      (backlog SQ-166).
 
     US-7 practice: helpers a change adds use block bodies with explicit return types so they get real rows. Anything
     still omitted or truncated is hand-scored in the ticket: cc by lizard's rules, line coverage from JaCoCo, then

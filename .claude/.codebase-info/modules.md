@@ -56,11 +56,13 @@ runtime only inside the admitted callback) ·
 `RestoreOnlyRequest.kt` (9 s receiver window + the single process-level `RestoreContinuation`) · `SystemReset.kt`
 (readback-verified reset plan and result types).
 
-## `ui/` (12 Java): new screens and presentation
+## `ui/` (13 Java): new screens and presentation
 
-`AccessCard.java` (Main access/debt card) · `AccessUi.java` (capability/session presentation) · `DozeMonitorActivity.java`
+`AccessCard.java` (Main access/debt card) · `AccessUi.java` (capability/session presentation, Main status text and the
+pure `AccessUpdate` access-change decision) · `DozeMonitorActivity.java`
 · `MonitorAdapter.java` · `MonitorData.java` (off-main loading) · `MonitorFormat.java` (localized text) ·
-`NoticeSink.java` (notifications) · `DebtRules.java` and `ModeSwitchRules.java` (pure rules, unit-tested) ·
+`NoticeSink.java` (notifications) · `DebtRules.java`, `ModeSwitchRules.java` and `SettingsRules.java` (pure rules,
+unit-tested) ·
 `DamagedRecords.java` (dismissible damaged ledger lines) · `ResetReport.java` (Settings reset result text and pref
 clearing) · `WhitelistUi.java` (whitelist outcomes as text).
 

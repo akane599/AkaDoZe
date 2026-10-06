@@ -8,7 +8,7 @@
   - `doze/DozeController.kt`, `SafetyNet.kt`, `WatchdogPolicy.kt`, `SchedulePolicy.kt`;
   - `access/CapabilityResolver.kt`, `ExternalControlPolicy.kt`;
   - `service/SessionLifecycle.kt`, `FeatureSelection.kt`;
-  - `ui/DebtRules.java`, `ModeSwitchRules.java`.
+  - `ui/DebtRules.java`, `ModeSwitchRules.java`, `SettingsRules.java`, `AccessUi.AccessUpdate`.
 
   Android classes (`ForceDozeService`, Activities, `JournalDb`, `SharedPrefsLedgerStore`) only adapt.
 - **Readback is the oracle.** A command's exit code never proves an effect, so every mutation is confirmed by a state read
@@ -42,17 +42,18 @@
 
 ## Testing
 
-`app/src/test/java/com/akylas/enforcedoze/` has 84 JVM sources with 712 `@Test` methods (JUnit 4.13.2, no mocking library):
+`app/src/test/java/com/akylas/enforcedoze/` has 95 JVM sources with 755 `@Test` methods (JUnit 4.13.2 plus Robolectric 4.16,
+no mocking library):
 
 | Package | Files | Tests |
 |---------|-------|-------|
-| root | 2 | 22 |
-| access | 16 | 84 |
+| root | 5 | 29 |
+| access | 17 | 86 |
 | doze | 12 | 144 |
 | doze/parse | 7 | 36 |
 | monitor | 7 | 53 |
-| service | 33 | 291 |
-| ui | 7 | 82 |
+| service | 34 | 296 |
+| ui | 13 | 111 |
 
 The suites use these styles:
 - fake-backed behaviour tests: `FakeRunner` (a `CommandRunner`), `FakeClock` and an in-memory ledger store, in
@@ -68,11 +69,22 @@ The suites use these styles:
     single-command radio guard that keeps maintenance's mid-entry `lost` path unreachable.
 
   A deliberate behaviour change updates the golden in the same commit.
+- `*RobolectricTest` classes cover Android glue on the JVM: `ui/NoticeSinkRobolectricTest`, `ResetReportRobolectricTest`,
+  `SettingsFragmentRobolectricTest`, `ForceDozeServiceRobolectricTest` and `MyApplicationRobolectricTest`. They follow
+  three rules:
+  - Use `@Config(application = Application.class)`, so `MyApplication` never builds DozeRuntime or the journal.
+  - Reset the statics you touch in @After: AccessManager, the MyApplication context/runtime, NoticeSink and
+    `ResetReport.TRACKER`. Root-package tests use `TestAppState.reset()`; the ui tests reset their own.
+  - Never spawn su, bind Shizuku or start a real service.
+
+  SettingsActivity is hosted only in Shizuku mode with no binder, and its key → enabled/visible/summary goldens pin the
+  preference wiring. MainActivity isn't hosted, because its `onCreate` starts AccessManager discovery; its glue is cc1
+  over `AccessUi` rules. ForceDozeService is built without `onCreate`, with its narrow adapter methods overridden.
 
 The parser fixture is `app/src/test/resources/doze/deviceidle.txt`, and `ParserFixtures.kt` holds inline samples.
 
 `androidTest/…/ApplicationTest.java` is still a template stub. Real binder, root, OEM, SQLite, provider and notification
-behaviour needs a device: `docs/device-test-1.11.0.md`.
+behaviour needs a device: `docs/device-test-1.11.0.md`. Robolectric shadows don't replace that.
 
 ## Known oddities
 
