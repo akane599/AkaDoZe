@@ -585,23 +585,34 @@ public class ForceDozeService extends Service {
     private void reapplyEnter(long generation, long epoch) {
         PowerManager.WakeLock wakeLock = acquireEnterWakeLock();
         AtomicBoolean completed = new AtomicBoolean();
-        EnterCompletion completion = retryNeeded -> {
-            if (!completed.compareAndSet(false, true)) return;
-            releaseWakeLock(wakeLock);
-            if (retryNeeded && generation == runtime.getController().getCurrentGeneration()
-                    && epoch == exitEpoch.get() && forceAdmitted()
-                    && !Utils.isScreenOn(this) && getDefaultSharedPreferences(this).getBoolean(
-                            Prefs.ALLOW_EXTERNAL_BASIC_CONTROL, Prefs.DEFAULT_ALLOW_EXTERNAL_BASIC_CONTROL)) {
-                // The scheduled retry is an ordinary enter, not another reapply/retry loop.
-                scheduleEnter();
-            }
-        };
+        EnterCompletion completion = retryNeeded -> completeReapplyEnter(
+                wakeLock, completed, retryNeeded, generation, epoch);
         try {
             enterDoze(disableMotionSensors, generation, completion);
         } catch (Exception error) {
             runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.EXTERNAL_REAPPLY_FAILED));
             completion.complete(true);
         }
+    }
+
+    private void completeReapplyEnter(PowerManager.WakeLock wakeLock, AtomicBoolean completed,
+                                     boolean retryNeeded, long generation, long epoch) {
+        if (!completed.compareAndSet(false, true)) return;
+        releaseWakeLock(wakeLock);
+        if (retryNeeded && reapplyStillAdmitted(generation, epoch) && reapplyRetryAllowed()) {
+            // The scheduled retry is an ordinary enter, not another reapply/retry loop.
+            scheduleEnter();
+        }
+    }
+
+    private boolean reapplyStillAdmitted(long generation, long epoch) {
+        return generation == runtime.getController().getCurrentGeneration()
+                && epoch == exitEpoch.get() && forceAdmitted();
+    }
+
+    private boolean reapplyRetryAllowed() {
+        return !Utils.isScreenOn(this) && getDefaultSharedPreferences(this).getBoolean(
+                Prefs.ALLOW_EXTERNAL_BASIC_CONTROL, Prefs.DEFAULT_ALLOW_EXTERNAL_BASIC_CONTROL);
     }
 
     public void reloadSettings() {
@@ -847,75 +858,105 @@ public class ForceDozeService extends Service {
             return;
         }
         cancelFeatureSelection();
-        final boolean coreRetryNeeded;
         final SessionMode mode = sessionMode();
+        Boolean coreRetryNeeded = enterCoreAndRecord(sensors, generation, completion, mode);
+        if (coreRetryNeeded == null) return;
+        selectEnterFeatures(generation, completion, coreRetryNeeded);
+    }
+
+    /** Null means the core path already completed or failed, so no feature selection follows. */
+    private Boolean enterCoreAndRecord(boolean sensors, long generation, EnterCompletion completion, SessionMode mode) {
         try {
-            DozeConfig core = new DozeConfig(Build.VERSION.SDK_INT, runtime.getAccess().getLevel(), runtime.grants(),
-                    sensors, runtime.getAllowToken(), getDefaultSharedPreferences(this).getBoolean(Prefs.TURN_ON_BATTERY_SAVER, false),
-                    java.util.Collections.emptySet(), java.util.Collections.emptySet(), java.util.Collections.emptySet(),
-                    true, null, mode);
-            if (mode == SessionMode.FORCE) runtime.getWatchdog().recordEnter();
-            EnterResult result = runtime.getController().enterCore(core, generation, () -> admitted() && sessionMode() == mode);
-            coreRetryNeeded = needsEnterRetry(result);
-            if (result.getStatus() == EnterStatus.CANCELLED || !admitted()
-                    || generation != runtime.getController().getCurrentGeneration()) {
+            EnterResult result = enterCoreForMode(sensors, generation, mode);
+            boolean coreRetryNeeded = needsEnterRetry(result);
+            if (enterWasCancelled(result, generation)) {
                 completion.complete(true);
-                return;
+                return null;
             }
             if (mode == SessionMode.SENSOR_ONLY) {
                 completion.complete(false);
-                return;
+                return null;
             }
             recordVerifiedEnter();
+            return coreRetryNeeded;
         } catch (Exception error) {
             runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.ENTER_FAILED));
             completion.complete(true);
-            return;
+            return null;
         }
+    }
+
+    private EnterResult enterCoreForMode(boolean sensors, long generation, SessionMode mode) {
+        DozeConfig core = new DozeConfig(Build.VERSION.SDK_INT, runtime.getAccess().getLevel(), runtime.grants(),
+                sensors, runtime.getAllowToken(), getDefaultSharedPreferences(this).getBoolean(Prefs.TURN_ON_BATTERY_SAVER, false),
+                java.util.Collections.emptySet(), java.util.Collections.emptySet(), java.util.Collections.emptySet(),
+                true, null, mode);
+        if (mode == SessionMode.FORCE) runtime.getWatchdog().recordEnter();
+        return runtime.getController().enterCore(core, generation, () -> admitted() && sessionMode() == mode);
+    }
+
+    private boolean enterWasCancelled(EnterResult result, long generation) {
+        return result.getStatus() == EnterStatus.CANCELLED || !admitted()
+                || generation != runtime.getController().getCurrentGeneration();
+    }
+
+    private void selectEnterFeatures(long generation, EnterCompletion completion, boolean coreRetryNeeded) {
         DeferredFeatureSelection selection = new DeferredFeatureSelection(generation,
                 () -> runtime.getController().getCurrentGeneration(), this::admitted,
-                playing -> {
-                    EnterResult groups = enterConfiguredDoze(playing, generation);
-                    completion.complete(coreRetryNeeded || needsEnterRetry(groups));
-                });
+                playing -> completeEnterFeatures(playing, generation, completion, coreRetryNeeded));
         featureSelection = selection;
         if (whitelistMusicAppNetwork) {
-            selectionTimeout = () -> {
-                if (selection.complete(null)) runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.MUSIC_SELECTION_TIMEOUT));
-                else completion.complete(true);
-            };
+            selectionTimeout = () -> musicSelectionTimedOut(selection, completion);
             worker.postDelayed(selectionTimeout, MUSIC_SELECTION_TIMEOUT_MS);
-            try {
-                NotificationService listener = NotificationService.Companion.getInstance();
-                if (listener != null) {
-                    listener.getPlayingPackageName(pkg -> {
-                        postWork(() -> {
-                            try {
-                                if (selection.complete(pkg != null) && selectionTimeout != null) worker.removeCallbacks(selectionTimeout);
-                            } catch (Exception error) {
-                                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.MUSIC_SELECTION_FAILED));
-                            }
-                        });
-                        return null;
-                    }, error -> {
-                        postWork(() -> {
-                            if (selection.complete(null)) {
-                                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.MUSIC_SELECTION_FAILED));
-                            }
-                        });
-                        return null;
-                    });
-                    return;
-                }
-                selection.noListener(runtime.getJournal());
-                if (selectionTimeout != null) worker.removeCallbacks(selectionTimeout);
-            } catch (Exception error) {
-                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.MUSIC_SELECTION_FAILED));
-                selection.complete(null);
-            }
+            requestMusicSelection(selection);
             return;
         }
         selection.complete(false);
+    }
+
+    private void completeEnterFeatures(Boolean playing, long generation, EnterCompletion completion, boolean coreRetryNeeded) {
+        EnterResult groups = enterConfiguredDoze(playing, generation);
+        completion.complete(coreRetryNeeded || needsEnterRetry(groups));
+    }
+
+    private void musicSelectionTimedOut(DeferredFeatureSelection selection, EnterCompletion completion) {
+        if (selection.complete(null)) runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.MUSIC_SELECTION_TIMEOUT));
+        else completion.complete(true);
+    }
+
+    private void requestMusicSelection(DeferredFeatureSelection selection) {
+        try {
+            NotificationService listener = NotificationService.Companion.getInstance();
+            if (listener != null) {
+                listener.getPlayingPackageName(pkg -> {
+                    postWork(() -> completeMusicPackage(selection, pkg));
+                    return null;
+                }, error -> {
+                    postWork(() -> completeMusicError(selection, error));
+                    return null;
+                });
+                return;
+            }
+            selection.noListener(runtime.getJournal());
+            if (selectionTimeout != null) worker.removeCallbacks(selectionTimeout);
+        } catch (Exception error) {
+            runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.MUSIC_SELECTION_FAILED));
+            selection.complete(null);
+        }
+    }
+
+    private void completeMusicPackage(DeferredFeatureSelection selection, String pkg) {
+        try {
+            if (selection.complete(pkg != null) && selectionTimeout != null) worker.removeCallbacks(selectionTimeout);
+        } catch (Exception error) {
+            runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.MUSIC_SELECTION_FAILED));
+        }
+    }
+
+    private void completeMusicError(DeferredFeatureSelection selection, Exception error) {
+        if (selection.complete(null)) {
+            runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.MUSIC_SELECTION_FAILED));
+        }
     }
 
     private EnterResult enterConfiguredDoze(Boolean playingMusic, long generation) {
@@ -1122,50 +1163,78 @@ public class ForceDozeService extends Service {
             onAccessChanged(runtime.getAccess().getState());
             return;
         }
+        DozeStateReading reading = recordIdleChanged();
+        if (!runtime.getSessionActive() || sessionMode() != SessionMode.FORCE) return;
+        updateMaintenance(reading);
+        recordNewlyVerifiedIdle(reading);
+        if (maintenance) return;
+        enforceIdleReading(reading);
+    }
+
+    private DozeStateReading recordIdleChanged() {
         DozeStateReading reading = runtime.readState();
         lastKnownState = reading.getDeep() == null ? "UNKNOWN" : reading.getDeep().name();
         runtime.getJournal().emit(new DozeEvent(EventType.IDLE_CHANGED, EventCodes.IDLE_CHANGED,
                 reading.getDeep() == null ? DeepState.UNKNOWN : reading.getDeep(),
                 reading.getLight() == null ? LightState.UNKNOWN : reading.getLight()));
-        if (!runtime.getSessionActive() || sessionMode() != SessionMode.FORCE) return;
+        return reading;
+    }
+
+    private void updateMaintenance(DozeStateReading reading) {
         Boolean maintenanceReading = SessionLifecycle.maintenanceState(reading.getDeep(), reading.getLight());
         if (Boolean.TRUE.equals(maintenanceReading) && !maintenance) {
             runtime.getJournal().emit(new DozeEvent(EventType.MAINT_START, EventCodes.MAINT_START, reading.getDeep(), reading.getLight()));
-            if (!disableStats && runtime.getSession().getHasEnter()) {
-                dozeUsageData.add(System.currentTimeMillis() + "," + Float.toString((float) Utils.getBatteryLevel(this)) + ",EXIT_MAINTENANCE");
-                saveDozeDataStats();
-            }
+            recordMaintenanceStats("EXIT_MAINTENANCE");
             runtime.getController().maintenance(true, runtime.getController().getCurrentGeneration(), this::forceAdmitted);
             maintenance = true;
         } else if (Boolean.FALSE.equals(maintenanceReading) && maintenance) {
             runtime.getJournal().emit(new DozeEvent(EventType.MAINT_END, EventCodes.MAINT_END, reading.getDeep(), reading.getLight()));
-            if (!disableStats && runtime.getSession().getHasEnter()) {
-                dozeUsageData.add(System.currentTimeMillis() + "," + Float.toString((float) Utils.getBatteryLevel(this)) + ",ENTER_MAINTENANCE");
-                saveDozeDataStats();
-            }
+            recordMaintenanceStats("ENTER_MAINTENANCE");
             runtime.getController().maintenance(false, runtime.getController().getCurrentGeneration(), this::forceAdmitted);
             maintenance = false;
         }
+    }
+
+    private void recordMaintenanceStats(String kind) {
+        if (!disableStats && runtime.getSession().getHasEnter()) {
+            dozeUsageData.add(System.currentTimeMillis() + "," + Float.toString((float) Utils.getBatteryLevel(this)) + "," + kind);
+            saveDozeDataStats();
+        }
+    }
+
+    private void recordNewlyVerifiedIdle(DozeStateReading reading) {
         if (!maintenance && reading.getDeep() == DeepState.IDLE && !verifiedIdleSeen && admitted()) {
             recordVerifiedEnter();
-            if (selectedGroups != null) runtime.getController().enterGroupsSafely(selectedGroups,
-                    runtime.getController().getCurrentGeneration(), this::forceAdmitted, EventCodes.FEATURE_SELECTION_FAILED);
+            reenterSelectedGroups();
         }
-        if (maintenance) return;
+    }
+
+    private void reenterSelectedGroups() {
+        if (selectedGroups != null) runtime.getController().enterGroupsSafely(selectedGroups,
+                runtime.getController().getCurrentGeneration(), this::forceAdmitted, EventCodes.FEATURE_SELECTION_FAILED);
+    }
+
+    private void enforceIdleReading(DozeStateReading reading) {
         if (!getDefaultSharedPreferences(this).getBoolean(Prefs.KEEP_DOZE_ENFORCED, Prefs.DEFAULT_KEEP_DOZE_ENFORCED)) return;
         Decision decision = runtime.getWatchdog().onIdleChanged(reading, Utils.isScreenOn(this),
                 Utils.isConnectedToCharger(this), forceAdmitted());
         long generation = runtime.getController().getCurrentGeneration();
         if (decision instanceof Decision.DEFER) {
-            runtime.deferWatchdog(() -> {
-                if (!destroyed && generation == runtime.getController().getCurrentGeneration()) idleChanged();
-            }, ((Decision.DEFER) decision).getUntilElapsed());
+            runtime.deferWatchdog(() -> recheckDeferredIdle(generation), ((Decision.DEFER) decision).getUntilElapsed());
         } else if (decision == Decision.REFORCE.INSTANCE) {
-            try {
-                forceOnly(generation);
-            } catch (Exception error) {
-                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.REFORCE_FAILED));
-            }
+            reforceSafely(generation);
+        }
+    }
+
+    private void recheckDeferredIdle(long generation) {
+        if (!destroyed && generation == runtime.getController().getCurrentGeneration()) idleChanged();
+    }
+
+    private void reforceSafely(long generation) {
+        try {
+            forceOnly(generation);
+        } catch (Exception error) {
+            runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.REFORCE_FAILED));
         }
     }
 
