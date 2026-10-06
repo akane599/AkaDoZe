@@ -99,6 +99,67 @@ class RadioRestoreSettleTest {
         assertEquals(100L, deadline!! - clock.elapsed)
     }
 
+    @Test fun timedOutInitialReadSkipsSettleAndRetainsEachRadio() {
+        for (feature in listOf(Feature.MOBILE_DATA, Feature.WIFI, Feature.BLUETOOTH)) {
+            radioLedger(feature)
+            val read = CommandCatalog.originalValueRead(feature, 36)!!
+            runner.answer(read) { FakeRunner.result("1", timeout = true) }
+            runner.replies(read, "1") // A fresh shell must not turn the timeout into success.
+
+            val result = controller.exit()
+
+            assertEquals("$feature: initial timeout must not issue a settle read", 1,
+                runner.commands.count { it == read })
+            assertFalse("$feature: timed-out stdout cannot verify restoration", result.complete)
+            assertTrue("no wait after an initial timeout", waits.isEmpty())
+            assertEquals(LedgerEntry(feature, null, "1", 0, attempts = 1, apiLevel = 36),
+                result.remaining.entries.single())
+            assertEquals(Reason.UNVERIFIED,
+                events.single { it.type == EventType.VERIFY && it.feature == feature }.reason)
+            assertEquals(Reason.UNVERIFIED,
+                events.single { it.type == EventType.RESTORE_FAILED && it.feature == feature }.reason)
+        }
+    }
+
+    @Test fun deadlineRefusedInitialReadSkipsSettleWithoutWaiting() {
+        radioLedger()
+        runner.answer(DATA_READ) { CommandResult(-1, emptyList(), emptyList(), 0, timedOut = true) }
+        runner.replies(DATA_READ, "1")
+
+        val result = controller.exit()
+
+        assertEquals("deadline refusal must not issue a settle read", 1,
+            runner.commands.count { it == DATA_READ })
+        assertTrue(waits.isEmpty())
+        assertFalse(result.complete)
+        assertEquals(Feature.MOBILE_DATA, result.remaining.entries.single().feature)
+    }
+
+    @Test fun maintenanceInitialTimeoutSkipsSettleAndKeepsDurableOriginal() {
+        radioLedger()
+        val original = store.durable
+        runner.answer(DATA_READ) { FakeRunner.result("1", timeout = true) }
+        runner.replies(DATA_READ, "1")
+
+        val result = controller.maintenance(true, controller.currentGeneration) { true }
+
+        assertEquals("maintenance must not reread after initial timeout", 1,
+            runner.commands.count { it == DATA_READ })
+        assertTrue(waits.isEmpty())
+        assertEquals(original, store.durable)
+        assertEquals(StepStatus.UNVERIFIED, result.steps.single { it.feature == Feature.MOBILE_DATA }.status)
+    }
+
+    @Test fun nonTimeoutInitialReadFailureCanStillSettle() {
+        radioLedger()
+        runner.answer(DATA_READ) { FakeRunner.result("", exit = 1) }
+        runner.replies(DATA_READ, "1")
+
+        assertTrue(controller.exit().complete)
+        assertEquals(2, runner.commands.count { it == DATA_READ })
+        assertEquals(listOf(150L), waits)
+    }
+
     @Test fun timedOutFirstRereadStopsSettleWithoutMoreReadsOrWaits() {
         radioLedger()
         runner.replies(DATA_READ, "0")
