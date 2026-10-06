@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="lockscreen_timeout_dialog_text_p5">"க்கு "</string>
-    <string name="deny_button_text">மறுக்கவும்</string>
-    <string name="device_supports_doze_text">உங்கள் சாதனம் டசை ஆதரிக்கிறது</string>
     <string name="cleared_text">அழிக்கப்பட்டது</string>
     <string name="doze_battery_stats_clear_msg">டோச் பேட்டரி புள்ளிவிவரங்கள் வெற்றிகரமாக அழிக்கப்பட்டன!</string>
     <string name="reset_complete_dialog_title">மீட்டமை முடிந்தது</string>
@@ -11,8 +9,6 @@
     <string name="service_active">செயல்படுத்தும் பணி செயலில் உள்ளது</string>
     <string name="service_inactive">செயல்படுத்தும் பணி செயலற்றது</string>
     <string name="service_disabled">MafforCedoze பணி முடக்கப்பட்டுள்ளது</string>
-    <string name="root_workaround_text">சு இசைவு மறுக்கப்பட்டது அல்லது கிடைக்கவில்லை! உங்களிடம் ரூட் இல்லையென்றால், வேர் இல்லாத பயன்முறையை எவ்வாறு இயக்குவது என்பதற்கான வழிமுறைகளைப் பெற \'ரூட் வொர்க்அரவுண்ட்\' ஐ அழுத்தவும்</string>
-    <string name="root_workaround_button_text">ரூட் பணித்தொகுப்பு</string>
     <string name="close_button_text">மூடு</string>
     <string name="lockscreen_timeout_snackbar_text">உங்கள் சாதனத்தில் பூட்டு திரை காலக்கெடு மதிப்பு மிக அதிகம்!</string>
     <string name="more_info_text">மேலும் செய்தி</string>
@@ -21,8 +17,6 @@
     <string name="enable_doze_button_text">டோச் பயன்முறையை இயக்கவும்</string>
     <string name="no_root_workaround_dialog_title">ரூட் பணித்தொகுப்பு இல்லை</string>
     <string name="okay_button_text">சரி</string>
-    <string name="copy_command_button_text">நகல் கட்டளை</string>
-    <string name="share_command_button_text">பகிர்வு கட்டளை</string>
     <string name="no_root_workaround_dialog_text">உங்கள் சாதனம் வேரூன்றவில்லை என்றால், உங்கள் கணினியிலிருந்து பின்வரும் ADB கட்டளையை இயக்குவதன் மூலம் இந்தப் பயன்பாட்டிற்கு \'Android.permission.dump\' (மற்றும் \'android.permission.write_secure_settings\' என்ற அனுமதியை கைமுறையாக வழங்கலாம்:</string>
     <string name="lockscreen_timeout_dialog_title">பூட்டு திரை நேரம் முடிந்தது</string>
     <string name="lockscreen_timeout_dialog_text_p1">உங்கள் சாதனத்தில் பூட்டு திரை காலக்கெடு மதிப்பு மிக அதிகம் (</string>
@@ -34,8 +28,6 @@
     <string name="how_doze_works_dialog_text">உங்கள் சாதனத்தில் டோச் பயன்முறை எவ்வாறு செயல்படுகிறது:\n\nஒரு பயனர் ஒரு சாதனத்தை அவிழ்த்துவிட்டு, ஒரு குறிப்பிட்ட காலத்திற்கு (30 நிமிடங்கள்) நிலையானதாக இருந்தால், திரை முடக்கப்பட்டால், சாதனம் டோச் பயன்முறையில் நுழைகிறது. டோச் பயன்முறையில், பிணையம் மற்றும் சிபியு-தீவிர சேவைகளுக்கான பயன்பாடுகளின் அணுகலைக் கட்டுப்படுத்துவதன் மூலம் பேட்டரியைப் பாதுகாக்க கணினி முயற்சிக்கிறது. இது பயன்பாடுகளை நெட்வொர்க்கை அணுகுவதைத் தடுக்கிறது மற்றும் அவர்களின் வேலைகள், ஒத்திசைவுகள் மற்றும் நிலையான அலாரங்களை மீறுகிறது\n\nஅவ்வப்போது, பயன்பாடுகள் அவற்றின் ஒத்திவைக்கப்பட்ட செயல்பாடுகளை முடிக்க அனுமதிக்க கணினி ஒரு குறுகிய நேரத்திற்கு வெளியேறுகிறது. இந்தப் பராமரிப்பு சாளரத்தின்போது, கணினி நிலுவையில் உள்ள அனைத்து ஒத்திசைவுகள், வேலைகள் மற்றும் அலாரங்கள் ஆகியவற்றை இயக்குகிறது, மேலும் பயன்பாடுகளைப் பிணையத்தை அணுக அனுமதிக்கிறது\n\nஒவ்வொரு பராமரிப்பு சாளரத்தின் முடிவிலும், கணினி மீண்டும் டோசில் நுழைகிறது, பிணைய அணுகலை இடைநிறுத்துகிறது மற்றும் வேலைகள், ஒத்திசைவுகள் மற்றும் அலாரங்களை ஒத்திவைக்கிறது. காலப்போக்கில், கணினி பராமரிப்பு சாளரங்களைக் குறைவாகவும் திட்டமிடுகிறது, சாதனம் சார்சருடன் இணைக்கப்படாதபோது நீண்டகால செயலற்ற சந்தர்ப்பங்களில் பேட்டரி நுகர்வு குறைக்க உதவுகிறது.\n\nபயனர் சாதனத்தை நகர்த்துவதன் மூலமும், திரையை மாற்றுவதன் மூலமும் அல்லது சார்சரை இணைப்பதன் மூலமும் எழுந்தவுடன், கணினி டோசிலிருந்து வெளியேறுகிறது மற்றும் அனைத்து பயன்பாடுகளும் இயல்பான செயல்பாட்டிற்கு திரும்பும்\n\nசெயல்படுத்தும் எவ்வாறு செயல்படுகிறது:\n\nசாதனம் நிலையானதாக இருக்க 30 நிமிடங்கள் காத்திருப்பதற்குப் பதிலாக, திரை முடக்கப்பட்ட உடனேயே (அல்லது ஒரு பயனர் குறிப்பிட்ட தாமதத்திற்குப் பிறகு) சாதனத்தை டோச் பயன்முறையை உள்ளிடச் செய்கிறது. அதற்கு மேல், செயல்படுத்தும் சாதனத்தின் மோசன் சென்சார்களுக்கும் MafforCedoze மாறுகிறது, எனவே உங்கள் சாதனத்தை நகர்த்தினால் டோச் செயலிழக்காது. ஒரு பராமரிப்பு சாளரத்தின்போது (மேலே விளக்கப்பட்டுள்ளபடி) அல்லது உங்கள் திரையை இயக்கும்போது மட்டுமே டோச் செயலிழக்கச் செய்யும், அதாவது சாதனத்தின் திரை முடக்கப்பட்டிருந்தாலும் சாதனம் நிலையானதாக இல்லாவிட்டாலும் உங்கள் சாதனம் மிக நீண்ட நேரம் டோச் பயன்முறையில் இருக்கும் பேட்டரி சேமிப்பு சாதாரண டசை விட அதிகமாக இருக்கும்.</string>
     <string name="error_text">பிழை</string>
     <string name="please_wait_text">தயவுசெய்து காத்திருங்கள்</string>
-    <string name="requesting_su_access_text">SU அணுகலைக் கோருகிறது ...</string>
-    <string name="read_logcat_su_not_avail_or_denied_error_text">SU இசைவு மறுக்கப்பட்டது அல்லது சு கிடைக்கவில்லை, எனவே LogCat ஐ படிக்க முடியாது.\n\n இந்த அம்சத்தைப் பயன்படுத்த ADB வழியாக READ_LOGS இசைவு வழங்கவும்: \'ADB ஓடு PM கிராண்ட் com.akylas.enforcedoze android.permission.read_logs\' (மேற்கோள்கள் இல்லாமல்)</string>
     <string name="loading_installed_apps_text">நிறுவப்பட்ட பயன்பாடுகளை ஏற்றுகிறது ...</string>
     <string name="whitelisting_text">அனுமதிப்பட்டியல்</string>
     <string name="info_text">தகவல்</string>
@@ -43,7 +35,6 @@
     <string name="app_not_whitelisted_text">நீங்கள் அகற்ற முயற்சிக்கும் பயன்பாடு அனுமதிப்பட்டியலில் இல்லை</string>
     <string name="whitelisted_apps_restrictions_text">"அனுமதிப்பட்டியில் உள்ள ஒரு பயன்பாடு நெட்வொர்க்கைப் பயன்படுத்தலாம் மற்றும் டோச் மற்றும் பயன்பாட்டு காத்திருப்பின் போது பகுதி விழிப்புணர்வு பூட்டுகளை வைத்திருக்கலாம். இருப்பினும், மற்ற பயன்பாடுகளைப் போலவே மற்ற கட்டுப்பாடுகள் அனுமதிப்பட்டியல் பயன்பாட்டிற்கு இன்னும் பொருந்தும். எடுத்துக்காட்டாக, அனுமதிப்பட்டியல் பயன்பாட்டின் வேலைகள் மற்றும் ஒத்திசைவுகள் ஒத்திவைக்கப்படுகின்றன, மேலும் அதன் வழக்கமான அலாரம் மேனேசர் அலாரங்கள் சுடாது. "</string>
     <string name="force_doze_info">உங்கள் திரையை அணைக்கும் தருணத்தில் Taze ஐ செயல்படுத்துகிறது. இது மோசன் சென்சிங்கையும் முடக்குகிறது, எனவே பராமரிப்பு வேலைகளைச் செய்ய வேண்டிய நேரம் இல்லாவிட்டால் டோச் தற்செயலாக செயலிழக்காது, இது பேட்டரி சேமிப்பை நிலையான டோச் செயல்பாட்டை விட அதிகமாக்குகிறது</string>
-    <string name="hi_text">ஆய்!</string>
     <string name="disable_motion_sensors_setting_title">மோசன் சென்சார்களை திரையில் முடக்கு</string>
     <string name="disable_motion_sensors_setting_summary">சாதனம் டோச் பயன்முறையில் செல்லும்போது சாதன இயக்க சென்சார்களை முடக்கு</string>
     <string name="disable_all_sensors_setting_title">திரையில் அனைத்து சென்சார்களையும் முடக்கவும்</string>
@@ -66,7 +57,6 @@
     <string name="whitelist_apps_setting_text">அனுமதிப்பட்டியல் பயன்பாடுகள்</string>
     <string name="reset_forcedoze_setting_summary">இயல்புநிலை நிலைக்கு அமலாக்கத்தை மீட்டமைக்கவும்</string>
     <string name="reset_forcedoze_setting_title">enforcedoze ஐ மீட்டமை</string>
-    <string name="clear_doze_stats_setting_summary">அழி டோச் பேட்டரி புள்ளிவிவரங்கள்</string>
     <string name="show_app_logs_setting_summary">பயன்பாட்டு பிழைத்திருத்த பதிவுகளைக் காட்டு</string>
     <string name="clear_doze_stats_setting_title">தெளிவான புள்ளிவிவரங்கள்</string>
     <string name="show_app_logs_setting_title">பிழைத்திருத்த பதிவுகள்</string>
@@ -88,9 +78,6 @@
     <string name="about_app_opensrc_text">ஆண்ட்ராய்டு க்கான MafforCedoze திறந்த மூல மென்பொருளைப் பயன்படுத்தி கட்டப்பட்டுள்ளது:</string>
     <string name="loading_whitelisted_packages">அனுமதிப்பட்டியல் தொகுப்புகளை ஏற்றுகிறது ...</string>
     <string name="su_perm_denied_msg">சு இசைவு மறுக்கப்பட்டது அல்லது கிடைக்கவில்லை!</string>
-    <string name="auto_rotate_brightness_fix_dialog_title">தானாக சுழலும் மற்றும் ஆட்டோ-பிரைட்னச் பிழைத்திருத்தம்</string>
-    <string name="auto_rotate_brightness_fix_dialog_text">இந்த அம்சத்தைப் பயன்படுத்துவதற்காக உங்கள் தொலைபேசியில் தானாக சுழலும் மற்றும் தானாக ஒளி அமைப்பை மாற்றுவதற்கு EnforCedoze க்கு இசைவு தேவைப்படுகிறது. இசைவு வழங்க \'ஏற்பு\' என்பதை அழுத்தவும், அல்லது மறுக்க \'ரத்துசெய்\' அழுத்தவும்</string>
-    <string name="authorize_button_text">ஏற்பு</string>
     <string name="reset_complete_dialog_text">Enforcedoze தன்னை மீட்டெடுத்தது. பின்வரும் மாற்றங்கள் செய்யப்பட்டன:\n\n 1) செயல்படுத்தும் சேவையை நிறுத்துங்கள்\n 2) மீண்டும் இயக்கக்கூடிய சென்சார்கள், அவை முடக்கப்பட்டிருந்தால்\n 3) டோச் பயன்முறை சரியாக இயக்கப்பட்டிருப்பதை உறுதிசெய்ய, முடக்கு மற்றும் மீண்டும் இயக்கக்கூடிய டோச் பயன்முறையில்\n 4) பயன்பாட்டு விருப்பங்களை மீட்டமைக்கவும்\n 5) ரத்து, write_secure_settings, read_phone_state, write_settings, read_logs (வழங்கப்பட்டால்) அனுமதி\n\n உங்கள் சாதனத்தை மறுதொடக்கம் செய்ய பரிந்துரைக்கப்படுகிறது. பயன்பாடு இப்போது மறுதொடக்கம் செய்யும்!</string>
     <string name="doze_delay_warning_dialog_title">எச்சரிக்கை</string>
     <string name="doze_delay_warning_dialog_text">டோச் தாமத மதிப்பு தற்போது மிக அதிகமாக உள்ளது மற்றும் பேட்டரி ஆயுள் மீது எதிர்மறையான விளைவை ஏற்படுத்தக்கூடும். பேட்டரி ஆயுள் தாமதத்தின் விளைவுகளைச் சோதிப்பதை உறுதிசெய்து, பேட்டரி ஆயுள் குறிப்பிடத்தக்க வீழ்ச்சி இருந்தால் தாமதத்தைக் குறைப்பதைக் கருத்தில் கொள்ளுங்கள்.</string>
@@ -98,8 +85,6 @@
     <string name="forcedoze_reset_initial_dialog_text">ஃபார்சிடோசை மீட்டமைப்பது பின்வரும் மாற்றங்களைச் செய்யும்:\n\n 1) ஃபோர்செடோச் சேவையை நிறுத்துங்கள்\n 2) மீண்டும் இயக்கக்கூடிய சென்சார்கள், அவை முடக்கப்பட்டிருந்தால்\n 3) டோச் பயன்முறை சரியாக இயக்கப்பட்டிருப்பதை உறுதிசெய்ய, முடக்கு மற்றும் மீண்டும் இயக்கக்கூடிய டோச் பயன்முறையில்\n 4) பயன்பாட்டு விருப்பங்களை மீட்டமைக்கவும்\n 5) ரத்து, write_secure_settings, read_phone_state, write_settings, read_logs (வழங்கப்பட்டால்) அனுமதி\n\n நீங்கள் தொடர விரும்புகிறீர்களா?</string>
     <string name="yes_button_text">ஆம்</string>
     <string name="no_button_text">இல்லை</string>
-    <string name="turn_off_internet_doze_setting_title">டூவின் போது இணையத்தை முடக்கு</string>
-    <string name="turn_off_internet_doze_setting_summary">டோச் போது வைஃபை/மொபைல் தரவை முடக்குகிறது</string>
     <string name="disable_wifi_during_doze_setting_summary">டோசின் போது வைஃபை அணைக்கவும்</string>
     <string name="disable_wifi_during_doze_setting_title">டோசின் போது வைஃபை முடக்கு</string>
     <string name="disable_data_during_doze_setting_summary">டோச் போது மொபைல் தரவை அணைக்கவும்</string>
@@ -108,8 +93,6 @@
     <string name="ignore_hospot_during_doze_setting_title">டோசில் நுழையும் போது ஆட்ச்பாட் நிலையை புறக்கணிக்கவும்</string>
     <string name="tasker_broadcast_setting_title">டாச்கர் ஒளிபரப்பு</string>
     <string name="tasker_broadcast_setting_summary">டாச்கர் வழியாக நீங்கள் பயன்படுத்தக்கூடிய ஒளிபரப்புகளைக் காட்டு</string>
-    <string name="reboot_required_dialog_title">மறுதொடக்கம் தேவை</string>
-    <string name="reboot_required_dialog_text">மாற்றங்கள் நடைமுறைக்கு வர உங்கள் தொலைபேசியை மீண்டும் துவக்கவும்</string>
     <string name="manually_add_package_dialog_text">தயவுசெய்து நீங்கள் டோசிலிருந்து அனுமதிப்பட்டிய விரும்பும் பயன்பாட்டின் தொகுப்பு பெயரை உள்ளிடவும்</string>
     <string name="manually_remove_package_dialog_text">டோச் அனுமதிப்பட்டியிலிருந்து நீங்கள் அகற்ற விரும்பும் பயன்பாட்டின் தொகுப்பு பெயரை உள்ளிடவும்</string>
     <string name="compact_view_menu_item">சிறிய பார்வை</string>
@@ -134,11 +117,9 @@
     <string name="name_of_package_notif_block_remove">அறிவிப்பு தொகுதி பட்டியலிலிருந்து நீங்கள் அகற்ற விரும்பும் பயன்பாட்டின் தொகுப்பு பெயரை உள்ளிடவும்</string>
     <string name="notif_blocklist_dialog_title">அறிவிப்பு பிளாக்லிச்ட்</string>
     <string name="notif_blocklist_dialog_text">எஃப்.சி.எம் உயர் முன்னுரிமை செய்தியைப் பயன்படுத்தி, உங்கள் சாதனம் டோச் பயன்முறையில் இருக்கும்போது கூட சில பயன்பாடுகள் அறிவிப்புகளை வழங்க முடியும். இது பயனுள்ளதாக இருக்கும், ஆனால் பயன்பாடு நிறைய அறிவிப்புகளை வழங்கினால் சில நேரங்களில் பேட்டரியை வடிகட்டலாம். டோசின் போது நிறைய அறிவிப்புகள் வழங்கப்படுவதைத் தடுக்க பயன்பாடு எந்த வழியையும் வழங்கவில்லை என்றால் (இதனால் பேட்டரியை விரைவாக வடிகட்டுகிறது), இதுபோன்ற பயன்பாடு உங்கள் சாதனத்திற்கு டோச் பயன்முறையில் இருக்கும்போது அறிவிப்புகளை வழங்குவதைத் தடுக்க இந்த அம்சத்தைப் பயன்படுத்தலாம்.</string>
-    <string name="root_required_text">வேர் தேவை</string>
     <string name="applied_success_text">வெற்றிகரமாக பயன்படுத்தப்பட்டது!</string>
     <string name="adb_command_text">ADB கட்டளை</string>
     <string name="copy_to_clipboard_button_text">கிளிப்போர்டுக்கு நகலெடுக்கவும்</string>
-    <string name="tunables_su_not_available_error_text">சு இசைவு மறுக்கப்பட்டது அல்லது கிடைக்கவில்லை. இந்த அம்சத்தைப் பயன்படுத்த உங்களுக்கு ரூட் தேவை! நீங்கள் தொடரலாம், ஆனால் நீங்கள் ட்யூனபிள்சை சேமிக்க முடியாது, அதை கிளிப்போர்டுக்கு மட்டுமே நகலெடுக்கவும்.</string>
     <string name="block_app_dialog_title">தொகுதி பயன்பாடு</string>
     <string name="block_app_notif_dialog_title">பயன்பாட்டு அறிவிப்பைத் தடுக்கும்</string>
     <string name="stats_long_text" formatted="false">கடைசி திரை முடக்கு: %1$s\n நேரம் செலவழித்த நேரம்: %2$d நிமிடங்கள்\n கடைசி டோச் அமர்வில் பேட்டரி பயன்பாடு:%3$d%%</string>
@@ -158,12 +139,9 @@
     <string name="notifications_permission_explanation">இசையை இயக்கும் பயன்பாடுகளைக் கண்டறிய இந்த பயன்பாடு தற்போது அறிவிப்புகளைக் காண்பிக்க வேண்டும், இதனால் இசைவு தேவை</string>
     <string name="whitelist_music_app_network_setting_title">அனுமதிப்பட்டியல் இசை பயன்பாடு</string>
     <string name="whitelist_music_app_network_setting_summary">இசை விளையாடினால் எல்லா நெட்வொர்க்குகளையும் அணைக்க வேண்டாம்</string>
-    <string name="disable_stats_setting_summary">ஃபோர்செடோச் புள்ளிவிவரங்களை முடக்கு</string>
     <string name="disable_stats_setting_title">புள்ளிவிவரங்களை முடக்கு</string>
     <string name="disable_logcat_setting_summary">ஃபார்சிடோசை கணினி உள்நுழைவுக்கு உள்நுழைவதைத் தடுக்கவும்</string>
     <string name="disable_logcat_setting_title">LogCat ஐ முடக்கு</string>
-    <string name="usage_access_permission">செயலி பயன்பாடு அணுகல்</string>
-    <string name="usage_access_explanation">தற்போதைய கவனம் செலுத்திய பயன்பாட்டை வினவ, பயன்பாட்டிற்கு பயன்பாட்டு அணுகல் இசைவு தேவை. பயன்பாட்டு அணுகல் அமைப்புகளைத் திறப்பதன் மூலம் நீங்கள் அதை இயக்க வேண்டும்</string>
     <string name="open_button_text">திற</string>
     <string name="enable_airplane_setting_title">திரைஅணைக்கயில் விமானத்தை இயக்கவும்</string>
     <string name="enable_airplane_setting_summary">சாதனம் தூங்கும் பயன்முறையில் இருக்கும்போது விமானப் பயன்முறையை இயக்கவும்</string>
@@ -197,7 +175,6 @@
     <string name="execution_mode_setting_summary">கட்டளைகளை இயக்க ரூட் அல்லது சிசுகு இடையே தேர்வு செய்யவும்</string>
     <string name="execution_mode_root">மூலம்</string>
     <string name="execution_mode_shizuku">சிசுகு</string>
-    <string name="shizuku_not_available_error">Shizku பயன்முறை தேர்ந்தெடுக்கப்பட்டது ஆனால் Shizku கிடைக்கவில்லை. Shizku ஐ நிறுவி தொடங்கவும் அல்லது அமைப்புகளில் ரூட் பயன்முறைக்கு மாறவும்.</string>
     <string name="copy_tunable_string">டியூன் செய்யக்கூடிய சரத்தை நகலெடுக்கவும்</string>
     <string name="apply">இடு</string>
     <string name="version_format" formatted="false">%1$s (உருவாக்கம் %2$s)</string>

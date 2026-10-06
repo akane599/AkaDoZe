@@ -204,7 +204,7 @@ public class SettingsFragmentRobolectricTest {
             executionMode enabled=true visible=true change=true click=false summary=Choose between Root or Shizuku for executing commands
             keepDozeEnforced enabled=false visible=true change=false click=false summary=Checking access…
             disableWhenCharging enabled=true visible=true change=false click=false summary=Turn off EnforceDoze when device is plugged in to a charger
-            autoRotateAndBrightnessFix enabled=false visible=true change=true click=false summary=No longer used. EnforceDoze now restores sensors from its own records, so this workaround isn't needed. Your saved choice is kept.
+            autoRotateAndBrightnessFix enabled=false visible=true change=false click=false summary=No longer used. EnforceDoze now restores sensors from its own records, so this workaround isn't needed. Your saved choice is kept.
             showPersistentNotif enabled=true visible=true change=true click=false summary=Show Doze stats in persistent notification
             screenOnSummary enabled=true visible=true change=true click=false summary=After the screen turns on, show what happened while it was off
             showDisabledNotification enabled=true visible=true change=false click=false summary=Show a status bar notification when EnforceDoze is disabled (tap to enable)
@@ -234,10 +234,10 @@ public class SettingsFragmentRobolectricTest {
             allowExternalPrivilegedControl enabled=true visible=true change=false click=false summary=Warning: any installed app could then edit the Doze whitelist and change EnforceDoze settings. Only turn this on if you need it.
             taskerBroadcasts enabled=true visible=true change=false click=false summary=Show broadcasts that you can use via Tasker
             null enabled=false visible=true change=false click=false summary=null
-            disableStats enabled=true visible=true change=false click=false summary=Disable ForceDoze statistics
+            disableStats enabled=true visible=true change=false click=false summary=Stop collecting data for the legacy battery-stats chart. The Doze Monitor journal still records
             disableLogcat enabled=true visible=true change=false click=false summary=Prevent ForceDoze from logging to system logcat
             resetForceDoze enabled=true visible=true change=false click=true summary=Reset EnforceDoze to the default state
-            resetDozeStats enabled=true visible=true change=false click=true summary=Clear Doze battery stats
+            resetDozeStats enabled=true visible=true change=false click=true summary=Clear the legacy battery-stats chart. The Doze Monitor journal is not affected
             debugLogs enabled=true visible=true change=false click=false summary=Show application debug logs
             aboutForceDoze enabled=true visible=true change=false click=false summary=null
             """;
@@ -250,7 +250,7 @@ public class SettingsFragmentRobolectricTest {
             executionMode enabled=true visible=true change=true click=false summary=Choose between Root or Shizuku for executing commands
             keepDozeEnforced enabled=false visible=true change=false click=false summary=Needs Shizuku or root (the DUMP permission covers motion sensors only)
             disableWhenCharging enabled=true visible=true change=false click=false summary=Turn off EnforceDoze when device is plugged in to a charger
-            autoRotateAndBrightnessFix enabled=false visible=true change=true click=false summary=No longer used. EnforceDoze now restores sensors from its own records, so this workaround isn't needed. Your saved choice is kept.
+            autoRotateAndBrightnessFix enabled=false visible=true change=false click=false summary=No longer used. EnforceDoze now restores sensors from its own records, so this workaround isn't needed. Your saved choice is kept.
             showPersistentNotif enabled=true visible=true change=true click=false summary=Show Doze stats in persistent notification
             screenOnSummary enabled=true visible=true change=true click=false summary=After the screen turns on, show what happened while it was off
             showDisabledNotification enabled=true visible=true change=false click=false summary=Show a status bar notification when EnforceDoze is disabled (tap to enable)
@@ -280,10 +280,10 @@ public class SettingsFragmentRobolectricTest {
             allowExternalPrivilegedControl enabled=true visible=true change=false click=false summary=Warning: any installed app could then edit the Doze whitelist and change EnforceDoze settings. Only turn this on if you need it.
             taskerBroadcasts enabled=true visible=true change=false click=false summary=Show broadcasts that you can use via Tasker
             null enabled=false visible=true change=false click=false summary=null
-            disableStats enabled=true visible=true change=false click=false summary=Disable ForceDoze statistics
+            disableStats enabled=true visible=true change=false click=false summary=Stop collecting data for the legacy battery-stats chart. The Doze Monitor journal still records
             disableLogcat enabled=true visible=true change=false click=false summary=Prevent ForceDoze from logging to system logcat
             resetForceDoze enabled=true visible=true change=false click=true summary=Reset EnforceDoze to the default state
-            resetDozeStats enabled=true visible=true change=false click=true summary=Clear Doze battery stats
+            resetDozeStats enabled=true visible=true change=false click=true summary=Clear the legacy battery-stats chart. The Doze Monitor journal is not affected
             debugLogs enabled=true visible=true change=false click=false summary=Show application debug logs
             aboutForceDoze enabled=true visible=true change=false click=false summary=null
             """;
@@ -296,7 +296,7 @@ public class SettingsFragmentRobolectricTest {
             executionMode enabled=true visible=true change=true click=false summary=Choose between Root or Shizuku for executing commands
             keepDozeEnforced enabled=true visible=true change=false click=false summary=Force Doze again if the system leaves it while the screen is off
             disableWhenCharging enabled=true visible=true change=false click=false summary=Turn off EnforceDoze when device is plugged in to a charger
-            autoRotateAndBrightnessFix enabled=false visible=true change=true click=false summary=No longer used. EnforceDoze now restores sensors from its own records, so this workaround isn't needed. Your saved choice is kept.
+            autoRotateAndBrightnessFix enabled=false visible=true change=false click=false summary=No longer used. EnforceDoze now restores sensors from its own records, so this workaround isn't needed. Your saved choice is kept.
             showPersistentNotif enabled=true visible=true change=true click=false summary=Show Doze stats in persistent notification
             screenOnSummary enabled=true visible=true change=true click=false summary=After the screen turns on, show what happened while it was off
             showDisabledNotification enabled=true visible=true change=false click=false summary=Show a status bar notification when EnforceDoze is disabled (tap to enable)
@@ -326,10 +326,10 @@ public class SettingsFragmentRobolectricTest {
             allowExternalPrivilegedControl enabled=true visible=true change=false click=false summary=Warning: any installed app could then edit the Doze whitelist and change EnforceDoze settings. Only turn this on if you need it.
             taskerBroadcasts enabled=true visible=true change=false click=false summary=Show broadcasts that you can use via Tasker
             null enabled=false visible=true change=false click=false summary=null
-            disableStats enabled=true visible=true change=false click=false summary=Disable ForceDoze statistics
+            disableStats enabled=true visible=true change=false click=false summary=Stop collecting data for the legacy battery-stats chart. The Doze Monitor journal still records
             disableLogcat enabled=true visible=true change=false click=false summary=Prevent ForceDoze from logging to system logcat
             resetForceDoze enabled=true visible=true change=false click=true summary=Reset EnforceDoze to the default state
-            resetDozeStats enabled=true visible=true change=false click=true summary=Clear Doze battery stats
+            resetDozeStats enabled=true visible=true change=false click=true summary=Clear the legacy battery-stats chart. The Doze Monitor journal is not affected
             debugLogs enabled=true visible=true change=false click=false summary=Show application debug logs
             aboutForceDoze enabled=true visible=true change=false click=false summary=null
             """;
@@ -342,7 +342,7 @@ public class SettingsFragmentRobolectricTest {
             executionMode enabled=true visible=true change=true click=false summary=Choose between Root or Shizuku for executing commands
             keepDozeEnforced enabled=true visible=true change=false click=false summary=Force Doze again if the system leaves it while the screen is off
             disableWhenCharging enabled=true visible=true change=false click=false summary=Turn off EnforceDoze when device is plugged in to a charger
-            autoRotateAndBrightnessFix enabled=false visible=true change=true click=false summary=No longer used. EnforceDoze now restores sensors from its own records, so this workaround isn't needed. Your saved choice is kept.
+            autoRotateAndBrightnessFix enabled=false visible=true change=false click=false summary=No longer used. EnforceDoze now restores sensors from its own records, so this workaround isn't needed. Your saved choice is kept.
             showPersistentNotif enabled=true visible=true change=true click=false summary=Show Doze stats in persistent notification
             screenOnSummary enabled=true visible=true change=true click=false summary=After the screen turns on, show what happened while it was off
             showDisabledNotification enabled=true visible=true change=false click=false summary=Show a status bar notification when EnforceDoze is disabled (tap to enable)
@@ -372,10 +372,10 @@ public class SettingsFragmentRobolectricTest {
             allowExternalPrivilegedControl enabled=true visible=true change=false click=false summary=Warning: any installed app could then edit the Doze whitelist and change EnforceDoze settings. Only turn this on if you need it.
             taskerBroadcasts enabled=true visible=true change=false click=false summary=Show broadcasts that you can use via Tasker
             null enabled=false visible=true change=false click=false summary=null
-            disableStats enabled=true visible=true change=false click=false summary=Disable ForceDoze statistics
+            disableStats enabled=true visible=true change=false click=false summary=Stop collecting data for the legacy battery-stats chart. The Doze Monitor journal still records
             disableLogcat enabled=true visible=true change=false click=false summary=Prevent ForceDoze from logging to system logcat
             resetForceDoze enabled=true visible=true change=false click=true summary=Reset EnforceDoze to the default state
-            resetDozeStats enabled=true visible=true change=false click=true summary=Clear Doze battery stats
+            resetDozeStats enabled=true visible=true change=false click=true summary=Clear the legacy battery-stats chart. The Doze Monitor journal is not affected
             debugLogs enabled=true visible=true change=false click=false summary=Show application debug logs
             aboutForceDoze enabled=true visible=true change=false click=false summary=null
             """;
@@ -453,6 +453,48 @@ public class SettingsFragmentRobolectricTest {
         assertEquals("shizuku", prefs.getString("executionMode", null));
     }
 
+    private String revertedRootMessage() {
+        return app.getString(R.string.mode_switch_root_failed_text, app.getString(R.string.execution_mode_shizuku));
+    }
+
+    @Test
+    public void rootProbeTimingOutRevertsToThePreviousMode() {
+        assertTrue(change("executionMode", "root"));
+        Dialog wait = ShadowDialog.getLatestDialog();
+        assertTrue(wait.isShowing());
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMinutes(5));
+        assertFalse("The wait is dismissed", wait.isShowing());
+        assertEquals(revertedRootMessage(), latestMessage());
+        assertEquals("shizuku", ((androidx.preference.ListPreference) pref("executionMode")).getValue());
+    }
+
+    @Test
+    public void cancellingTheRootWaitRevertsToThePreviousMode() {
+        assertTrue(change("executionMode", "root"));
+        MaterialDialog wait = (MaterialDialog) ShadowDialog.getLatestDialog();
+        wait.getActionButton(com.afollestad.materialdialogs.DialogAction.NEGATIVE).performClick();
+        idle();
+        assertFalse("The wait is dismissed", wait.isShowing());
+        assertEquals(revertedRootMessage(), latestMessage());
+        assertEquals("shizuku", ((androidx.preference.ListPreference) pref("executionMode")).getValue());
+    }
+
+    @Test
+    public void rootBecomingAvailableEndsTheWaitWithoutReverting() throws Exception {
+        assertTrue(change("executionMode", "root"));
+        MaterialDialog wait = (MaterialDialog) ShadowDialog.getLatestDialog();
+        // The stored mode follows the pick, but AccessManager must never see it: root probes su.
+        AccessManager manager = AccessManager.getInstance(app);
+        prefs.unregisterOnSharedPreferenceChangeListener(
+                (SharedPreferences.OnSharedPreferenceChangeListener) get(manager, "prefListener"));
+        prefs.edit().putString("executionMode", "root").commit();
+        idle();
+        publish(state(AccessLevel.ROOT, true));
+        assertFalse("The wait ends", wait.isShowing());
+        assertSame("No revert dialog replaces the wait", wait, ShadowDialog.getLatestDialog());
+        assertEquals("root", prefs.getString("executionMode", null));
+    }
+
     @Test
     public void pickingShizukuWhileItIsNotRunningExplainsWhy() throws Exception {
         // The screen must read root as the previous mode, but AccessManager must never see it: root probes su.
@@ -466,8 +508,8 @@ public class SettingsFragmentRobolectricTest {
     }
 
     @Test
-    public void retiredRotationFixAcceptsAChangeWhileSettingsAreWritable() {
-        // Robolectric reports WRITE_SETTINGS as granted, so the change goes through without a prompt.
+    public void retiredRotationFixAcceptsAChangeWithoutAPrompt() {
+        // The control is disabled and has no listener: a change is just stored.
         assertTrue(change("autoRotateAndBrightnessFix", true));
         assertNull(ShadowDialog.getLatestDialog());
     }

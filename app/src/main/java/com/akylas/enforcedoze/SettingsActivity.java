@@ -460,7 +460,6 @@ public class SettingsActivity extends AppCompatActivity {
          */
         private void retireRotationFix() {
             SwitchPreferenceCompat autoRotateFixPref = findPreference("autoRotateAndBrightnessFix");
-            autoRotateFixPref.setOnPreferenceChangeListener(this::onAutoRotateFixChange);
             autoRotateFixPref.setEnabled(false);
             autoRotateFixPref.setSummary(getString(R.string.rotate_brightness_fix_retired_summary));
         }
@@ -545,13 +544,6 @@ public class SettingsActivity extends AppCompatActivity {
                 builder.show();
             }
             return true;
-        }
-
-        private boolean onAutoRotateFixChange(Preference preference, Object o) {
-            if (!Utils.isWriteSettingsPermissionGranted(getActivity())) {
-                requestWriteSettingsPermission();
-                return false;
-            } else return true;
         }
 
         private boolean onClearDozeStatsClick(Preference preference) {
@@ -667,19 +659,6 @@ public class SettingsActivity extends AppCompatActivity {
                 if (!result.getOk()) log(Reason.UNVERIFIED.name());
             });
             return true;
-        }
-
-        public void requestWriteSettingsPermission() {
-            MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(getActivity());
-            builder.setTitle(getString(R.string.auto_rotate_brightness_fix_dialog_title));
-            builder.setMessage(getString(R.string.auto_rotate_brightness_fix_dialog_text));
-            builder.setPositiveButton(getString(R.string.authorize_button_text), (dialogInterface, i) -> {
-                Intent intent = new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS);
-                intent.setData(Uri.parse("package:" + getActivity().getPackageName()));
-                startActivity(intent);
-            });
-            builder.setNegativeButton(getString(R.string.deny_button_text), (dialogInterface, i) -> dialogInterface.dismiss());
-            builder.show();
         }
 
         private void showCustomDozePeriodsDialog(SharedPreferences sharedPreferences, Preference preference) {
@@ -1068,8 +1047,9 @@ public class SettingsActivity extends AppCompatActivity {
         @Override
         public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, @Nullable String key) {
             if ("executionMode".equals(key)) {
-                // After every listener of this change ran: AccessManager's own listener publishes the new
-                // mode first, so the state read here is never the previous mode's (e.g. a stale ROOT).
+                // Posted so every listener of this change ran first. A switch to SHELL has the new mode
+                // published by then; a switch to ROOT does not: the su probe is async, so the state read
+                // here can still be the previous mode's until the probe publishes ROOT.
                 mainHandler.post(() -> { if (isAdded()) onAccessChanged(accessManager.getState()); });
                 return;
             }

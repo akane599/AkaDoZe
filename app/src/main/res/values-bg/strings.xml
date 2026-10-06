@@ -4,16 +4,12 @@
     <string name="service_inactive">Услугата EnforceDoze е изключена</string>
     <string name="service_active">Услугата EnforceDoze е включена</string>
     <string name="service_disabled">Услугата EnforceDoze забранена</string>
-    <string name="root_workaround_button_text">Заобикаляне с права на супер потребителя</string>
     <string name="no_root_workaround_dialog_title">Без заобикаляне с права на супер потребителя</string>
-    <string name="root_workaround_text">Достъпът до правата на суперпотребителя е отказан или липсва! Ако липсва такъв, докоснете „Заобиколен път (със SU)“, за да получите инструкции как да включите режима без достъп до суперпотребителя</string>
     <string name="close_button_text">Затваряне</string>
     <string name="more_info_text">Подробности</string>
     <string name="doze_unsupported_more_info_title">Включване на Doze на неподдържани устройства</string>
     <string name="enable_doze_button_text">Включване на режима Doze</string>
     <string name="okay_button_text">Добре</string>
-    <string name="copy_command_button_text">Копиране на команда</string>
-    <string name="share_command_button_text">Споделяне на команда</string>
     <string name="open_security_settings_button_text">Настройки за сигурност</string>
     <string name="lockscreen_timeout_dialog_text_p2">" минути). Което значи, че устройството не "</string>
     <string name="lockscreen_timeout_dialog_text_p3">"се заключва автоматично след изключване на екрана докато не изминат "</string>
@@ -27,14 +23,12 @@
     <string name="lockscreen_timeout_setting_title">Без изчакване преди заключване</string>
     <string name="lockscreen_timeout_setting_summary">Пренебрегване на времето на изчакване преди заключване и влизане в режим Doze веднага след изключване на екрана</string>
     <string name="lockscreen_timeout_dialog_text_p6">" минути преди да включи Doze, използвайки временен WakeLock. Ако желаете EnforceDoze да включва Doze, намалете времето за заключване на екрана на Веднага в настройките за сигурност на устройството. Ако искате EnforceDoze да включва Doze независимо от времетраенето на заключване на екрана, включете настройката „Пренебрегване на времето за заключване“ в настройките на EnforceDoze."</string>
-    <string name="requesting_su_access_text">Искане на достъп до суперпотребителя…</string>
     <string name="loading_installed_apps_text">Зареждане на списък с приложенията…</string>
     <string name="whitelisting_text">Бял списък</string>
     <string name="stats_summary_text" formatted="false">Изразходвано през последния Doze: %1$d %%</string>
     <string name="stats_long_text" formatted="false">Последно изключване на екрана: %1$s\nВреме в режим Doze: %2$d минути\nИзразходвано през последния Doze: %3$d %%</string>
     <string name="error_text">Грешка</string>
     <string name="please_wait_text">Изчакайте</string>
-    <string name="read_logcat_su_not_avail_or_denied_error_text">Достъпът до правата на суперпотребителя е отказан или липсва и за това дневникът не може да бъде прочетен.\n\nЗа да използвате тази способност на приложението, разрешете READ_LOGS чрез ADB: „adb shell pm grant com.akylas.enforcedoze android.permission.READ_LOGS“ (без кавичките)</string>
     <string name="whitelisted_apps_restrictions_text">"Приложенията в белия списък, могат да използват мрежата и да държат частичен WakeLock по време на Doze и App Standby. Но другите ограничения продължават да важат, както и за останалите приложения. Например задачите са отложени, а обикновените будилници от AlarmManager не се изпълняват. "</string>
     <string name="app_already_whitelisted_text">Приложението е вече в списъка!</string>
     <string name="force_doze_info">EnforceDoze включва режим Doze в момента, в който изгасите екрана. Също така изключва сензорите за движение, така че устройството да не излезе от този режим по случайност, освен ако не е време за изпълнение на задачи за поддръжка. Това увеличава живота на батериятя много повече от стандартния режим Doze.</string>
@@ -48,7 +42,6 @@
     <string name="forcedoze_active_dialog_text">Приложението EnforceDoze вече е включено и животът на батерията в режим готовност ще се подобри значително!</string>
     <string name="donate_dialog_text">EnforceDoze е напълно безплатно приложение с отворен код, без реклами, за чието създаване и усъвършенстване съм отделил много време, като ежеседмичните обновявания са за отстраняване на грешки и добавяне/подобряване на възможностите. Ако работата ми ви харесва, помислете за дарение, за да ме мотивирате да работя още по-усилено и да създавам още по-полезни приложения!</string>
     <string name="loading_whitelisted_packages">Зареждане на белия списък…</string>
-    <string name="auto_rotate_brightness_fix_dialog_text">За да може да използва тази възможност EnforceDoze изисква разрешение за промяна на настройката за автоматично завъртане и автоматична яркост на телефона. Натиснете „Разрешаване“, за да дадете разрешение, или натиснете „Отказ“, за да откажете</string>
     <string name="doze_delay_warning_dialog_text">Стойността на изчакване на режима Doze е твърде голяма и може да доведе до отрицателен ефект върху живота на батерията. Не забравяйте да проверите този ефект върху живота на батерията и помислете дали да не намалите забавянето ако има явен спад в живота на батерията.</string>
     <string name="forcedoze_reset_initial_dialog_text">Нулирането на EnforceDoze ще доведе до следните промени:\n\n1) спиране на услугата EnforceDoze\n2) включване на сензорите, в случай че са изключени\n3) изклюпване и включване режима Doze, за да се гарантира, че режимът Doze е включен правилно\n4) нулиране на предпочитанията на приложенията\n5) отнемане на разрешенията DUMP, WRITE_SECURE_SETTINGS, READ_PHONE_STATE, WRITE_SETTINGS, READ_LOGS (ако са дадени)\n\nЖелаете ли да продължите?</string>
     <string name="tasker_broadcast_setting_title">Сигнали за Tasker</string>
@@ -56,7 +49,6 @@
     <string name="lockscreen_timeout_dialog_text_p5">" "</string>
     <string name="info_text">Информация</string>
     <string name="app_not_whitelisted_text">Приложението не е в списъка, невъзможно е да бъде премхнато.</string>
-    <string name="hi_text">Здравейте!</string>
     <string name="disable_motion_sensors_setting_summary">Изключване на сензорите за движение, когато устройството влезе в режим Doze</string>
     <string name="disable_motion_sensors_setting_title">Изключване на сензорите за движение</string>
     <string name="disable_all_sensors_setting_title">Изключване на всички сензори</string>
@@ -73,7 +65,6 @@
     <string name="reset_forcedoze_setting_summary">Нулиране на EnforceDoze в начално състояние</string>
     <string name="reset_forcedoze_setting_title">Нулиране на EnforceDoze</string>
     <string name="clear_doze_stats_setting_title">Изчистване на статистиката</string>
-    <string name="clear_doze_stats_setting_summary">Изчистване на статистиката за батерията</string>
     <string name="show_app_logs_setting_title">Дневник</string>
     <string name="show_app_logs_setting_summary">Показва дневника на приложението</string>
     <string name="share_full_logcat_menu_item">Споделяне на logcat</string>
@@ -89,10 +80,6 @@
     <string name="about_forcedoze_setting_title">Относно EnforceDoze</string>
     <string name="about_app_opensrc_text">EnforceDoze за Андроид е създаден с помощта на софтуер с отворен код:</string>
     <string name="su_perm_denied_msg">Достъпът до суперпотребителя е отказан или недостъпен!</string>
-    <string name="auto_rotate_brightness_fix_dialog_title">Поправка на автом. завъртане и автом. яркост</string>
-    <string name="authorize_button_text">Разрешаване</string>
-    <string name="deny_button_text">Отказ</string>
-    <string name="device_supports_doze_text">Устройството поддържа Doze</string>
     <string name="cleared_text">Изчистено</string>
     <string name="doze_battery_stats_clear_msg">Статистиките за батерията в режим Doze са премахнати!</string>
     <string name="reset_complete_dialog_title">Нулирането е завършено</string>
@@ -100,16 +87,12 @@
     <string name="forcedoze_reset_initial_dialog_title">Желаете ли да бъде нулирано?</string>
     <string name="yes_button_text">Да</string>
     <string name="no_button_text">Не</string>
-    <string name="turn_off_internet_doze_setting_title">Изключване на мрежата по време на Doze</string>
-    <string name="turn_off_internet_doze_setting_summary">Изключване на безжичен/мобилен интернет по време на Doze</string>
     <string name="disable_wifi_during_doze_setting_summary">Изключване на безжичната мрежа по време на Doze</string>
     <string name="disable_wifi_during_doze_setting_title">Изключване на безжич. мрежа през Doze</string>
     <string name="disable_data_during_doze_setting_summary">Изключване на мобилните данни по време на Doze</string>
     <string name="disable_data_during_doze_setting_title">Изключване на мобилни данни през Doze</string>
     <string name="ignore_hospot_during_doze_setting_summary">Изключете, за да предотвратите спиране на безжичен/мобилен интернет докато работи безжичната точка</string>
     <string name="ignore_hospot_during_doze_setting_title">Пренебрегване безжич. точка по време на Doze</string>
-    <string name="reboot_required_dialog_title">Необходим е рестарт</string>
-    <string name="reboot_required_dialog_text">Рестартирайте устройството, за да влязат в сила промените</string>
     <string name="manually_add_package_dialog_text">Въведете името на пакета на приложението, което да добавите в белия списък на Doze</string>
     <string name="battery_optimization_menu_item">Оптимизация на батерията</string>
     <string name="doze_stats_battery_icon_meaning_dialog_title">Какво означава пиктограмата?</string>
@@ -117,7 +100,6 @@
     <string name="add_package_menu_item">Добавяне на пакет</string>
     <string name="remove_package_menu_item">Премахване на пакет</string>
     <string name="compact_view_menu_item">Компактно</string>
-    <string name="disable_stats_setting_summary">Изключване на статистиката на EnforceDoze</string>
     <string name="app_already_in_blocklist">Приложението е вече в списъка!</string>
     <string name="clearing_doze_stats_text">Премахване на статистиката…</string>
     <string name="tile_label">EnforceDoze</string>
@@ -139,14 +121,12 @@
     <string name="name_of_package_notif_block">Въведете името на пакета на приложението, чиито известия да не работят по време на Doze</string>
     <string name="name_of_package_notif_block_remove">Въведете името на пакета на приложението, което да премахнете от черния списък за известия на Doze</string>
     <string name="notif_blocklist_dialog_title">Забранителен списък за известия</string>
-    <string name="root_required_text">Необходим е достъп до правата на суперпотребителя</string>
     <string name="notif_blocklist_dialog_text">Някои приложения могат да получават известия дори и устройството да е в режим Doze, като използват съобщения с висок приоритет на FCM. Това е полезно, но понякога може да доведе до изтощаване на батерията, ако приложението доставя много известия. Ако приложението не предлага никакъв начин за предотвратяване на доставянето на много известия по време на режим Doze (и по този начин за изтощаване на батерията), можете да използвате тази настройка, за да предотвратите доставянето на известия от такова приложение, докато то е в режим на Doze.</string>
     <string name="block_app_dialog_title">Забраняване на приложение</string>
     <string name="block_app_notif_dialog_title">Забраняване на известия от приложение</string>
     <string name="applied_success_text">Приложено!</string>
     <string name="adb_command_text">Команда на ADB</string>
     <string name="copy_to_clipboard_button_text">Копиране</string>
-    <string name="tunables_su_not_available_error_text">Достъпът до правата на суперпотребителя е отказан или липсва! Тези права са необходими, за да използвате тази възможност! Можете да продължите, но няма да можете да запазите настройките, а само да ги копирате.</string>
     <string name="stats_no_data">Няма статистика за Doze</string>
     <string name="notification_channel_stats_name">Статистика за Doze</string>
     <string name="notification_channel_stats_description">Статистика за батерията в Doze</string>
@@ -160,8 +140,6 @@
     <string name="whitelist_music_app_network_setting_summary">Без изключване на мрежите, ако някое приложение възпроизвежда музика</string>
     <string name="ignore_current_app_setting_title">Добавяне в белия списък</string>
     <string name="ignore_current_app_setting_summary">Текущото приложение ще бъде добавено в белия списък, дори и вече да присъства в черния</string>
-    <string name="usage_access_permission">Достъп до данни за употребата</string>
-    <string name="usage_access_explanation">За запитване към текущото приложение, е необходимо разрешение за достъп до данните за употреба. Трябва да дадететова разрешение, като отворите настройките „Достъп до данни за употребата“</string>
     <string name="open_button_text">Отваряне</string>
     <string name="enable_battery_saver_setting_title">Пестене на батерия</string>
     <string name="enable_battery_saver_setting_summary">Включване на режима на пестене на батерия, докато устройството е в режим Doze</string>
@@ -185,7 +163,6 @@
     <string name="execution_mode_root">Суперпотребител</string>
     <string name="execution_mode_shizuku">Shizuku</string>
     <string name="execution_mode_setting_title">Метод за изпълняване на команди</string>
-    <string name="shizuku_not_available_error">Като метод за изпълняване на команди е избран Shizuku, но не е инсталиран. Инсталирайте и настройте Shizuku или изберете метода на суперпотребителя в настройките.</string>
     <string name="disable_bluetooth_setting_title">Изключване на Bluetooth</string>
     <string name="disable_gps_setting_title">Изключване на GPS</string>
     <string name="disable_bluetooth_setting_summary">Изключване на Bluetooth докато устройството е в режим Doze</string>

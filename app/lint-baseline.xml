@@ -691,39 +691,6 @@
 
     <issue
         id="UnusedResources"
-        message="The resource `R.string.copy_command_button_text` appears to be unused"
-        errorLine1="    &lt;string name=&quot;copy_command_button_text&quot;>Copy Command&lt;/string>"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values/strings.xml"
-            line="16"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="UnusedResources"
-        message="The resource `R.string.share_command_button_text` appears to be unused"
-        errorLine1="    &lt;string name=&quot;share_command_button_text&quot;>Share command&lt;/string>"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values/strings.xml"
-            line="17"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="UnusedResources"
-        message="The resource `R.string.hi_text` appears to be unused"
-        errorLine1="    &lt;string name=&quot;hi_text&quot;>Hi!&lt;/string>"
-        errorLine2="            ~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values/strings.xml"
-            line="39"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="UnusedResources"
         message="The resource `R.string.donate_dialog_title` appears to be unused"
         errorLine1="    &lt;string name=&quot;donate_dialog_title&quot;>Support my work&lt;/string>"
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~">
@@ -752,61 +719,6 @@
         <location
             file="src/main/res/values/strings.xml"
             line="95"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="UnusedResources"
-        message="The resource `R.string.device_supports_doze_text` appears to be unused"
-        errorLine1="    &lt;string name=&quot;device_supports_doze_text&quot;>Your device supports Doze&lt;/string>"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values/strings.xml"
-            line="104"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="UnusedResources"
-        message="The resource `R.string.turn_off_internet_doze_setting_title` appears to be unused"
-        errorLine1="    &lt;string name=&quot;turn_off_internet_doze_setting_title&quot;>Disable Internet during Doze&lt;/string>"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values/strings.xml"
-            line="115"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="UnusedResources"
-        message="The resource `R.string.turn_off_internet_doze_setting_summary` appears to be unused"
-        errorLine1="    &lt;string name=&quot;turn_off_internet_doze_setting_summary&quot;>Disables WiFi/mobile data during Doze&lt;/string>"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values/strings.xml"
-            line="116"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="UnusedResources"
-        message="The resource `R.string.reboot_required_dialog_title` appears to be unused"
-        errorLine1="    &lt;string name=&quot;reboot_required_dialog_title&quot;>Reboot required&lt;/string>"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values/strings.xml"
-            line="125"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="UnusedResources"
-        message="The resource `R.string.reboot_required_dialog_text` appears to be unused"
-        errorLine1="    &lt;string name=&quot;reboot_required_dialog_text&quot;>Please reboot your phone for the changes to take effect&lt;/string>"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values/strings.xml"
-            line="126"
             column="13"/>
     </issue>
 

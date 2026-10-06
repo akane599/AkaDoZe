@@ -4,8 +4,6 @@
     <string name="service_active">EnforceDoze Hizmeti Aktif oldu</string>
     <string name="service_inactive">EnforceDoze Hizmet devre dışı</string>
     <string name="service_disabled">EnforceDoze servisi Devre dışı</string>
-    <string name="root_workaround_text">SU izniniz reddedildi veya mevcut değil! Eğer root\'unuz yoksa, root olmayan modu nasıl etkinleştireceğinizle ilgili talimatları almak için \'Root workaround\' a basın.</string>
-    <string name="root_workaround_button_text">Root workaround</string>
     <string name="close_button_text">Kapat</string>
     <string name="lockscreen_timeout_snackbar_text">Cihazınızdaki kilit ekran zaman aşımı değeri çok yüksek!</string>
     <string name="more_info_text">Daha Fazla Bilgi </string>
@@ -13,7 +11,6 @@
     <string name="enable_doze_button_text">Etkinleştirmek Doze mode</string>
     <string name="no_root_workaround_dialog_title">No-root olmadı için geçiçi çözüm</string>
     <string name="okay_button_text">Tamam</string>
-    <string name="share_command_button_text">Komutu paylaş</string>
     <string name="no_root_workaround_dialog_text">Cihazınızda kök erişimi yoksa, \'android.permission.DUMP\' iznini (ve Nougat sürümündeyseniz \'android.permission.WRITE_SECURE_SETTINGS\' iznini) bilgisayarınızdan aşağıdaki komutu çalıştırarak izin verebilirsiniz:</string>
     <string name="lockscreen_timeout_dialog_title">Kilit ekranı Zaman aşımı</string>
     <string name="open_security_settings_button_text">Aç Güvenlik Ayarını</string>
@@ -26,8 +23,6 @@
     <string name="how_doze_works_dialog_text">Cihazınızdaki Doze modu nasıl çalışır:\n\nEkran kapalı iken bir kullanıcı cihazı bir süre (30 dakika) fişi çekilmemiş ve hareketsiz bırakırsa, cihaz Doze moduna girer. Doze modunda sistem, uygulamaların ağ ve CPU yoğunluktaki hizmetlere erişimi kısıtlayarak pil tasarrufu yapmaya çalışır. Ayrıca, uygulamanın ağa erişmesini önler ve işleri, eşitlemelerini ve standart alarmlarını erteler.\n\n Sistem, ertelenmiş etkinliklerini uygulamaların tamamlamasına izin vermek için Doze\'den kısa bir süre çıkar. Bu bakım penceresi boyunca sistem bekleyen tüm eşitlemeleri, işleri ve alarmları çalıştırır ve uygulamaların ağa erişmesine izin verir\n\nBu bakım penceresinin tamamlanmasıyla sistem Doze\'ye girer, ağ erişimini askıya alır ve işleri erteler, senkronize eder ve Alarmlar. Sistem, cihaz bir şarj cihazına bağlı olmadığında uzun süreli hareketsizlik durumunda pil tüketimini azaltmaya yardımcı olarak, bakım pencerelerini daha az veya daha sık zamanlayacak şekilde zamanlar.\n\nCihazı taşıyarak cihazı uyandırdığı anda, Ekranı açtığınızda veya bir şarj aleti bağladığınızda sistem Doze\'den çıkıp tüm uygulamalar normal faaliyete dönüyor\n\nEnforceDoze nasıl çalışıyor:\n\nEnforceDoze, cihazı ekran kapalıldıktan hemen sonra Doze moduna girer (veya bir kullanıcı gecikme belirledikten sonra) , Cihazın sabit kalması için 30 dakika beklemek yerine. Bunun üzerine, EnforceDoze cihazın hareket sensörlerini de döndürür, bu nedenle cihazınızı hareket ettirirseniz Doze devre dışı kalmaz. Doze yalnızca bir bakım periyodu sırasında (yukarıda açıklandığı gibi) veya ekranınızı açtığınızda devre dışı bırakılacaktır; bu, cihazın ekran kapalıysa ve cihaz kapalı olmasa bile cihazınızın Doze modunda çok daha uzun süre kalacağı anlamına gelir Sabit, yani pil tasarrufu normalden daha yüksek olacaktır Doze.</string>
     <string name="error_text">Hata</string>
     <string name="please_wait_text">Lütfen Bekleyin</string>
-    <string name="requesting_su_access_text">SU erişme isteği...</string>
-    <string name="read_logcat_su_not_avail_or_denied_error_text">SU izinleri reddedildi veya SU mevcut değil, bu nedenle logcat okunamıyor.\n\nBu özelliği kullanmak için lütfen ADB aracılığıyla READ_LOGS iznini verin: \'adb kabuğu pm grant com.akylas.enforcedoze android.permission.READ_LOGS\' (tırnak işaretleri olmadan)</string>
     <string name="loading_installed_apps_text">Yüklü Uygulamalar Yükleniyor</string>
     <string name="whitelisting_text">Beyaz Liste</string>
     <string name="whitelisted_apps_restrictions_text">"Beyaz listeye eklenen bir uygulama, Ağ\'ı kullanabilir ve Doze ve Uygulama Bekleme sırasında kısmi uyandırma kilitlerini tutabilir. Bununla birlikte, diğer uygulamalara yaptığı gibi, beyaz listedeki uygulama için de başka kısıtlamalar geçerlidir. Örneğin, beyaz listedeki uygulamanın işleri ve senkronizasyonları ertelenir ve normal AlarmManager alarmları tetiklenmez."</string>
@@ -35,7 +30,6 @@
     <string name="app_already_whitelisted_text">Eklemeye çalıştığınız uygulama zaten beyaz listeye eklendi!</string>
     <string name="app_not_whitelisted_text">Kaldırmaya çalıştığınız uygulama beyaz listede yok</string>
     <string name="force_doze_info">EnforceDoze, ekranınızı kapattığınız andan itibaren Doze\'yi etkinleştirir. Ayrıca hareket algılamayı devre dışı bırakır, böylece Doze\'nin bakım işlerini yerine getirmesi için yanlışlıkla devre dışı bırakılmaz, böylece standart pil ömrü standart Doze işlevselliğinden çok daha yüksek olur</string>
-    <string name="hi_text">Merhaba!</string>
     <string name="disable_when_charging_setting_summary">Cihaz bir şarj cihazına takıldığında EnforceDoze özelliğini kapat</string>
     <string name="disable_when_charging_setting_title">Şarj olurken kapat</string>
     <string name="rotate_brightness_fix_setting_summary">Ekranın açılmasından sonra otomatik döndürme ve otomatik parlaklık çalışmama sorunu çöz</string>
@@ -50,7 +44,6 @@
     <string name="whitelist_apps_setting_text">Beyaz liste uygualamsı</string>
     <string name="reset_forcedoze_setting_summary">EnforceDoze öğesini varsayılan duruma sıfırla</string>
     <string name="reset_forcedoze_setting_title">Reset EnforceDoze</string>
-    <string name="clear_doze_stats_setting_summary">Doze battery istasiklerini sıfırla</string>
     <string name="clear_doze_stats_setting_title">istasikleri sıfırla</string>
     <string name="show_app_logs_setting_summary">Uygulama hata ayıklama günlüklerini göster</string>
     <string name="show_app_logs_setting_title">Hata ayıklama günlükleri</string>
@@ -72,11 +65,6 @@
     <string name="about_app_opensrc_text">ForceDoze for Android, açık kaynaklı yazılımlar kullanılarak üretilmiştir:</string>
     <string name="loading_whitelisted_packages">Beyaz listeye eklenen paketler yükleniyor...</string>
     <string name="su_perm_denied_msg">SU izniniz reddedildi veya mevcut değil!</string>
-    <string name="auto_rotate_brightness_fix_dialog_title">Otomatik döndürme ve otomatik parlaklık düzeltme</string>
-    <string name="auto_rotate_brightness_fix_dialog_text">ForceDoze, bu özelliği kullanmak için telefonunuzda otomatik döndürme ve otomatik parlaklık ayarını değiştirmek için izin ister. İzin vermek için \'Yetkil\' e basın veya reddetmek için \'İptal\' düğmesine basın</string>
-    <string name="authorize_button_text">Yetki vermek</string>
-    <string name="deny_button_text">Reddetmek</string>
-    <string name="device_supports_doze_text">Cihazınız Doze\'yi destekliyor</string>
     <string name="cleared_text">Temizlendi</string>
     <string name="doze_battery_stats_clear_msg">Doze pil istatistikleri başarıyla silindi!</string>
     <string name="reset_complete_dialog_title">Tamamlandı</string>
@@ -87,16 +75,12 @@
     <string name="forcedoze_reset_initial_dialog_text">ForceDoze\'yi sıfırlamak, aşağıdaki değişiklikleri yapacaktır:\n\n1) ForceDoze hizmetini durdurun\n2) Sensörleri devre dışı bırakın, sadece devre dışı bırakın\n3) Doze modunun düzgün şekilde açıldığından emin olmak için Doze modunu devre dışı bırakın ve yeniden etkinleştirin\n4) Uygulama tercihlerini sıfırlayın\n5) DÖKME, WRITE_SECURE_SETTINGS, READ_PHONE_STATE, WRITE_SETTINGS, READ_LOGS (izin verilirse) iznini iptal et\n\nDevam etmek istiyor musunuz?</string>
     <string name="yes_button_text">Evet</string>
     <string name="no_button_text">Hayır</string>
-    <string name="turn_off_internet_doze_setting_title">Doze sırasında İnternet\'i devre dışı bırak</string>
-    <string name="turn_off_internet_doze_setting_summary">Doze sırasında WiFi / mobil verilerini devre dışı bırakır</string>
     <string name="disable_wifi_during_doze_setting_summary">Doze sırasında WiFi\'yi kapat</string>
     <string name="disable_wifi_during_doze_setting_title">Doze sırasında WiFi\'yi devre dışı bırak</string>
     <string name="disable_data_during_doze_setting_summary">Doze sırasında mobil veriyi kapat</string>
     <string name="disable_data_during_doze_setting_title">Doze sırasında mobil verileri devre dışı bırakır</string>
     <string name="tasker_broadcast_setting_title">Görevli yayınlar</string>
     <string name="tasker_broadcast_setting_summary">Tasker ile kullanabileceğiniz yayınları göster</string>
-    <string name="reboot_required_dialog_title">Yeniden Başlatma gereklidir</string>
-    <string name="reboot_required_dialog_text">Değişikliklerin geçerli olması için lütfen telefonunuzu yeniden başlatın.</string>
     <string name="manually_add_package_dialog_text">Lütfen Doze\'den beyaz listeye almak istediğiniz uygulamanın paket adını girin</string>
     <string name="manually_remove_package_dialog_text">Lütfen Doze beyaz listesinden kaldırmak istediğiniz uygulamanın paket adını girin</string>
     <string name="add_package_menu_item">Paket Ekle</string>
@@ -122,15 +106,12 @@
     <string name="name_of_package_notif_block_remove">Uyarı engelleme listesinden kaldırmak istediğiniz uygulamanın paket adını girin</string>
     <string name="notif_blocklist_dialog_title">Engelli bildirim listesi</string>
     <string name="notif_blocklist_dialog_text">Bazı uygulamalar, FCM yüksek öncelikli mesajlaşmayı kullanarak cihazınız Doze modundayken bile bildirimler gönderebilir. Bu kullanışlıdır, ancak uygulama bir sürü bildirim gönderiyorsa, bazen bataryayı boşaltabilir. Uygulama, Doze sırasında birçok bildirimin teslim edilmesini önlemek için herhangi bir yol sunmuyorsa (ve böylece bataryayı daha çabuk boşaltır), bu özelliği, böyle bir uygulamanın Doze modundayken cihazınıza bildirim göndermesini önlemek için kullanabilirsiniz .</string>
-    <string name="root_required_text">Root Gereklidir</string>
     <string name="applied_success_text">Başarılı bir şekilde uygulandı!</string>
     <string name="adb_command_text">ADB Domutları</string>
     <string name="copy_to_clipboard_button_text">Panoya kopyala</string>
-    <string name="tunables_su_not_available_error_text">SU izni reddedildi veya mevcut değil. Bu özelliği kullanmak için root kullanmanız gerekir! Devam edebilirsiniz, ancak ayarlamaları kaydedemez, yalnızca panoya kopyalayamazsınız.</string>
     <string name="block_app_dialog_title">Uygulamalrı Blockla</string>
     <string name="block_app_notif_dialog_title">Bildirim alamıcanız uygulamalar</string>
     <string name="doze_unsupported_more_info">Bazı cihazlarda Doze modu OEM tarafından devre dışı bırakılmıştır. Bu seçenek Doze modunun varsayılan olarak aktif olmadığı cihazlarda Doze\'u aktifleştirebilir.\n\nNot: Cihazınızı yeniden başlattığınızda bu seçeneği tekrardan açmanız gerekmektedir.</string>
-    <string name="copy_command_button_text">Komutu kopyala</string>
     <string name="disable_motion_sensors_setting_title">Ekran kapalıyken hareket sensörlerini devre dışı bırak</string>
     <string name="disable_motion_sensors_setting_summary">Cihaz Doze modundayken hareket sensörlerini devre dışı bırak</string>
     <string name="disable_all_sensors_setting_title">Ekran kapalıyken bütün sensörleri devre dışı bırak</string>
