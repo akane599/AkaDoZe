@@ -3,6 +3,7 @@ package com.akylas.enforcedoze;
 import static com.akylas.enforcedoze.Utils.logToLogcat;
 
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -62,6 +63,7 @@ import com.akylas.enforcedoze.doze.ExactAlarmAccessPolicy;
 import com.akylas.enforcedoze.ui.AccessUi;
 import com.akylas.enforcedoze.ui.ModeSwitchRules;
 import com.akylas.enforcedoze.ui.ResetReport;
+import com.akylas.enforcedoze.ui.SettingsRules;
 import com.akylas.enforcedoze.service.ResetCommandId;
 import com.akylas.enforcedoze.service.SystemResetResult;
 
@@ -376,81 +378,46 @@ public class SettingsActivity extends AppCompatActivity {
 
             addPreferencesFromResource(R.xml.prefs);
             removeIconSpace(getPreferenceScreen());
+            rememberBaseSummaries();
+
+            SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(getActivity());
+            sharedPreferences.registerOnSharedPreferenceChangeListener(this);
+
+            bindMaintenance();
+            bindNotifications();
+            bindModeAndAccess();
+            bindSchedule(sharedPreferences);
+            bindFeatureSwitches();
+            retireRotationFix();
+
+            applyCapabilities(accessManager.getState());
+
+            bindSponsor();
+        }
+
+        /** The summaries resolver-gated preferences show while available. */
+        private void rememberBaseSummaries() {
             for (String key : FEATURE_PREFS) {
                 Preference pref = findPreference(key);
                 if (pref != null) baseSummaries.put(key, pref.getSummary());
             }
             Preference musicPref = findPreference(MUSIC_WHITELIST);
             if (musicPref != null) baseSummaries.put(MUSIC_WHITELIST, musicPref.getSummary());
-//            PreferenceScreen preferenceScreen = (PreferenceScreen) findPreference("preferenceScreen");
-//            PreferenceCategory mainSettings = (PreferenceCategory) findPreference("mainSettings");
-//            PreferenceCategory dozeSettings = (PreferenceCategory) findPreference("dozeSettings");
-            Preference resetForceDozePref = (Preference) findPreference("resetForceDoze");
-            Preference clearDozeStats = (Preference) findPreference("resetDozeStats");
-            Preference dozeDelay = (Preference) findPreference("dozeEnterDelay");
-            Preference customDozePeriods = (Preference) findPreference("customDozePeriods");
-            Preference showPersistentNotif = (Preference) findPreference("showPersistentNotif");
-            Preference usePermanentDoze = (Preference) findPreference("usePermanentDoze");
-            Preference dozeNotificationBlocklist = (Preference) findPreference("blacklistAppNotifications");
-            Preference dozeAppBlocklist = (Preference) findPreference("blacklistApps");
-            final Preference executionMode = (Preference) findPreference("executionMode");
-            final Preference disableMotionSensors = (Preference) findPreference("disableMotionSensors");
-            Preference turnOffDataInDoze = (Preference) findPreference("turnOffDataInDoze");
-            Preference whitelistMusicAppNetwork = (Preference) findPreference("whitelistMusicAppNetwork");
-            Preference whitelistCurrentApp = (Preference) findPreference("whitelistCurrentApp");
-            final Preference autoRotateBrightnessFix = (Preference) findPreference("autoRotateAndBrightnessFix");
-            SwitchPreferenceCompat autoRotateFixPref = (SwitchPreferenceCompat) findPreference("autoRotateAndBrightnessFix");
+        }
 
-            SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(getActivity());
-            sharedPreferences.registerOnSharedPreferenceChangeListener(this);
-            updateCustomDozePeriodsSummary(customDozePeriods, sharedPreferences);
+        private void bindMaintenance() {
+            findPreference("resetForceDoze").setOnPreferenceClickListener(this::onResetClick);
+            findPreference("resetDozeStats").setOnPreferenceClickListener(this::onClearDozeStatsClick);
+        }
 
-            resetForceDozePref.setOnPreferenceClickListener(preference -> {
-                MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(getActivity());
-                builder.setTitle(getString(R.string.forcedoze_reset_initial_dialog_title));
-                builder.setMessage(getString(R.string.forcedoze_reset_initial_dialog_text));
-                builder.setPositiveButton(getString(R.string.yes_button_text), (dialogInterface, i) -> {
-                    dialogInterface.dismiss();
-                    resetForceDoze();
-                });
-                builder.setNegativeButton(getString(R.string.no_button_text), (dialogInterface, i) -> dialogInterface.dismiss());
-                builder.show();
-                return true;
-            });
-            showPersistentNotif.setOnPreferenceChangeListener((preference, value) -> {
-                if ((boolean)value) {
-                    if (!Utils.isPostNotificationPermissionGranted(getActivity())) {
-                        requestNotificationPermission();
-                        return false;
-                    }
-                }
-                return true;
-            });
+        private void bindNotifications() {
+            findPreference("showPersistentNotif").setOnPreferenceChangeListener(this::onPersistentNotifChange);
+            Preference screenOnSummary = findPreference(Prefs.SCREEN_ON_SUMMARY);
+            if (screenOnSummary != null) screenOnSummary.setOnPreferenceChangeListener(this::onScreenOnSummaryChange);
+        }
 
-
-            executionMode.setOnPreferenceChangeListener((preference, value) -> {
-                String previous = sharedPreferences.getString(Prefs.EXECUTION_MODE, Prefs.DEFAULT_EXECUTION_MODE);
-                if (!ModeSwitchRules.isSwitch(previous, (String) value)) return true;
-                modeSwitch.select((String) value);
-                if (Prefs.MODE_SHIZUKU.equals(value)) {
-                    accessManager.refreshShizuku();
-                    Reason reason = accessManager.getShizukuState().getReason();
-                    if (reason == Reason.SHIZUKU_PERMISSION_MISSING) {
-                        awaitForShizukuPermission(previous);
-                    } else if (reason == Reason.SHIZUKU_NOT_RUNNING) {
-                        new MaterialAlertDialogBuilder(requireActivity())
-                                .setTitle(R.string.execution_mode_setting_title)
-                                .setMessage(R.string.mode_switch_not_running_text)
-                                .setPositiveButton(R.string.okay_button_text, null)
-                                .show();
-                    }
-                } else if (Prefs.MODE_ROOT.equals(value)) {
-                    awaitRoot(previous);
-                }
-                // SharedPreferences and AccessManager publish the selected mode before we consume it.
-                return true;
-            });
-
+        private void bindModeAndAccess() {
+            findPreference("executionMode").setOnPreferenceChangeListener(this::onExecutionModeChange);
             Preference accessStatus = findPreference(ACCESS_STATUS);
             if (accessStatus != null) {
                 accessStatus.setOnPreferenceClickListener(preference -> {
@@ -460,38 +427,16 @@ public class SettingsActivity extends AppCompatActivity {
                     return true;
                 });
             }
+        }
 
-            Preference screenOnSummary = findPreference(Prefs.SCREEN_ON_SUMMARY);
-            if (screenOnSummary != null) {
-                screenOnSummary.setOnPreferenceChangeListener((preference, value) -> {
-                    if ((boolean) value && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-                            && requireContext().checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-                            != PackageManager.PERMISSION_GRANTED) {
-                        // Turned on only once the permission is actually granted.
-                        summaryPermission.launch(Manifest.permission.POST_NOTIFICATIONS);
-                        return false;
-                    }
-                    return true;
-                });
-            }
-
-            dozeDelay.setOnPreferenceChangeListener((preference, o) -> {
-                int delay = (int) o;
-                if (delay >= 5 * 60) {
-                    MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(getActivity());
-                    builder.setTitle(getString(R.string.doze_delay_warning_dialog_title));
-                    builder.setMessage(getString(R.string.doze_delay_warning_dialog_text));
-                    builder.setPositiveButton(getString(R.string.okay_button_text), (dialogInterface, i) -> dialogInterface.dismiss());
-                    builder.show();
-                }
-                return true;
-            });
-
+        private void bindSchedule(SharedPreferences sharedPreferences) {
+            findPreference("dozeEnterDelay").setOnPreferenceChangeListener(this::onDozeDelayChange);
+            Preference customDozePeriods = findPreference("customDozePeriods");
+            updateCustomDozePeriodsSummary(customDozePeriods, sharedPreferences);
             customDozePeriods.setOnPreferenceClickListener(preference -> {
                 showCustomDozePeriodsDialog(sharedPreferences, customDozePeriods);
                 return true;
             });
-
             Preference exactAlarm = findPreference(EXACT_ALARM_ACCESS);
             if (exactAlarm != null) {
                 exactAlarm.setOnPreferenceClickListener(preference -> {
@@ -501,141 +446,26 @@ public class SettingsActivity extends AppCompatActivity {
                 });
                 renderExactAlarmStatus();
             }
+        }
 
-            autoRotateFixPref.setOnPreferenceChangeListener((preference, o) -> {
-                if (!Utils.isWriteSettingsPermissionGranted(getActivity())) {
-                    requestWriteSettingsPermission();
-                    return false;
-                } else return true;
-            });
+        private void bindFeatureSwitches() {
+            findPreference("turnOffDataInDoze").setOnPreferenceChangeListener(this::onTurnOffDataChange);
+            findPreference(MUSIC_WHITELIST).setOnPreferenceChangeListener(this::onMusicWhitelistChange);
+            findPreference("whitelistCurrentApp").setOnPreferenceChangeListener(this::onFocusedAppChange);
+        }
 
-            clearDozeStats.setOnPreferenceClickListener(preference -> {
-                progressDialog1 = new MaterialDialog.Builder(getActivity())
-                        .title(getString(R.string.please_wait_text))
-                        .cancelable(false)
-                        .autoDismiss(false)
-                        .content(getString(R.string.clearing_doze_stats_text))
-                        .progress(true, 0)
-                        .show();
-                Tasks.executeInBackground(getActivity(), () -> {
-                    log("Clearing Doze stats");
-                    SharedPreferences sharedPreferences13 = PreferenceManager.getDefaultSharedPreferences(getContext());
-                    SharedPreferences.Editor editor = sharedPreferences13.edit();
-                    editor.remove("dozeUsageDataAdvanced");
-                    return editor.commit();
-                }, new Completion<Boolean>() {
-                    @Override
-                    public void onSuccess(Context context, Boolean result) {
-                        if (progressDialog1 != null) {
-                            progressDialog1.dismiss();
-                        }
-                        if (result) {
-                            log("Doze stats successfully cleared");
-                            if (Utils.isMyServiceRunning(ForceDozeService.class, context)) {
-                                Intent intent = new Intent("reload-settings");
-                                LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
-                            }
-                            MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(context);
-                            builder.setTitle(getString(R.string.cleared_text));
-                            builder.setMessage(getString(R.string.doze_battery_stats_clear_msg));
-                            builder.setPositiveButton(getString(R.string.close_button_text), (dialogInterface, i) -> dialogInterface.dismiss());
-                            builder.show();
-                        }
-
-                    }
-
-                    @Override
-                    public void onError(Context context, Exception e) {
-                        Log.e(TAG, "Error clearing Doze stats: " + e.getMessage());
-
-                    }
-                });
-                return true;
-            });
-
-            turnOffDataInDoze.setOnPreferenceChangeListener((preference, o) -> {
-                final boolean newValue = (boolean) o;
-                if (!newValue) {
-                    return true;
-                } else {
-                    if (isSuAvailable || isShizukuAvailable) {
-                        log("Root or Shizuku permission granted");
-                        log("Granting android.permission.READ_PHONE_STATE to com.akylas.enforcedoze");
-                        AsyncTask.execute(() -> accessManager.grantHelper("READ_PHONE_STATE"));
-                        return true;
-                    } else {
-                        log("SU permission denied or not available");
-                        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(getActivity());
-                        builder.setTitle(getString(R.string.error_text));
-                        builder.setMessage(getString(R.string.su_perm_denied_msg));
-                        builder.setPositiveButton(getString(R.string.close_button_text), (dialogInterface, i) -> dialogInterface.dismiss());
-                        builder.show();
-                        return false;
-                    }
-                }
-            });
-
-            whitelistMusicAppNetwork.setOnPreferenceChangeListener((preference, o) -> {
-                final boolean newValue = (boolean) o;
-                if (newValue) {
-                    // we need to check if we have notifications permissions
-                    Boolean hasPermission = AccessUi.hasListenerAccess(requireContext());
-                    if (!hasPermission) {
-                        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(getActivity());
-                        builder.setTitle(getString(R.string.notifications_permission));
-                        builder.setMessage(getString(R.string.notifications_permission_explanation));
-                        builder.setPositiveButton(getString(R.string.open_button_text), (dialogInterface, i) -> {
-                            // The listener-settings action exists on every supported API (22+); only the
-                            // package extra is API 26+. Never launch a null intent.
-                            Intent settingsIntent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
-                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                settingsIntent.putExtra(Settings.EXTRA_APP_PACKAGE, requireActivity().getPackageName());
-                            }
-                            try {
-                                requireActivity().startActivity(settingsIntent);
-                            } catch (android.content.ActivityNotFoundException missing) {
-                                Toast.makeText(requireContext(), R.string.notification_listener_settings_missing,
-                                        Toast.LENGTH_LONG).show();
-                            }
-                            dialogInterface.dismiss();
-                        });
-                        builder.show();
-                    }
-                }
-                return true;
-            });
-
-            whitelistCurrentApp.setOnPreferenceChangeListener((preference, value) -> {
-                if (!(boolean) value) return true;
-                AccessState state = accessManager.getState();
-                FeatureStatus status = CapabilityResolver.status(Feature.FOCUSED_APP, state.getLevel(),
-                        Build.VERSION.SDK_INT, state.getGrants());
-                if (!(status instanceof FeatureStatus.Available)) {
-                    log(((FeatureStatus.Unavailable) status).getReason().name());
-                    return false;
-                }
-                AsyncTask.execute(() -> {
-                    com.akylas.enforcedoze.access.CommandResult result = accessManager.reads().run("dumpsys activity activities");
-                    if (!result.getOk()) log(Reason.UNVERIFIED.name());
-                });
-                return true;
-            });
-
-//            if (sharedPreferences.getBoolean("useNonRootSensorWorkaround", false)) {
-//                autoRotateBrightnessFix.setEnabled(true);
-//                disableMotionSensors.setEnabled(true);
-//                sharedPreferences.edit().putBoolean("autoRotateAndBrightnessFix", false).apply();
-//                sharedPreferences.edit().putBoolean("disableMotionSensors", true).apply();
-//            }
-
-            // The service no longer runs the rotation/brightness workaround (ledger-only restoration).
-            // Keep the saved value; only the control is retired.
+        /**
+         * The service no longer runs the rotation/brightness workaround (ledger-only restoration).
+         * Keep the saved value; only the control is retired.
+         */
+        private void retireRotationFix() {
+            SwitchPreferenceCompat autoRotateFixPref = findPreference("autoRotateAndBrightnessFix");
+            autoRotateFixPref.setOnPreferenceChangeListener(this::onAutoRotateFixChange);
             autoRotateFixPref.setEnabled(false);
             autoRotateFixPref.setSummary(getString(R.string.rotate_brightness_fix_retired_summary));
+        }
 
-            applyCapabilities(accessManager.getState());
-
+        private void bindSponsor() {
             Preference sponsorPref = findPreference("sponsorProject");
             if (sponsorPref != null) {
                 sponsorPref.setOnPreferenceClickListener(preference -> {
@@ -643,7 +473,200 @@ public class SettingsActivity extends AppCompatActivity {
                     return true;
                 });
             }
+        }
 
+        private boolean onResetClick(Preference preference) {
+            MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(getActivity());
+            builder.setTitle(getString(R.string.forcedoze_reset_initial_dialog_title));
+            builder.setMessage(getString(R.string.forcedoze_reset_initial_dialog_text));
+            builder.setPositiveButton(getString(R.string.yes_button_text), (dialogInterface, i) -> {
+                dialogInterface.dismiss();
+                resetForceDoze();
+            });
+            builder.setNegativeButton(getString(R.string.no_button_text), (dialogInterface, i) -> dialogInterface.dismiss());
+            builder.show();
+            return true;
+        }
+
+        private boolean onPersistentNotifChange(Preference preference, Object value) {
+            if ((boolean)value) {
+                if (!Utils.isPostNotificationPermissionGranted(getActivity())) {
+                    requestNotificationPermission();
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private boolean onScreenOnSummaryChange(Preference preference, Object value) {
+            if ((boolean) value && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                    && requireContext().checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                // Turned on only once the permission is actually granted.
+                summaryPermission.launch(Manifest.permission.POST_NOTIFICATIONS);
+                return false;
+            }
+            return true;
+        }
+
+        private boolean onExecutionModeChange(Preference preference, Object value) {
+            String previous = selectedMode();
+            if (!ModeSwitchRules.isSwitch(previous, (String) value)) return true;
+            modeSwitch.select((String) value);
+            if (Prefs.MODE_SHIZUKU.equals(value)) {
+                startShizukuSwitch(previous);
+            } else if (Prefs.MODE_ROOT.equals(value)) {
+                awaitRoot(previous);
+            }
+            // SharedPreferences and AccessManager publish the selected mode before we consume it.
+            return true;
+        }
+
+        private void startShizukuSwitch(String previous) {
+            accessManager.refreshShizuku();
+            Reason reason = accessManager.getShizukuState().getReason();
+            if (reason == Reason.SHIZUKU_PERMISSION_MISSING) {
+                awaitForShizukuPermission(previous);
+            } else if (reason == Reason.SHIZUKU_NOT_RUNNING) {
+                new MaterialAlertDialogBuilder(requireActivity())
+                        .setTitle(R.string.execution_mode_setting_title)
+                        .setMessage(R.string.mode_switch_not_running_text)
+                        .setPositiveButton(R.string.okay_button_text, null)
+                        .show();
+            }
+        }
+
+        private boolean onDozeDelayChange(Preference preference, Object o) {
+            if (SettingsRules.warnsLongDozeDelay((int) o)) {
+                MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(getActivity());
+                builder.setTitle(getString(R.string.doze_delay_warning_dialog_title));
+                builder.setMessage(getString(R.string.doze_delay_warning_dialog_text));
+                builder.setPositiveButton(getString(R.string.okay_button_text), (dialogInterface, i) -> dialogInterface.dismiss());
+                builder.show();
+            }
+            return true;
+        }
+
+        private boolean onAutoRotateFixChange(Preference preference, Object o) {
+            if (!Utils.isWriteSettingsPermissionGranted(getActivity())) {
+                requestWriteSettingsPermission();
+                return false;
+            } else return true;
+        }
+
+        private boolean onClearDozeStatsClick(Preference preference) {
+            progressDialog1 = new MaterialDialog.Builder(getActivity())
+                    .title(getString(R.string.please_wait_text))
+                    .cancelable(false)
+                    .autoDismiss(false)
+                    .content(getString(R.string.clearing_doze_stats_text))
+                    .progress(true, 0)
+                    .show();
+            Tasks.executeInBackground(getActivity(), () -> {
+                log("Clearing Doze stats");
+                SharedPreferences sharedPreferences13 = PreferenceManager.getDefaultSharedPreferences(getContext());
+                SharedPreferences.Editor editor = sharedPreferences13.edit();
+                editor.remove("dozeUsageDataAdvanced");
+                return editor.commit();
+            }, new Completion<Boolean>() {
+                @Override
+                public void onSuccess(Context context, Boolean result) {
+                    if (progressDialog1 != null) {
+                        progressDialog1.dismiss();
+                    }
+                    if (result) {
+                        log("Doze stats successfully cleared");
+                        if (Utils.isMyServiceRunning(ForceDozeService.class, context)) {
+                            Intent intent = new Intent("reload-settings");
+                            LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+                        }
+                        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(context);
+                        builder.setTitle(getString(R.string.cleared_text));
+                        builder.setMessage(getString(R.string.doze_battery_stats_clear_msg));
+                        builder.setPositiveButton(getString(R.string.close_button_text), (dialogInterface, i) -> dialogInterface.dismiss());
+                        builder.show();
+                    }
+
+                }
+
+                @Override
+                public void onError(Context context, Exception e) {
+                    Log.e(TAG, "Error clearing Doze stats: " + e.getMessage());
+
+                }
+            });
+            return true;
+        }
+
+        private boolean onTurnOffDataChange(Preference preference, Object o) {
+            final boolean newValue = (boolean) o;
+            if (!newValue) {
+                return true;
+            } else {
+                if (isSuAvailable || isShizukuAvailable) {
+                    log("Root or Shizuku permission granted");
+                    log("Granting android.permission.READ_PHONE_STATE to com.akylas.enforcedoze");
+                    AsyncTask.execute(() -> accessManager.grantHelper("READ_PHONE_STATE"));
+                    return true;
+                } else {
+                    log("SU permission denied or not available");
+                    MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(getActivity());
+                    builder.setTitle(getString(R.string.error_text));
+                    builder.setMessage(getString(R.string.su_perm_denied_msg));
+                    builder.setPositiveButton(getString(R.string.close_button_text), (dialogInterface, i) -> dialogInterface.dismiss());
+                    builder.show();
+                    return false;
+                }
+            }
+        }
+
+        private boolean onMusicWhitelistChange(Preference preference, Object o) {
+            final boolean newValue = (boolean) o;
+            if (newValue) {
+                // we need to check if we have notifications permissions
+                Boolean hasPermission = AccessUi.hasListenerAccess(requireContext());
+                if (!hasPermission) {
+                    MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(getActivity());
+                    builder.setTitle(getString(R.string.notifications_permission));
+                    builder.setMessage(getString(R.string.notifications_permission_explanation));
+                    builder.setPositiveButton(getString(R.string.open_button_text), this::openListenerSettings);
+                    builder.show();
+                }
+            }
+            return true;
+        }
+
+        private void openListenerSettings(DialogInterface dialogInterface, int which) {
+            // The listener-settings action exists on every supported API (22+); only the
+            // package extra is API 26+. Never launch a null intent.
+            Intent settingsIntent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                settingsIntent.putExtra(Settings.EXTRA_APP_PACKAGE, requireActivity().getPackageName());
+            }
+            try {
+                requireActivity().startActivity(settingsIntent);
+            } catch (android.content.ActivityNotFoundException missing) {
+                Toast.makeText(requireContext(), R.string.notification_listener_settings_missing,
+                        Toast.LENGTH_LONG).show();
+            }
+            dialogInterface.dismiss();
+        }
+
+        private boolean onFocusedAppChange(Preference preference, Object value) {
+            if (!(boolean) value) return true;
+            AccessState state = accessManager.getState();
+            FeatureStatus status = CapabilityResolver.status(Feature.FOCUSED_APP, state.getLevel(),
+                    Build.VERSION.SDK_INT, state.getGrants());
+            if (!(status instanceof FeatureStatus.Available)) {
+                log(((FeatureStatus.Unavailable) status).getReason().name());
+                return false;
+            }
+            AsyncTask.execute(() -> {
+                com.akylas.enforcedoze.access.CommandResult result = accessManager.reads().run("dumpsys activity activities");
+                if (!result.getOk()) log(Reason.UNVERIFIED.name());
+            });
+            return true;
         }
 
         public void requestWriteSettingsPermission() {

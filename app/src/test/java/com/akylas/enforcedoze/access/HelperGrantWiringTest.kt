@@ -20,7 +20,7 @@ class HelperGrantWiringTest {
         assertTrue(source("ui/AccessUi.java").contains("results = access.grantHelpers();"))
         val settings = source("SettingsActivity.java")
         assertEquals(1, Regex("accessManager\\.grantHelpers\\(\\)").findAll(settings).count())
-        val toggle = settings.substringAfter("turnOffDataInDoze.setOnPreferenceChangeListener").substringBefore("whitelistMusicAppNetwork.setOnPreferenceChangeListener")
+        val toggle = settings.substringAfter("private boolean onTurnOffDataChange(").substringBefore("private boolean onMusicWhitelistChange(")
         assertTrue(toggle.contains("accessManager.grantHelper(\"READ_PHONE_STATE\")"))
         assertFalse(toggle.contains("grantHelpers()"))
         assertFalse(settings.contains("grantHelpersAutomatically"))
