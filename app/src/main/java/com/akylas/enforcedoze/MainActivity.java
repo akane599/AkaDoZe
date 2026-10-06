@@ -53,6 +53,7 @@ import com.akylas.enforcedoze.access.Reason;
 import com.akylas.enforcedoze.access.Prefs;
 import com.akylas.enforcedoze.ui.AccessCard;
 import com.akylas.enforcedoze.ui.AccessUi;
+import com.akylas.enforcedoze.ui.MainRules;
 
 public class MainActivity extends AppCompatActivity implements CompoundButton.OnCheckedChangeListener,  SharedPreferences.OnSharedPreferenceChangeListener {
 
@@ -124,7 +125,7 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
 //        showDonateDevDialog = settings.getBoolean("showDonateDevDialog2", true);
         accessManager = AccessManager.getInstance(this);
         accessCard = new AccessCard(this, accessManager);
-        if (savedInstanceState == null) handleIntent(getIntent());
+        MainRules.when(savedInstanceState == null, () -> handleIntent(getIntent()));
         AsyncTask.execute(() -> Utils.repairPreferencesPermissions(getApplicationContext()));
         ignoreLockscreenTimeout = settings.getBoolean("ignoreLockscreenTimeout", true);
         toggleForceDozeSwitch = (SwitchCompat) findViewById(R.id.switch1);
@@ -133,36 +134,34 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         LocalBroadcastManager.getInstance(this).registerReceiver(updateStateFromTile, new IntentFilter("update-state-from-tile"));
         toggleForceDozeSwitch.setOnCheckedChangeListener(null);
 
-        if (!Utils.isPostNotificationPermissionGranted(this)) {
-            requestNotificationPermission();
-        } else if (!Utils.isReadPhoneStatePermissionGranted(this)) {
-            requestReadPhoneStatePermission();
-        }
+        MainRules.requestFirstMissingPermission(Utils.isPostNotificationPermissionGranted(this),
+                Utils.isReadPhoneStatePermissionGranted(this),
+                this::requestNotificationPermission, this::requestReadPhoneStatePermission);
 
         updateToggleState();
 
         toggleForceDozeSwitch.setOnCheckedChangeListener(this);
-        
-        accessManager.refresh();
-        if (Utils.isShizukuMode(this)
-                && accessManager.getShizukuState().getReason() == Reason.SHIZUKU_PERMISSION_MISSING) {
-            accessManager.requestShizukuPermission();
-        }
 
-        if (Utils.isLockscreenTimeoutValueTooHigh(getContentResolver())) {
-            if (!ignoreLockscreenTimeout) {
-                coordinatorLayout = (CoordinatorLayout) findViewById(R.id.coordinatorLayout);
-                Snackbar.make(coordinatorLayout, R.string.lockscreen_timeout_snackbar_text, Snackbar.LENGTH_INDEFINITE)
-                        .setAction(R.string.more_info_text, new View.OnClickListener() {
-                            @Override
-                            public void onClick(View view) {
-                                showLockScreenTimeoutInfoDialog();
-                            }
-                        })
-                        .setActionTextColor(Color.RED)
-                        .show();
-            }
-        }
+        accessManager.refresh();
+        MainRules.when(MainRules.asksShizukuPermission(Utils.isShizukuMode(this),
+                accessManager.getShizukuState().getReason()), accessManager::requestShizukuPermission);
+
+        MainRules.when(MainRules.showsLockscreenTimeoutNotice(
+                Utils.isLockscreenTimeoutValueTooHigh(getContentResolver()), ignoreLockscreenTimeout),
+                this::showLockscreenTimeoutSnackbar);
+    }
+
+    private void showLockscreenTimeoutSnackbar() {
+        coordinatorLayout = (CoordinatorLayout) findViewById(R.id.coordinatorLayout);
+        Snackbar.make(coordinatorLayout, R.string.lockscreen_timeout_snackbar_text, Snackbar.LENGTH_INDEFINITE)
+                .setAction(R.string.more_info_text, new View.OnClickListener() {
+                    @Override
+                    public void onClick(View view) {
+                        showLockScreenTimeoutInfoDialog();
+                    }
+                })
+                .setActionTextColor(Color.RED)
+                .show();
     }
 
     @Override
@@ -288,11 +287,8 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
 
     @Override
     public boolean onPrepareOptionsMenu(Menu menu) {
-
-        if (isDozeEnabledByOEM || (Utils.isDeviceRunningOnN() && !isSuAvailable)) {
-            menu.findItem(R.id.action_toggle_doze).setVisible(false);
-        }
-
+        MainRules.when(MainRules.hidesUnsupportedDozeItem(isDozeEnabledByOEM, Utils.isDeviceRunningOnN(), isSuAvailable),
+                () -> menu.findItem(R.id.action_toggle_doze).setVisible(false));
         return super.onPrepareOptionsMenu(menu);
     }
 
