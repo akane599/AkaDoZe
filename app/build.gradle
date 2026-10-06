@@ -41,6 +41,18 @@ android {
         jacocoVersion = '0.8.13'
     }
 
+    testOptions {
+        unitTests.includeAndroidResources = true
+        if (project.hasProperty('crapCoverage')) {
+            unitTests.all {
+                jacoco {
+                    includeNoLocationClasses = true
+                    excludes = ['jdk.internal.*']
+                }
+            }
+        }
+    }
+
     buildTypes {
         debug {
             enableUnitTestCoverage = project.hasProperty('crapCoverage')
@@ -77,6 +89,7 @@ configurations.all {
 
 dependencies {
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.16'
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation ('com.afollestad.material-dialogs:core:0.9.3.0') {
         transitive = true
