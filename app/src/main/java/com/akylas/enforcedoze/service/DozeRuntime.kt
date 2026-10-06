@@ -243,9 +243,9 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
         )
     }
 
-    private fun runRead(command: String): List<String> = try {
-        control.run(command, 8_000).let { if (it.ok) it.stdout else emptyList() }
-    } catch (_: Exception) { emptyList() }
+    private fun runRead(command: String): List<String> {
+        return readRuntimeCommand(control, command)
+    }
 
     fun recordExit(result: ExitResult) {
         for (error in result.errors) {
@@ -465,14 +465,9 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
 
     /** Presentation follows committed intent, never an individual VERIFY before ledger.save(). */
     private fun checkDebtNotice() {
-        val debt = try {
-            val ledger = store.load()
-            val damaged = store.loadFailed || store.corruptLines.isNotEmpty()
-            // Unlike the UI card, the notice must retain debt even in an active session.
-            DebtRules.isDebt(ledger.entries, damaged, false)
-        } catch (_: Exception) { true }
-        try { NoticeSink.restoresChecked(app, debt) }
-        catch (error: Exception) { diagnosticLogger("Debt notice update failed", error) }
+        updateRuntimeDebtNotice(store::load,
+            { runtimeLedgerDamaged(store.loadFailed) { store.corruptLines.isNotEmpty() } },
+            { debt -> NoticeSink.restoresChecked(app, debt) }, diagnosticLogger)
     }
 
     private fun checkSafetyLocked() {
@@ -583,4 +578,31 @@ internal class ServiceResetQueue(private val lock: Any = Any(), private val post
 object TeardownTimeout {
     @JvmStatic
     fun shouldReport(finished: Boolean): Boolean = !finished
+}
+
+/** Read-only command failure never provides a successful readback. */
+internal fun readRuntimeCommand(control: CommandRunner, command: String): List<String> {
+    return try {
+        val result = control.run(command, 8_000)
+        if (result.ok) result.stdout else emptyList()
+    } catch (_: Exception) { emptyList() }
+}
+
+/** Committed ledger authority; active sessions must not hide restoration debt. */
+internal fun updateRuntimeDebtNotice(
+    load: () -> RestoreLedger,
+    damaged: () -> Boolean,
+    notice: (Boolean) -> Unit,
+    diagnosticLogger: (String, Throwable) -> Unit,
+) {
+    val debt = try {
+        val ledger = load()
+        DebtRules.isDebt(ledger.entries, damaged(), false)
+    } catch (_: Exception) { true }
+    try { notice(debt) }
+    catch (error: Exception) { diagnosticLogger("Debt notice update failed", error) }
+}
+
+internal fun runtimeLedgerDamaged(loadFailed: Boolean, corrupt: () -> Boolean): Boolean {
+    return loadFailed || corrupt()
 }

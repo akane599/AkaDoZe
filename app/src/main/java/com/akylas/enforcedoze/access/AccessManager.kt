@@ -199,16 +199,14 @@ class AccessManager private constructor(context: Context) : com.akylas.enforcedo
         app.checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED,
     )
 
-    private fun publish() = synchronized(lock) {
-        val shizuku = shizukuState
-        val next = when (mode) {
-            Prefs.MODE_SHIZUKU -> resolution.shizuku(shizuku, readGrants(), android.os.Process.myUid(), android.os.SystemClock.elapsedRealtime())
-            Prefs.MODE_ROOT -> resolution.root(readGrants(), android.os.Process.myUid())
-            else -> AccessState(AccessLevel.APP, Reason.NO_ACCESS, readGrants(), android.os.Process.myUid())
-        }
-        if (next != state) {
-            state = next
-            main.post { for (listener in listeners) listener.onAccessChanged(next) }
+    private fun publish() {
+        synchronized(lock) {
+            val shizuku = shizukuState
+            val next = nextPublishedAccess(mode, resolution, shizuku, ::readGrants,
+                { android.os.Process.myUid() }, { android.os.SystemClock.elapsedRealtime() })
+            publishChangedAccess(state, next, { state = it }) { value ->
+                main.post { notifyAccessListeners(listeners, value) }
+            }
         }
     }
 
@@ -321,4 +319,36 @@ class AccessManager private constructor(context: Context) : com.akylas.enforcedo
             instance ?: AccessManager(context).also { instance = it }
         }
     }
+}
+
+/** Lazy inputs preserve the original per-mode grant/uid/clock read order. */
+internal fun nextPublishedAccess(
+    mode: String?,
+    resolution: AccessResolution,
+    shizuku: ShizukuState,
+    grants: () -> Grants,
+    uid: () -> Int,
+    now: () -> Long,
+): AccessState {
+    return when (mode) {
+        Prefs.MODE_SHIZUKU -> resolution.shizuku(shizuku, grants(), uid(), now())
+        Prefs.MODE_ROOT -> resolution.root(grants(), uid())
+        else -> AccessState(AccessLevel.APP, Reason.NO_ACCESS, grants(), uid())
+    }
+}
+
+internal fun publishChangedAccess(
+    current: AccessState,
+    next: AccessState,
+    update: (AccessState) -> Unit,
+    post: (AccessState) -> Unit,
+) {
+    if (next != current) {
+        update(next)
+        post(next)
+    }
+}
+
+internal fun notifyAccessListeners(listeners: Iterable<AccessManager.Listener>, next: AccessState) {
+    for (listener in listeners) listener.onAccessChanged(next)
 }

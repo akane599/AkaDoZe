@@ -63,6 +63,10 @@ public class MyApplication extends android.app.Application {
         }
         // Exact-alarm revocation kills the process without a revoke broadcast. Re-arm only the
         // next boundary on restart; this shared seam never constructs the runtime or starts service.
+        requeryExactAlarmAccess();
+    }
+
+    void requeryExactAlarmAccess() {
         Utils.requeryExactAlarmAccess(MyApplication.context);
     }
 

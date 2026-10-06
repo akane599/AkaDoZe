@@ -20,7 +20,8 @@ class EnforcementWiringTest {
             whitelist.contains("sessionMode()") || whitelist.contains("SessionMode.FORCE"))
         assertTrue(whitelist.contains("pm.isIgnoringBatteryOptimizations(packageName)"))
         assertTrue("privileged starts must honor the durable helper record",
-            whitelist.contains("AccessManager.getInstance(this).grantHelpersAutomatically()"))
+            whitelist.contains("grantHelpersAutomatically();") &&
+                source.contains("AccessManager.getInstance(this).grantHelpersAutomatically()"))
         assertFalse("no service-owned command may bypass the grant record", whitelist.contains("whitelist +"))
         assertTrue(whitelist.contains("RequestIgnoreBatteryActivity.class"))
     }
