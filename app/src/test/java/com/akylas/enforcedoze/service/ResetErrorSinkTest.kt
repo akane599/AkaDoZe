@@ -125,6 +125,28 @@ class ResetErrorSinkTest {
         }
     }
 
+    @Test fun firstDeferredRevokeFailureIsJournaledBeforeRestartDespiteSuccessfulJoinedExit() {
+        val runner = FakeRunner().apply {
+            beforeMutation = { command ->
+                answer(command) {
+                    FakeRunner.result("__AKADOZE_RESET_REVOKE_READ_LOGS=1\n__AKADOZE_RESET_REVOKE_READ_PHONE_STATE=0")
+                }
+            }
+        }
+        set(runtime, "control", runner)
+        var restarted = false
+        runtime.finishReset(listOf(ResetCommandId.REVOKE_READ_LOGS, ResetCommandId.REVOKE_READ_PHONE_STATE), Runnable {
+            val warning = ShadowLog.getLogsForTag("DozeRuntime").single()
+            assertResetWarning(warning.throwable)
+            assertEquals("Deferred reset revoke REVOKE_READ_LOGS failed: exit=1", warning.throwable.message)
+            restarted = true
+        })
+        runNextJob()
+
+        assertTrue(restarted)
+        assertEquals(1, runner.commands.size)
+    }
+
     @Test fun deferredSuccessDoesNotEmitResetFailure() {
         set(runtime, "control", FakeRunner())
         runtime.finishReset(listOf(ResetCommandId.REVOKE_READ_LOGS), Runnable {})
@@ -133,7 +155,7 @@ class ResetErrorSinkTest {
         assertTrue(ShadowLog.getLogsForTag("DozeRuntime").isEmpty())
     }
 
-    private val readLogsRevoke get() = "pm revoke ${app.packageName} android.permission.READ_LOGS"
+    private val readLogsRevoke get() = "pm revoke ${app.packageName} android.permission.READ_LOGS; echo \"__AKADOZE_RESET_REVOKE_READ_LOGS=\$?\""
 
     private fun assertResetWarning(error: Throwable) {
         assertEquals(1, events.count { it.type == EventType.ERROR && it.detail == EventCodes.RESET_FAILED })
