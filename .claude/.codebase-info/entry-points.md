@@ -1,6 +1,6 @@
 # Entry Points
 
-*Last Updated: 2026-10-05*
+*Last Updated: 2026-10-06*
 
 All components are declared in `app/src/main/AndroidManifest.xml`. Classes live in
 `app/src/main/java/com/akylas/enforcedoze/` unless prefixed `ui.`.
@@ -48,8 +48,11 @@ All components are declared in `app/src/main/AndroidManifest.xml`. Classes live 
   parsed boolean/integer value (`Admission.setting`; anything else is `UNVERIFIED_SETTING_VALUE`). Work runs in
   `goAsync` on a bounded queue with a deadline, and trust and capability are re-checked at backend admission.
 - **CHANGE_SETTING.** Only accepts the scalar keys listed by `access/ExternalControlPolicy.kt` (booleans,
-  `dozeEnterDelay` 0..1800). Gates, mode, ledger and access keys are rejected.
-- **Results.** Start/stop/reapply report REQUESTED, not verified Doze. Every call is journaled as `EXTERNAL_CALL`,
+  `dozeEnterDelay` 0..1800). Gates, mode, ledger, access keys and the sensor allow-token pref are rejected as
+  `PROTECTED_SETTING`.
+- **Results.** Start/stop/reapply report REQUESTED, not verified Doze. ENABLE persists the intent only after the start
+  is accepted, and stops that start if the write fails (`PREFERENCE_WRITE_FAILED`). An unexpected receiver failure is
+  journaled as DENIED with `INTERNAL_ERROR`. Every call is journaled as `EXTERNAL_CALL`,
   rate-limited for the journal only by `access/ExternalCallRateLimiter.kt` (10 per action per rolling minute).
   `ui/NoticeSink` posts one notice per gate on the first rejection.
 

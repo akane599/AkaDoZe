@@ -42,18 +42,18 @@
 
 ## Testing
 
-`app/src/test/java/com/akylas/enforcedoze/` has 95 JVM sources with 755 `@Test` methods (JUnit 4.13.2 plus Robolectric 4.16,
+`app/src/test/java/com/akylas/enforcedoze/` has 101 JVM sources with 843 `@Test` methods (JUnit 4.13.2 plus Robolectric 4.16,
 no mocking library):
 
 | Package | Files | Tests |
 |---------|-------|-------|
-| root | 5 | 29 |
-| access | 17 | 86 |
-| doze | 12 | 144 |
+| root | 7 | 46 |
+| access | 17 | 92 |
+| doze | 12 | 151 |
 | doze/parse | 7 | 36 |
-| monitor | 7 | 53 |
-| service | 34 | 296 |
-| ui | 13 | 111 |
+| monitor | 9 | 73 |
+| service | 36 | 323 |
+| ui | 13 | 122 |
 
 The suites use these styles:
 - fake-backed behaviour tests: `FakeRunner` (a `CommandRunner`), `FakeClock` and an in-memory ledger store, in
@@ -69,13 +69,18 @@ The suites use these styles:
     single-command radio guard that keeps maintenance's mid-entry `lost` path unreachable.
 
   A deliberate behaviour change updates the golden in the same commit.
-- `*RobolectricTest` classes cover Android glue on the JVM: `ui/NoticeSinkRobolectricTest`, `ResetReportRobolectricTest`,
-  `SettingsFragmentRobolectricTest`, `ForceDozeServiceRobolectricTest` and `MyApplicationRobolectricTest`. They follow
-  three rules:
+- Robolectric classes cover Android glue on the JVM. Most are named `*RobolectricTest` (root package: ForceDozeService,
+  MyApplication, ExternalControlReceiver, ExactAlarmPermissionReceiver, TestAppState; `ui/`: NoticeSink, ResetReport,
+  SettingsFragment; `monitor/JournalDbRobolectricTest`); `service/ResetErrorSinkTest`, `RestoreWindowDeadlineTest` and
+  `RuntimeDebtNoticeTest` also run under Robolectric. They follow these rules:
   - Use `@Config(application = Application.class)`, so `MyApplication` never builds DozeRuntime or the journal.
-  - Reset the statics you touch in @After: AccessManager, the MyApplication context/runtime, NoticeSink and
-    `ResetReport.TRACKER`. Root-package tests use `TestAppState.reset()`; the ui tests reset their own.
-  - Never spawn su, bind Shizuku or start a real service.
+  - Reset shared state in @After through the one public `TestAppState.reset()`. It removes the AccessManager's Shizuku
+    and preference listeners and pending discovery callbacks before dropping the singleton, then clears the
+    MyApplication context/runtime/lazy journal, NoticeSink and `ResetReport.TRACKER`. It reads AccessManager's
+    private listener fields by name, so renaming them breaks the reset. `TestAppStateRobolectricTest` pins it.
+  - Never spawn su, bind Shizuku or start a real service. A fixture that needs a real AccessManager or DozeRuntime
+    calls `TestAppState.selectNonRootMode` and then `accessWithoutRoot` / `runtimeWithoutRoot`. Those assert Shizuku
+    mode before construction and no pending root probe after it. Nothing else in `app/src/test` constructs them.
 
   SettingsActivity is hosted only in Shizuku mode with no binder, and its key → enabled/visible/summary goldens pin the
   preference wiring. MainActivity isn't hosted, because its `onCreate` starts AccessManager discovery; its glue is cc1

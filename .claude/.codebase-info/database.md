@@ -67,6 +67,9 @@ INDEX events_session(sessionId), events_wall(wallTime)
 ```
 
 - Failures: `insert(event, onFailure)` reports a failed write on the journal thread and still fails the Future.
+- Decoding is tolerant: an unknown persisted enum name in an optional column (`deep`, `light`, `sensor`) reads as null.
+  A row with an unknown `source`, or without exactly one valid `type` / `historyKind`, is skipped, and the skip count is
+  logged (`DozeJournal`). Persisted enum names are wire format (pinned by `PersistedNamesTest`), so append values only.
 - Retention: each write transaction prunes rows older than 14 days and keeps at most 20,000 rows (`JournalDb.MAX_ROWS`,
   `RETENTION_MS`).
 - Migrations: none, since there's no predecessor. An unsupported upgrade throws.

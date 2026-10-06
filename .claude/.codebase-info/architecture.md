@@ -76,17 +76,25 @@ READ_LOGS is never granted, because the grant kills the app.
 | Step | Where | What happens |
 |------|-------|--------------|
 | Screen off | `ForceDozeService.DozeReceiver.onReceive` → `receiveOnWorker` | Bumps the generation at once, journals SCREEN_OFF, `SessionLifecycle` activates an epoch, `scheduleEnter` (delay / lock timeout, temp wakelock) |
-| Admission | `ForceDozeService.admitted` | Active session, SHELL/ROOT, healthy ledger, `serviceEnabled`, due time, screen/schedule/charging/call policy |
+| Admission | `ForceDozeService.admitted` | Active session, APP + DUMP + motion sensors (SENSOR_ONLY) or SHELL/ROOT (FORCE), healthy ledger, `serviceEnabled`, due time, screen/schedule/charging/call policy |
 | Enter | `enterDoze` → `DozeController.enterCore` / `enterGroups` | Reads the original value, **saves the ledger entry before any mutation**, then battery saver → sensor restriction → force-idle. Feature groups (radios, location, biometrics, app suspend, notification block) wait for a verified deep IDLE |
 | Verify | `DozeController.verifyEnter` | Readback is the oracle (sensor mode + allow token, `get deep`). Exit code 0 alone is never success; unknown/OEM output is UNVERIFIED and never retried in a loop |
 | While dozing | `idleChanged` → `DozeController.maintenance` + `WatchdogPolicy.onIdleChanged` | Radios restored/reapplied around maintenance windows; reforce after motion (`keepDozeEnforced`, ≤5 per session, ≥60 s apart). External REAPPLY uses `WatchdogPolicy.onExternalReapply` (same spacing and budget, never cuts maintenance); a generation bump cancels a deferred reforce |
 | Screen on / unlock | `handleScreenOn` → `exitDoze` → `DozeController.exit` | Restores from the ledger, never from current prefs: **sensors → unforce → battery saver → the rest in reverse apply order**. Biometrics are restored at screen-on even when waiting for unlock |
 | Safety | `DozeRuntime.checkSafety` (SafetyNet) | Verifies sensors NORMAL and `mForceIdle=false` when the app owns them; otherwise journals RECOVERY_DEBT. Also runs at startup reconcile and on Main resume |
-| Service stop | `ForceDozeService.onDestroy` | Worker-side time-boxed exit (3.5 s command budget, 4 s main wait; `SessionLifecycle`) with a deadline admission. `TEARDOWN_TIMEOUT` debt is emitted only when the teardown runnable started and didn't finish (`TeardownTimeout`). Entries it doesn't reach stay untouched, and an incomplete exit queues a deadline-free restore-only follow-up under the `forcedoze:restore` 30 s wakelock |
+| Service stop | `ForceDozeService.onDestroy` → `runTeardown` / `finishTeardown` / `awaitTeardown` | Worker-side time-boxed exit (3.5 s command budget, 4 s main wait; `SessionLifecycle`) with a deadline admission. `TEARDOWN_TIMEOUT` debt is emitted whenever the 4 s main wait expires, including while the teardown runnable is still queued behind other worker work (`reportTeardownWait`). A throwing exit journals `TEARDOWN_FAILED`. Entries it doesn't reach stay untouched, and any incomplete or failed exit queues a deadline-free restore-only follow-up under the `forcedoze:restore` 30 s wakelock; `finishTeardown` then records the exit and releases the worker wakelock (a racing release on API 23-27 is tolerated) |
 
 Failed restores stay in the ledger (attempts/debt). RECOVERY_DEBT is announced when an entry first fails or its debt flag
-changes; RESTORE_FAILED is journaled on every pass. After each safety pass the runtime re-reads the ledger (`DozeRuntime.checkDebtNotice`), and
-`NoticeSink.restoresChecked` cancels the debt notification once no debt remains.
+changes; RESTORE_FAILED is journaled on every pass. After each safety pass the runtime re-reads the committed ledger
+(`DozeRuntime.checkDebtNotice` → `updateRuntimeDebtNotice`) into a `ui/DebtRules.LedgerState`:
+- **DEBT**: damaged, unreadable, or any entry attempted or debt-flagged.
+- **CLEAN**: readable and undamaged with no attempted or debt-flagged entries. It need not be empty.
+- **EMPTY**: readable with no entries.
+
+`NoticeSink.restoresChecked(LedgerState)` drops the notified keys that state settles and cancels the debt notification once
+none remain. `RESTORE_WINDOW_STARVED` settles only on EMPTY, because a debt-free ledger can still hold unattempted restore
+intent. UI reads (`NoticeSink.ledgerChecked`, from the access card and Monitor) may suppress in-session debt, so they only
+re-arm keys and never cancel, and `NoticeSink.cancelDebt` refuses while a starved window is recorded.
 
 Wi-Fi, mobile data and Bluetooth can read stale right after airplane mode is restored. Their restore readback then gets a
 bounded settle (`DozeController.settleRadioReadback`):
@@ -111,7 +119,12 @@ debt (`ui/DamagedRecords` → `DozeRuntime.clearRetainedCorruption`).
 - **Restore-only windows.** `DozeRuntime.requestRestoreOnly` runs without a foreground service: a 9 s
   `RestoreOnlyRequest` window under the 30 s `forcedoze:restore` wakelock that reconciles and runs the safety check once
   SHELL/ROOT is ready. The worker job re-checks its remaining budget when it starts; below `MIN_READY_BUDGET_MS` it runs
-  nothing, records no attempts and lets the window finish (arming the continuation). Triggers: boot and package update with the service off (gated by `service/BootRestore.restoreIfPending`: the runtime is
+  nothing, records no attempts and lets the window finish (arming the continuation). The reconcile runs under
+  `DozeRuntime.withDeadline`, so every control command goes through deadline admission
+  (`AccessManager.controlWithDeadline` → `CommandLane.runWithDeadline`). The shared deadline covers both lane queues, and
+  expired work never reaches the backend. Each command's own execution timeout starts when the lane worker dequeues it,
+  still capped by the shared deadline, so a short read doesn't lose its budget waiting behind another command. Entries
+  the window doesn't reach keep their ledger fields and journal nothing. Triggers: boot and package update with the service off (gated by `service/BootRestore.restoreIfPending`: the runtime is
   built only inside its callback; `BootRestorePolicy` admits pending entries, recoverable damage and an unreadable ledger, never
   an empty ledger or unrecoverable damage),
   `requestSafetyCheck` (Main / Monitor / access card resume, mode switch) and the teardown follow-up when access is still unresolved.
@@ -121,7 +134,9 @@ debt (`ui/DamagedRecords` → `DozeRuntime.clearRetainedCorruption`).
   `service/SystemReset` on the worker. While a service is attached, `ServiceResetQueue` holds the reset and posts it right
   after that service's teardown runnable, so teardown never waits behind it. The restore outcome is `SystemReset.restoreOutcome`. `OK` means readback-confirmed; "Reset complete" needs restore COMPLETE and every
   step OK and no deferred step pending ("Reset almost done" otherwise). WRITE_SETTINGS is reset through its app-op (`appops set … default`, readback `appops get`). Revoking READ_PHONE_STATE or READ_LOGS kills the app (`PROCESS_KILLING`). Those revokes are
-deferred until the user taps OK, then sent as one privileged shell (`SystemReset.runDeferred`). Before any helper
+deferred until the user taps OK, then sent as one privileged shell (`SystemReset.runDeferred`). The revokes are
+`;`-joined, and each echoes its own `__AKADOZE_RESET_<ID>=$?` status marker, so a later successful revoke can't hide an
+earlier failure. A marker above 0 is reported as a failure; a missing marker stays UNVERIFIED. Before any helper
 revoke, inline or deferred, the helper's grant-record key is forgotten durably. If that fails, the revoke is skipped. Prefs are never
   cleared there; `ui/ResetReport` clears them, keeping restore-intent keys while debt remains. `SystemReset.runJob` turns a
   throwing job (including an undecodable ledger) into a failed report ("didn't finish… try again") that clears nothing and allows a retry;
