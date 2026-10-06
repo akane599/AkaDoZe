@@ -1,6 +1,18 @@
 package com.akylas.enforcedoze.monitor
 
+import com.akylas.enforcedoze.access.AccessLevel
+import com.akylas.enforcedoze.access.CapabilityResolver
+import com.akylas.enforcedoze.access.CommandCatalog
+import com.akylas.enforcedoze.access.Feature
+import com.akylas.enforcedoze.access.Grants
 import com.akylas.enforcedoze.doze.DeepState
+import com.akylas.enforcedoze.doze.DozeConfig
+import com.akylas.enforcedoze.doze.DozeController
+import com.akylas.enforcedoze.doze.DozeEvent
+import com.akylas.enforcedoze.doze.DozeEventSink
+import com.akylas.enforcedoze.doze.FakeClock
+import com.akylas.enforcedoze.doze.FakeRunner
+import com.akylas.enforcedoze.doze.InMemoryLedgerStore
 import com.akylas.enforcedoze.doze.EventType
 import com.akylas.enforcedoze.doze.LightState
 import com.akylas.enforcedoze.doze.SensorMode
@@ -187,6 +199,167 @@ class SessionAggregatorTest {
         assertEquals(0L, summary.coverageMs.getValue(Coverage.ACTIVE))
         assertTrue(Problem.NEVER_REACHED_DEEP in summary.problems)
         assertTrue(Problem.SENSORS_UNVERIFIED in summary.problems)
+    }
+
+    /** Capture the real controller output through the persisted journal adapter. */
+    private class ControllerJournal {
+        val runner = FakeRunner()
+        val clock = FakeClock(0)
+        val rows = mutableListOf<JournalEvent>()
+        val config = DozeConfig(36, AccessLevel.SHELL, Grants(true, true), restrictSensors = false)
+        val controller = DozeController(
+            runner, CommandCatalog, CapabilityResolver, InMemoryLedgerStore(), clock,
+            DozeEventSink(::record), 36, config.grants,
+        )
+
+        fun record(event: DozeEvent) {
+            rows += JournalEvent.fromDozeEvent(event, 1, clock.elapsed, clock.wallTime(), 10)
+        }
+
+        fun screen(time: Long, type: EventType) {
+            clock.elapsed = time
+            record(DozeEvent(type, type.name))
+        }
+
+        fun enter(restrictSensors: Boolean = false, features: Set<Feature> = emptySet()) {
+            runner.replies("dumpsys deviceidle", "mForceIdle=false", "mForceIdle=false")
+            runner.replies("cmd deviceidle get deep", "IDLE")
+            clock.elapsed = 1_000
+            controller.enter(config.copy(restrictSensors = restrictSensors, features = features),
+                controller.currentGeneration) { true }
+        }
+    }
+
+    @Test fun deferredWifiVerifyKeepsConfirmedDeepIdleInFourRowReproduction() {
+        val journal = ControllerJournal()
+        journal.screen(0, EventType.SCREEN_OFF)
+        journal.enter()
+        journal.runner.replies("cmd deviceidle get deep", "IDLE")
+        journal.runner.replies("settings get global wifi_on", "1", "0")
+        journal.clock.elapsed = 2_000
+        journal.controller.enterGroups(journal.config.copy(features = setOf(Feature.WIFI)),
+            journal.controller.currentGeneration) { true }
+        journal.screen(10_000, EventType.SCREEN_ON)
+        val rows = journal.rows.filter { it.type != EventType.ENTER_STEP }
+        assertEquals(listOf("SCREEN_OFF", "FORCE_DOZE", "WIFI", "SCREEN_ON"), rows.map { it.detail })
+        assertNull(rows[2].deep)
+        assertNull(rows[2].light)
+        assertNull(rows[2].sensor)
+        val summary = SessionAggregator.summarize(rows).single()
+        assertEquals(9_000L, summary.coverageMs.getValue(Coverage.DEEP_IDLE))
+        assertEquals(1_000L, summary.coverageMs.getValue(Coverage.UNKNOWN))
+    }
+
+    @Test fun maintenanceEndWifiReapplyVerifyKeepsObservedDeepIdle() {
+        val journal = ControllerJournal()
+        journal.runner.replies("settings get global wifi_on", "1", "0", "1", "0")
+        journal.screen(0, EventType.SCREEN_OFF)
+        journal.enter(features = setOf(Feature.WIFI))
+        journal.clock.elapsed = 3_000
+        journal.record(DozeEvent(EventType.MAINT_START, EventCodes.MAINT_START,
+            deep = DeepState.IDLE_MAINTENANCE, light = LightState.OVERRIDE))
+        journal.controller.maintenance(true, journal.controller.currentGeneration) { true }
+        journal.clock.elapsed = 5_000
+        journal.record(DozeEvent(EventType.MAINT_END, EventCodes.MAINT_END,
+            deep = DeepState.IDLE, light = LightState.OVERRIDE))
+        journal.clock.elapsed = 5_001
+        journal.controller.maintenance(false, journal.controller.currentGeneration) { true }
+        journal.screen(10_000, EventType.SCREEN_ON)
+        assertEquals("WIFI", journal.rows[journal.rows.lastIndex - 1].detail)
+        val summary = SessionAggregator.summarize(journal.rows).single()
+        assertEquals(7_000L, summary.coverageMs.getValue(Coverage.DEEP_IDLE))
+        assertEquals(2_000L, summary.coverageMs.getValue(Coverage.ACTIVE))
+        assertEquals(1_000L, summary.coverageMs.getValue(Coverage.UNKNOWN))
+        assertEquals(1, summary.maintenanceCount)
+    }
+
+    @Test fun failedSensorRestoreReadbackKeepsScreenOffRestrictedVerdict() {
+        val journal = ControllerJournal()
+        journal.runner.replies("dumpsys sensorservice", "Mode : NORMAL",
+            "Mode : RESTRICTED : com.akylas.enforcedoze", "")
+        journal.screen(0, EventType.SCREEN_OFF)
+        journal.enter(restrictSensors = true)
+        journal.clock.elapsed = 2_000
+        assertFalse(journal.controller.exit().complete)
+        journal.screen(3_000, EventType.SCREEN_ON)
+        val restoreReadback = journal.rows.single { it.type == EventType.VERIFY && it.elapsedRealtime == 2_000L && it.sensor != null }
+        assertEquals(SensorMode.UNVERIFIED, restoreReadback.sensor)
+        assertEquals("MOTION_SENSORS: UNVERIFIED", restoreReadback.detail)
+        assertFalse(journal.rows.any { it.type == EventType.SENSORS_RESTORED })
+        val summary = SessionAggregator.summarize(journal.rows).single()
+        assertEquals(SensorVerification.YES, summary.sensorsRestricted)
+        assertFalse(Problem.SENSORS_UNVERIFIED in summary.problems)
+        assertTrue(Problem.RESTORE_FAILED in summary.problems)
+    }
+
+    @Test fun sensorRestoreRetryReadbacksNeverReplaceEarlierNormalVerdict() {
+        val journal = ControllerJournal()
+        journal.runner.replies("dumpsys sensorservice", "Mode : NORMAL", "Mode : NORMAL",
+            "Mode : RESTRICTED : com.akylas.enforcedoze", "Mode : NORMAL")
+        journal.screen(0, EventType.SCREEN_OFF)
+        journal.enter(restrictSensors = true)
+        journal.clock.elapsed = 2_000
+        assertTrue(journal.controller.exit().complete)
+        journal.screen(3_000, EventType.SCREEN_ON)
+        assertEquals(listOf(SensorMode.RESTRICTED, SensorMode.NORMAL), journal.rows.filter {
+            it.type == EventType.VERIFY && it.elapsedRealtime == 2_000L && it.sensor != null
+        }.map { it.sensor })
+        assertEquals(SensorVerification.NO, SessionAggregator.summarize(journal.rows).single().sensorsRestricted)
+    }
+
+    @Test fun failedSensorRestoreRetryReadbacksKeepEarlierNormalVerdict() {
+        val journal = ControllerJournal()
+        journal.runner.replies("dumpsys sensorservice", "Mode : NORMAL", "Mode : NORMAL",
+            "Mode : RESTRICTED : com.akylas.enforcedoze", "Mode : RESTRICTED : com.akylas.enforcedoze")
+        journal.screen(0, EventType.SCREEN_OFF)
+        journal.enter(restrictSensors = true)
+        journal.clock.elapsed = 2_000
+        assertFalse(journal.controller.exit().complete)
+        journal.screen(3_000, EventType.SCREEN_ON)
+        assertEquals(2, journal.rows.count {
+            it.type == EventType.VERIFY && it.elapsedRealtime == 2_000L && it.sensor == SensorMode.RESTRICTED
+        })
+        assertEquals(SensorVerification.NO, SessionAggregator.summarize(journal.rows).single().sensorsRestricted)
+    }
+
+    @Test fun knownLimitationLateAccessLossAfterSensorRestoreReadbackUnderclaimsRestriction() {
+        val journal = ControllerJournal()
+        journal.runner.replies("dumpsys sensorservice", "Mode : NORMAL",
+            "Mode : RESTRICTED : com.akylas.enforcedoze", "")
+        journal.screen(0, EventType.SCREEN_OFF)
+        journal.enter(restrictSensors = true)
+        journal.clock.elapsed = 2_000
+        journal.runner.afterCommand = { command ->
+            if (command == "dumpsys sensorservice") journal.runner.level = AccessLevel.NONE
+        }
+        assertFalse(journal.controller.exit().complete)
+        journal.screen(3_000, EventType.SCREEN_ON)
+        assertEquals(SensorMode.UNVERIFIED, journal.rows.single {
+            it.type == EventType.VERIFY && it.elapsedRealtime == 2_000L && it.sensor != null
+        }.sensor)
+        assertTrue(journal.rows.any {
+            it.type == EventType.RESTORE_FAILED && it.detail == "MOTION_SENSORS: NO_ACCESS"
+        })
+        // The journal cannot distinguish late access loss from a restore that never read sensors.
+        assertEquals(SensorVerification.UNVERIFIED,
+            SessionAggregator.summarize(journal.rows).single().sensorsRestricted)
+    }
+
+    @Test fun bareForceDozeUnverifiedReadbackClearsEarlierIdleEvidence() {
+        val journal = ControllerJournal()
+        journal.screen(0, EventType.SCREEN_OFF)
+        journal.enter()
+        val replacementRunner = FakeRunner()
+        replacementRunner.replies("dumpsys deviceidle", "")
+        journal.clock.elapsed = 2_000
+        val replacement = DozeController(replacementRunner, CommandCatalog, CapabilityResolver,
+            InMemoryLedgerStore(), journal.clock, DozeEventSink(journal::record), 36, journal.config.grants)
+        replacement.enterCore(journal.config, replacement.currentGeneration) { true }
+        journal.screen(10_000, EventType.SCREEN_ON)
+        assertEquals("FORCE_DOZE: UNVERIFIED", journal.rows[journal.rows.lastIndex - 1].detail)
+        val summary = SessionAggregator.summarize(journal.rows).single()
+        assertEquals(1_000L, summary.coverageMs.getValue(Coverage.DEEP_IDLE))
+        assertEquals(9_000L, summary.coverageMs.getValue(Coverage.UNKNOWN))
     }
 
     @Test fun explicitUnknownReadbackAndAccessLossClearStaleIdleEvidence() {
