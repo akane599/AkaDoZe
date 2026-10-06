@@ -663,12 +663,14 @@ class DozeController @JvmOverloads constructor(
         return command?.let { run(it, timeoutMs) }
     }
 
-    private fun run(command: String, timeoutMs: Long = CommandRunner.DEFAULT_TIMEOUT_MS): CommandResult? = try {
-        control.run(command, timeoutMs)
-    } catch (error: RuntimeException) {
-        diagnosticLogger("Control command failed", error)
-        emit(EventType.ERROR, reason = Reason.UNVERIFIED, detail = EventCodes.CONTROL_RUN_FAILED)
-        null
+    private fun run(command: String, timeoutMs: Long = CommandRunner.DEFAULT_TIMEOUT_MS): CommandResult? {
+        return try {
+            control.run(command, timeoutMs)
+        } catch (error: RuntimeException) {
+            diagnosticLogger("Control command failed", error)
+            emit(EventType.ERROR, reason = Reason.UNVERIFIED, detail = EventCodes.CONTROL_RUN_FAILED)
+            null
+        }
     }
 
     private fun skip(feature: Feature, target: String?, reason: Reason): StepResult {
