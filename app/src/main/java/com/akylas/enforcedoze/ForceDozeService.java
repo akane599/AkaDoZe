@@ -856,13 +856,26 @@ public class ForceDozeService extends Service {
         }
     }
 
+    EnterResult enterCore(DozeConfig config, long generation, kotlin.jvm.functions.Function0<Boolean> admission) {
+        return runtime.getController().enterCore(config, generation, admission);
+    }
+
+    EnterResult enterGroupsSafely(DozeConfig config, long generation, kotlin.jvm.functions.Function0<Boolean> admission,
+                                 String errorDetail) {
+        return runtime.getController().enterGroupsSafely(config, generation, admission, errorDetail);
+    }
+
+    EnterResult maintenance(boolean restore, long generation, kotlin.jvm.functions.Function0<Boolean> admission) {
+        return runtime.getController().maintenance(restore, generation, admission);
+    }
+
     private EnterResult enterCoreForMode(boolean sensors, long generation, SessionMode mode) {
         DozeConfig core = new DozeConfig(Build.VERSION.SDK_INT, runtime.getAccess().getLevel(), runtime.grants(),
                 sensors, runtime.getAllowToken(), getDefaultSharedPreferences(this).getBoolean(Prefs.TURN_ON_BATTERY_SAVER, false),
                 java.util.Collections.emptySet(), java.util.Collections.emptySet(), java.util.Collections.emptySet(),
                 true, null, mode);
         if (mode == SessionMode.FORCE) runtime.getWatchdog().recordEnter();
-        return runtime.getController().enterCore(core, generation, () -> admitted() && sessionMode() == mode);
+        return enterCore(core, generation, () -> admitted() && sessionMode() == mode);
     }
 
     private boolean enterWasCancelled(EnterResult result, long generation) {
@@ -894,11 +907,20 @@ public class ForceDozeService extends Service {
         else completion.complete(true);
     }
 
+    NotificationService musicListener() {
+        return NotificationService.Companion.getInstance();
+    }
+
+    void requestPlayingPackage(NotificationService listener, kotlin.jvm.functions.Function1<String, kotlin.Unit> onPackage,
+                               kotlin.jvm.functions.Function1<Exception, kotlin.Unit> onError) {
+        listener.getPlayingPackageName(onPackage, onError);
+    }
+
     private void requestMusicSelection(DeferredFeatureSelection selection) {
         try {
-            NotificationService listener = NotificationService.Companion.getInstance();
+            NotificationService listener = musicListener();
             if (listener != null) {
-                listener.getPlayingPackageName(pkg -> {
+                requestPlayingPackage(listener, pkg -> {
                     postWork(() -> completeMusicPackage(selection, pkg));
                     return null;
                 }, error -> {
@@ -936,7 +958,7 @@ public class ForceDozeService extends Service {
         if (!forceAdmitted() || generation != runtime.getController().getCurrentGeneration()) return null;
         try {
             selectedGroups = config(false, playingMusic);
-            return runtime.getController().enterGroupsSafely(selectedGroups, generation, this::forceAdmitted,
+            return enterGroupsSafely(selectedGroups, generation, this::forceAdmitted,
                     EventCodes.FEATURE_SELECTION_FAILED);
         } catch (Exception error) {
             Log.w(TAG, "Feature selection failed", error);
@@ -1158,12 +1180,12 @@ public class ForceDozeService extends Service {
         if (Boolean.TRUE.equals(maintenanceReading) && !maintenance) {
             runtime.getJournal().emit(new DozeEvent(EventType.MAINT_START, EventCodes.MAINT_START, reading.getDeep(), reading.getLight()));
             recordMaintenanceStats("EXIT_MAINTENANCE");
-            runtime.getController().maintenance(true, runtime.getController().getCurrentGeneration(), this::forceAdmitted);
+            maintenance(true, runtime.getController().getCurrentGeneration(), this::forceAdmitted);
             maintenance = true;
         } else if (Boolean.FALSE.equals(maintenanceReading) && maintenance) {
             runtime.getJournal().emit(new DozeEvent(EventType.MAINT_END, EventCodes.MAINT_END, reading.getDeep(), reading.getLight()));
             recordMaintenanceStats("ENTER_MAINTENANCE");
-            runtime.getController().maintenance(false, runtime.getController().getCurrentGeneration(), this::forceAdmitted);
+            maintenance(false, runtime.getController().getCurrentGeneration(), this::forceAdmitted);
             maintenance = false;
         }
     }
@@ -1183,7 +1205,7 @@ public class ForceDozeService extends Service {
     }
 
     private void reenterSelectedGroups() {
-        if (selectedGroups != null) runtime.getController().enterGroupsSafely(selectedGroups,
+        if (selectedGroups != null) enterGroupsSafely(selectedGroups,
                 runtime.getController().getCurrentGeneration(), this::forceAdmitted, EventCodes.FEATURE_SELECTION_FAILED);
     }
 
@@ -1218,12 +1240,16 @@ public class ForceDozeService extends Service {
         runtime.getJournal().emit(new DozeEvent(EventType.REFORCE, EventCodes.REFORCE));
         DozeConfig force = new DozeConfig(Build.VERSION.SDK_INT, runtime.getAccess().getLevel(), runtime.grants(),
                 false, runtime.getAllowToken(), false);
-        runtime.getController().enterCore(force, generation, this::forceAdmitted);
+        enterCore(force, generation, this::forceAdmitted);
         if (generation != runtime.getController().getCurrentGeneration() || !forceAdmitted()) return;
+        completeForceOnly(generation);
+    }
+
+    private void completeForceOnly(long generation) {
         boolean firstVerified = !verifiedIdleSeen;
         recordVerifiedEnter();
         if (firstVerified && verifiedIdleSeen && selectedGroups != null) {
-            runtime.getController().enterGroupsSafely(selectedGroups, generation, this::forceAdmitted, EventCodes.REFORCE_FAILED);
+            enterGroupsSafely(selectedGroups, generation, this::forceAdmitted, EventCodes.REFORCE_FAILED);
         }
     }
 

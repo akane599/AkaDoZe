@@ -11,7 +11,6 @@ import com.akylas.enforcedoze.access.*;
 import com.akylas.enforcedoze.doze.*;
 import com.akylas.enforcedoze.monitor.EventCodes;
 import com.akylas.enforcedoze.service.*;
-import java.lang.ref.WeakReference;
 import java.lang.reflect.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
@@ -22,30 +21,41 @@ import org.junit.*;
 import org.junit.runner.RunWith;
 import org.robolectric.*;
 import org.robolectric.annotation.*;
-import org.robolectric.shadow.api.Shadow;
 import static org.junit.Assert.*;
 import static org.robolectric.Shadows.shadowOf;
 
 /** Service-boundary goldens. No onCreate, host shell, root probe, or controller replacement. */
 @RunWith(RobolectricTestRunner.class)
-@Config(application = Application.class, sdk = 28,
-        shadows = {ForceDozeServiceEnterRobolectricTest.ControllerShadow.class,
-                ForceDozeServiceEnterRobolectricTest.ListenerShadow.class},
-        instrumentedPackages = {"com.akylas.enforcedoze.doze.DozeController", "com.akylas.enforcedoze.NotificationService"})
+@Config(application = Application.class, sdk = 28)
 @LooperMode(LooperMode.Mode.PAUSED)
 public class ForceDozeServiceEnterRobolectricTest {
     public static class RecordingService extends ForceDozeService {
         RuntimeException statsError;
+        final ControllerCalls controller = new ControllerCalls();
+        @Override EnterResult enterCore(DozeConfig config, long generation, Function0<Boolean> admission) {
+            return controller.enterCore(config, generation, admission);
+        }
+        @Override EnterResult enterGroupsSafely(DozeConfig config, long generation, Function0<Boolean> admission, String code) {
+            return controller.enterGroupsSafely(config, generation, admission, code);
+        }
+        @Override EnterResult maintenance(boolean restore, long generation, Function0<Boolean> admission) {
+            return controller.maintenance(restore, generation, admission);
+        }
+        NotificationService listener;
+        final ListenerCallbacks listenerCallbacks = new ListenerCallbacks();
+        @Override NotificationService musicListener() { return listener; }
+        @Override void requestPlayingPackage(NotificationService listener, Function1<String, Unit> onPackage,
+                                             Function1<Exception, Unit> onError) {
+            listenerCallbacks.getPlayingPackageName(onPackage, onError);
+        }
         @Override public void saveDozeDataStats() {
             if (statsError != null) throw statsError;
             super.saveDozeDataStats();
         }
     }
 
-    // Observe the service's calls and supplied generations/admission without retesting engine steps.
-    // Unshadowed controller methods (including its generation) still run real code.
-    @Implements(value = DozeController.class, isInAndroidSdk = false)
-    public static class ControllerShadow {
+    // Observe service adapters without transforming controller bytes; generation remains real.
+    public static class ControllerCalls {
         final List<String> calls = new ArrayList<>();
         List<String> trace;
         private void record(String call) { calls.add(call); trace.add(call); }
@@ -53,29 +63,28 @@ public class ForceDozeServiceEnterRobolectricTest {
         EnterResult groups = completed();
         Runnable afterCore = () -> { };
         RuntimeException coreError;
-        @Implementation protected EnterResult enterCore(DozeConfig config, long generation, Function0<Boolean> admission) {
+        EnterResult enterCore(DozeConfig config, long generation, Function0<Boolean> admission) {
             record("core:" + generation + ":" + config.getMode() + ":" + admission.invoke());
             if (coreError != null) throw coreError;
             afterCore.run();
             return core;
         }
-        @Implementation protected EnterResult enterGroupsSafely(DozeConfig config, long generation,
+        EnterResult enterGroupsSafely(DozeConfig config, long generation,
                 Function0<Boolean> admission, String code) {
             record("groups:" + generation + ":" + admission.invoke() + ":" + code);
             return groups;
         }
-        @Implementation protected EnterResult maintenance(boolean restore, long generation, Function0<Boolean> admission) {
+        EnterResult maintenance(boolean restore, long generation, Function0<Boolean> admission) {
             record("maintenance:" + restore + ":" + generation + ":" + admission.invoke());
             return completed();
         }
     }
 
-    @Implements(value = NotificationService.class, isInAndroidSdk = false)
-    public static class ListenerShadow {
+    public static class ListenerCallbacks {
         Function1<String, Unit> selected;
         Function1<Exception, Unit> failed;
         RuntimeException requestError;
-        @Implementation protected void getPlayingPackageName(Function1<String, Unit> selected, Function1<Exception, Unit> failed) {
+        void getPlayingPackageName(Function1<String, Unit> selected, Function1<Exception, Unit> failed) {
             this.selected = selected;
             this.failed = failed;
             if (requestError != null) throw requestError;
@@ -84,7 +93,7 @@ public class ForceDozeServiceEnterRobolectricTest {
 
     private RecordingService service;
     private DozeRuntime runtime;
-    private ControllerShadow controller;
+    private ControllerCalls controller;
     private SharedPreferences prefs;
     private final List<String> trace = new ArrayList<>();
     private final List<String> events = new ArrayList<>();
@@ -134,14 +143,13 @@ public class ForceDozeServiceEnterRobolectricTest {
                         Collections.emptyList(), 0, false);
             }
         });
-        controller = Shadow.extract(runtime.getController());
+        controller = service.controller;
         controller.trace = trace;
         events.clear();
         trace.clear();
     }
 
     @After public void tearDown() throws Exception {
-        put(NotificationService.class, "instance", null);
         ((Handler) field(service, "worker")).removeCallbacksAndMessages(null);
         TestAppState.reset();
         prefs.edit().clear().commit();
@@ -174,11 +182,10 @@ public class ForceDozeServiceEnterRobolectricTest {
     private void reapply(long generation, long epoch) throws Exception {
         invoke("reapplyEnter", new Class<?>[]{long.class, long.class}, generation, epoch);
     }
-    private ListenerShadow listener() throws Exception {
+    private ListenerCallbacks listener() throws Exception {
         service.whitelistMusicAppNetwork = true;
-        NotificationService listener = Robolectric.buildService(NotificationService.class).get();
-        put(NotificationService.class, "instance", new WeakReference<>(listener));
-        return Shadow.extract(listener);
+        service.listener = new NotificationService();
+        return service.listenerCallbacks;
     }
     private void callbacks() { shadowOf(Looper.getMainLooper()).idle(); }
     private Runnable timeout() { return (Runnable) field(service, "selectionTimeout"); }
@@ -301,7 +308,7 @@ public class ForceDozeServiceEnterRobolectricTest {
         assertSelection(true);
     }
     @Test public void musicPackageCallbackCompletesOnceAndCancelsTimeout() throws Exception {
-        ListenerShadow listener = listener();
+        ListenerCallbacks listener = listener();
         enter(0);
         assertTrue(completions.isEmpty());
         listener.selected.invoke("music.pkg");
@@ -335,7 +342,7 @@ public class ForceDozeServiceEnterRobolectricTest {
         assertNull(field(service, "selectedGroups"));
     }
     @Test public void listenerErrorCompletesThenJournalsOnlyOnce() throws Exception {
-        ListenerShadow listener = listener();
+        ListenerCallbacks listener = listener();
         enter(0);
         listener.failed.invoke(new IllegalStateException("listener failed"));
         callbacks();
@@ -345,7 +352,7 @@ public class ForceDozeServiceEnterRobolectricTest {
         assertEvents("ERROR:" + EventCodes.MUSIC_SELECTION_FAILED);
     }
     @Test public void packageCompletionExceptionJournalsWithoutRepeatingCompletion() throws Exception {
-        ListenerShadow listener = listener();
+        ListenerCallbacks listener = listener();
         completionError = new IllegalStateException("completion failed");
         enter(0);
         listener.selected.invoke(null);
@@ -354,7 +361,7 @@ public class ForceDozeServiceEnterRobolectricTest {
         assertEvents("ERROR:" + EventCodes.MUSIC_SELECTION_FAILED);
     }
     @Test public void listenerRequestExceptionJournalsBeforeFallbackCompletion() throws Exception {
-        ListenerShadow listener = listener();
+        ListenerCallbacks listener = listener();
         listener.requestError = new IllegalStateException("request failed");
         enter(0);
         assertEquals(Arrays.asList("core:0:FORCE:true", "event:ERROR:" + EventCodes.MUSIC_SELECTION_FAILED,
@@ -502,7 +509,7 @@ public class ForceDozeServiceEnterRobolectricTest {
         assertTrue(service.dozeUsageData.isEmpty());
     }
     @Test public void replacementEnterCancelsPreviousMusicSelection() throws Exception {
-        ListenerShadow listener = listener();
+        ListenerCallbacks listener = listener();
         enter(0);
         Function1<String, Unit> oldCallback = listener.selected;
         Runnable oldTimeout = timeout();
@@ -519,7 +526,7 @@ public class ForceDozeServiceEnterRobolectricTest {
         assertCalls("core:0:FORCE:true", "core:0:FORCE:true", "groups:0:true:" + EventCodes.FEATURE_SELECTION_FAILED);
     }
     @Test public void outerMusicFallbackCompletionExceptionStillEscapes() throws Exception {
-        ListenerShadow listener = listener();
+        ListenerCallbacks listener = listener();
         listener.requestError = new IllegalStateException("request failed");
         completionError = new IllegalStateException("fallback failed");
         assertSame(completionError, assertThrows(RuntimeException.class, () -> enter(0)));
@@ -527,7 +534,7 @@ public class ForceDozeServiceEnterRobolectricTest {
         assertEvents("ERROR:" + EventCodes.MUSIC_SELECTION_FAILED);
     }
     @Test public void listenerErrorCompletionExceptionStillEscapesWorkerCallback() throws Exception {
-        ListenerShadow listener = listener();
+        ListenerCallbacks listener = listener();
         completionError = new IllegalStateException("error callback completion failed");
         enter(0);
         listener.failed.invoke(new IllegalStateException("listener failed"));
@@ -545,7 +552,7 @@ public class ForceDozeServiceEnterRobolectricTest {
         assertNull(field(service, "pendingEnter"));
     }
     @Test public void reapplyCompletionIsOneShotEvenWhenTimeoutFiresAfterSuccess() throws Exception {
-        ListenerShadow listener = listener();
+        ListenerCallbacks listener = listener();
         reapply(0, 0);
         Runnable oldTimeout = timeout();
         PowerManager.WakeLock lock = service.tempWakeLock;
@@ -645,13 +652,13 @@ public class ForceDozeServiceEnterRobolectricTest {
         assertWarnOriginal(completionError);
     }
     @Test public void logsMusicRequestFailureOriginalThrowableAtWarn() throws Exception {
-        ListenerShadow listener = listener();
+        ListenerCallbacks listener = listener();
         listener.requestError = new IllegalStateException("request failed");
         enter(0);
         assertWarnOriginal(listener.requestError);
     }
     @Test public void logsListenerErrorOriginalThrowableAtWarn() throws Exception {
-        ListenerShadow listener = listener();
+        ListenerCallbacks listener = listener();
         Exception error = new IllegalStateException("listener failed");
         enter(0);
         listener.failed.invoke(error);
