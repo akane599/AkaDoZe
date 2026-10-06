@@ -154,5 +154,6 @@ public final class DebtRules {
     /** Runtime debts a clean ledger read disproves (MonitorData.checkDebt fails closed on load errors). */
     private static final Set<String> LEDGER_KEYS = new HashSet<>(Arrays.asList(
             EventCodes.TEARDOWN_TIMEOUT, EventCodes.LEDGER_DAMAGED, EventCodes.SAFETY_READ_UNAVAILABLE,
-            EventCodes.LEDGER_LOAD_FAILED, EventCodes.LEDGER_RECOVERY_COMMIT_FAILED));
+            EventCodes.LEDGER_LOAD_FAILED, EventCodes.LEDGER_RECOVERY_COMMIT_FAILED,
+            EventCodes.RESTORE_WINDOW_STARVED));
 }

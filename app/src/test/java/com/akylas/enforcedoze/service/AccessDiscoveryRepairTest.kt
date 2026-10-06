@@ -255,6 +255,7 @@ class AccessDiscoveryRepairTest {
 
     @Test fun followUpBelowMinimumBudgetSkipsWithoutDispatching() {
         val fixture = WindowFixture()
+        fixture.pending = true
         val jobs = mutableListOf<() -> Unit>()
         fixture.postRestore = { jobs += it }
         fixture.start(allowContinuation = false)
@@ -272,6 +273,7 @@ class AccessDiscoveryRepairTest {
 
     @Test fun queuedFollowUpBelowMinimumBudgetDoesNotArmAnotherContinuation() {
         val fixture = WindowFixture()
+        fixture.pending = true
         val jobs = mutableListOf<() -> Unit>()
         fixture.postRestore = { jobs += it }
         fixture.access.state = fixture.access.state.copy(resolved = true, level = AccessLevel.SHELL)
@@ -479,6 +481,7 @@ class AccessDiscoveryRepairTest {
         var retries = 0
         var debts = 0
         var skips = 0
+        var pending = false
         var restores = 0
         val restoreBudgets = mutableListOf<Long>()
         var duringRestore: () -> Unit = {}
@@ -495,7 +498,7 @@ class AccessDiscoveryRepairTest {
             }, { action -> postRestore(action) }, { deadline ->
                 restores++; restoreBudgets += deadline - now; duringRestore()
             },
-                { finished++ }, if (allowContinuation) continuation else null, { skips++ }).start()
+                { finished++ }, if (allowContinuation) continuation else null, { skips++ }, { pending }).start()
         }
     }
 }
