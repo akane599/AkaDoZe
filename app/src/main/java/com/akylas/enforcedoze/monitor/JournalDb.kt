@@ -6,6 +6,7 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.provider.Settings
+import android.util.Log
 import com.akylas.enforcedoze.doze.DeepState
 import com.akylas.enforcedoze.doze.EventType
 import com.akylas.enforcedoze.doze.LightState
@@ -139,28 +140,47 @@ class JournalDb(context: Context) : SQLiteOpenHelper(context.applicationContext,
         db.execSQL("DELETE FROM events WHERE id IN (SELECT id FROM events ORDER BY wallTime DESC, id DESC LIMIT -1 OFFSET $MAX_ROWS)")
     }
 
-    private fun read(cursor: Cursor): List<JournalEvent> = buildList {
+    private fun read(cursor: Cursor): List<JournalEvent> {
+        val rows = mutableListOf<JournalEvent>()
+        var skipped = 0
         while (cursor.moveToNext()) {
-            add(
-                JournalEvent(
-                    bootId = cursor.getInt(cursor.getColumnIndexOrThrow("bootId")),
-                    elapsedRealtime = cursor.getLong(cursor.getColumnIndexOrThrow("elapsedRealtime")),
-                    wallTime = cursor.getLong(cursor.getColumnIndexOrThrow("wallTime")),
-                    sessionId = cursor.getLong(cursor.getColumnIndexOrThrow("sessionId")),
-                    source = Source.valueOf(cursor.getString(cursor.getColumnIndexOrThrow("source"))),
-                    type = cursor.text("type")?.let { EventType.valueOf(it) },
-                    deep = cursor.text("deep")?.let { DeepState.valueOf(it) },
-                    light = cursor.text("light")?.let { LightState.valueOf(it) },
-                    sensor = cursor.text("sensor")?.let { SensorMode.valueOf(it) },
-                    battery = cursor.text("battery")?.toInt(),
-                    charging = cursor.text("charging")?.let { it == "1" },
-                    detail = cursor.text("detail"),
-                    id = cursor.getLong(cursor.getColumnIndexOrThrow("id")),
-                    historyKind = cursor.text("historyKind")?.let { HistoryKind.valueOf(it) },
-                    historyTruncated = cursor.getInt(cursor.getColumnIndexOrThrow("historyTruncated")) == 1,
-                ),
-            )
+            val row = readRow(cursor)
+            if (row == null) skipped++ else rows.add(row)
         }
+        if (skipped > 0) {
+            Log.w("DozeJournal", "Skipped $skipped journal rows with unknown source or invalid event kind")
+        }
+        return rows
+    }
+
+    private fun readRow(cursor: Cursor): JournalEvent? {
+        val source = readEnum(cursor,"source", Source.entries) ?: return null
+        val type = readEnum(cursor,"type", EventType.entries)
+        val historyKind = readEnum(cursor,"historyKind", HistoryKind.entries)
+        // Preserve JournalEvent's exactly-one-kind invariant after tolerant wire decoding.
+        if ((type != null) == (historyKind != null)) return null
+        return JournalEvent(
+            bootId = cursor.getInt(cursor.getColumnIndexOrThrow("bootId")),
+            elapsedRealtime = cursor.getLong(cursor.getColumnIndexOrThrow("elapsedRealtime")),
+            wallTime = cursor.getLong(cursor.getColumnIndexOrThrow("wallTime")),
+            sessionId = cursor.getLong(cursor.getColumnIndexOrThrow("sessionId")),
+            source = source,
+            type = type,
+            deep = readEnum(cursor,"deep", DeepState.entries),
+            light = readEnum(cursor,"light", LightState.entries),
+            sensor = readEnum(cursor,"sensor", SensorMode.entries),
+            battery = cursor.text("battery")?.toInt(),
+            charging = cursor.text("charging")?.let { it == "1" },
+            detail = cursor.text("detail"),
+            id = cursor.getLong(cursor.getColumnIndexOrThrow("id")),
+            historyKind = historyKind,
+            historyTruncated = cursor.getInt(cursor.getColumnIndexOrThrow("historyTruncated")) == 1,
+        )
+    }
+
+    private fun <T : Enum<T>> readEnum(cursor: Cursor, column: String, values: List<T>): T? {
+        val name = cursor.text(column)
+        return values.firstOrNull { it.name == name }
     }
 
     private fun Cursor.text(column: String): String? {
