@@ -590,6 +590,7 @@ public class ForceDozeService extends Service {
         try {
             enterDoze(disableMotionSensors, generation, completion);
         } catch (Exception error) {
+            Log.w(TAG, "External reapply failed", error);
             runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.EXTERNAL_REAPPLY_FAILED));
             completion.complete(true);
         }
@@ -880,6 +881,7 @@ public class ForceDozeService extends Service {
             recordVerifiedEnter();
             return coreRetryNeeded;
         } catch (Exception error) {
+            Log.w(TAG, "Doze enter failed", error);
             runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.ENTER_FAILED));
             completion.complete(true);
             return null;
@@ -940,6 +942,7 @@ public class ForceDozeService extends Service {
             selection.noListener(runtime.getJournal());
             if (selectionTimeout != null) worker.removeCallbacks(selectionTimeout);
         } catch (Exception error) {
+            Log.w(TAG, "Music selection failed", error);
             runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.MUSIC_SELECTION_FAILED));
             selection.complete(null);
         }
@@ -949,12 +952,14 @@ public class ForceDozeService extends Service {
         try {
             if (selection.complete(pkg != null) && selectionTimeout != null) worker.removeCallbacks(selectionTimeout);
         } catch (Exception error) {
+            Log.w(TAG, "Music selection failed", error);
             runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.MUSIC_SELECTION_FAILED));
         }
     }
 
     private void completeMusicError(DeferredFeatureSelection selection, Exception error) {
         if (selection.complete(null)) {
+            Log.w(TAG, "Music selection failed", error);
             runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.MUSIC_SELECTION_FAILED));
         }
     }
@@ -1234,6 +1239,7 @@ public class ForceDozeService extends Service {
         try {
             forceOnly(generation);
         } catch (Exception error) {
+            Log.w(TAG, "Doze reforce failed", error);
             runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.REFORCE_FAILED));
         }
     }

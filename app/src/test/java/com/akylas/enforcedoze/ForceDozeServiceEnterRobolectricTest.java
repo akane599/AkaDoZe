@@ -627,4 +627,40 @@ public class ForceDozeServiceEnterRobolectricTest {
         assertEvents("IDLE_CHANGED:" + EventCodes.IDLE_CHANGED, "REFORCE:" + EventCodes.REFORCE,
                 "IDLE_CHANGED:" + EventCodes.IDLE_CHANGED);
     }
+
+    private void assertWarnOriginal(Throwable error) {
+        assertTrue("WARN retains the exact throwable", org.robolectric.shadows.ShadowLog.getLogsForTag("ForceDozeService")
+                .stream().anyMatch(log -> log.type == android.util.Log.WARN && log.throwable == error));
+    }
+    @Test public void logsCoreFailureOriginalThrowableAtWarn() throws Exception {
+        coreExceptionJournalsAndCompletesRetry();
+        assertWarnOriginal(controller.coreError);
+    }
+    @Test public void logsReforceFailureOriginalThrowableAtWarn() throws Exception {
+        reforceExceptionIsCaughtAfterReforceJournal();
+        assertWarnOriginal(controller.coreError);
+    }
+    @Test public void logsPackageCallbackFailureOriginalThrowableAtWarn() throws Exception {
+        packageCompletionExceptionJournalsWithoutRepeatingCompletion();
+        assertWarnOriginal(completionError);
+    }
+    @Test public void logsMusicRequestFailureOriginalThrowableAtWarn() throws Exception {
+        ListenerShadow listener = listener();
+        listener.requestError = new IllegalStateException("request failed");
+        enter(0);
+        assertWarnOriginal(listener.requestError);
+    }
+    @Test public void logsListenerErrorOriginalThrowableAtWarn() throws Exception {
+        ListenerShadow listener = listener();
+        Exception error = new IllegalStateException("listener failed");
+        enter(0);
+        listener.failed.invoke(error);
+        callbacks();
+        assertWarnOriginal(error);
+    }
+    @Test public void logsExternalReapplyFailureOriginalThrowableAtWarn() throws Exception {
+        RuntimeException error = failGrants();
+        assertSame(error, assertThrows(RuntimeException.class, () -> reapply(0, 0)));
+        assertWarnOriginal(error);
+    }
 }
