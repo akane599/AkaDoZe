@@ -20,17 +20,17 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Robolectric's SDK 36 runtime needs JDK 21; the app itself still targets Java 17 bytecode.
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: 'temurin'
           java-version: 21
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # Same tasks as the local full gate. Release is debug-signed here: no RELEASE_KEYSTORE secrets are passed.
       - name: Run the gate
@@ -38,7 +38,7 @@ jobs:
 
       - name: Upload test and lint reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: reports
           path: |
@@ -47,7 +47,7 @@ jobs:
           retention-days: 7
 
       - name: Upload APKs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: apks-${{ github.sha }}
           path: |
