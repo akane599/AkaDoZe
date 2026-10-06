@@ -292,10 +292,7 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
         bumpGeneration()
         resets.resetSystemState(Runnable {
             try {
-                val onError: (Throwable) -> Unit = { error ->
-                    diagnosticLogger("System reset failed", error)
-                    journal.emit(DozeEvent(EventType.ERROR, EventCodes.RESET_FAILED))
-                }
+                val onError: (Throwable) -> Unit = ::recordResetError
                 val result = SystemReset.runJob({
                     deactivateSession()
                     session.recordExit()
@@ -330,10 +327,16 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
             try {
                 try {
                     SystemReset.runDeferred(control, Build.VERSION.SDK_INT, app.packageName, deferred,
+                        onError = ::recordResetError,
                         forgetHelpers = access::forgetHelpers)
                 } finally { restart.run() }
             } finally { quitIfDetached() }
         })
+    }
+
+    private fun recordResetError(error: Throwable) {
+        diagnosticLogger("System reset failed", error)
+        journal.emit(DozeEvent(EventType.ERROR, EventCodes.RESET_FAILED))
     }
 
     fun hasPendingRestore(): Boolean = try {

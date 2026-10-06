@@ -83,13 +83,16 @@ object SystemReset {
         val (deferred, now) = commands(apiLevel, pkg).partition { (id, command) ->
             // Not granted: Android skips the revoke without killing, so it runs (and is checked) in place.
             sessions && id in PROCESS_KILLING &&
-                (try { permissionGranted(command.substringAfterLast(' ')) } catch (_: Exception) { null }) != false
+                (try { permissionGranted(command.substringAfterLast(' ')) } catch (error: Exception) {
+                    onError(error)
+                    null
+                }) != false
         }
         val results = now.map { (id, command) ->
             val outcome = when {
                 !sessions -> ResetCommandOutcome.UNVERIFIED
-                !forgetBeforeRevoke(id, forgetHelpers) -> ResetCommandOutcome.FAILED
-                else -> runInline(control, apiLevel, pkg, id, command, permissionGranted)
+                !forgetBeforeRevoke(id, forgetHelpers, onError) -> ResetCommandOutcome.FAILED
+                else -> runInline(control, apiLevel, pkg, id, command, permissionGranted, onError)
             }
             ResetCommandResult(id, outcome)
         }
@@ -100,14 +103,16 @@ object SystemReset {
     /**
      * doze-worker only, after the user confirmed the reported result. Durably forget matching helpers
      * again here: a service start may have re-recorded them since the report's preference clear.
-     * Submit eligible revokes together: the shell can finish even if the first revoke kills this app.
-     * Use ';', not '&&', so a failed revoke cannot skip the rest. No deferred step is readback-confirmed.
+     * Submit eligible revokes as one ';'-joined command so a failed revoke does not skip the rest.
+     * Completion after this process is killed is backend-dependent and unverified on Shizuku devices.
+     * No deferred step is readback-confirmed.
      */
     fun runDeferred(
         control: CommandRunner,
         apiLevel: Int,
         packageName: String,
         deferred: List<ResetCommandId>,
+        onError: (Throwable) -> Unit = {},
         forgetHelpers: (Set<String>) -> Boolean,
     ): List<ResetCommandResult> {
         val pkg = PackageNames.requireValid(packageName)
@@ -116,15 +121,24 @@ object SystemReset {
             return selected.map { ResetCommandResult(it.first, ResetCommandOutcome.UNVERIFIED) }
         }
         val results = selected.map { (id, _) ->
-            ResetCommandResult(id, if (forgetBeforeRevoke(id, forgetHelpers))
+            ResetCommandResult(id, if (forgetBeforeRevoke(id, forgetHelpers, onError))
                 ResetCommandOutcome.UNVERIFIED else ResetCommandOutcome.FAILED)
         }
         val command = selected.filterIndexed { index, _ -> results[index].outcome != ResetCommandOutcome.FAILED }
             .joinToString("; ") { it.second }
-        if (command.isNotEmpty()) {
-            try { control.run(command) } catch (_: Exception) {}
-        }
+        if (command.isNotEmpty()) submitDeferred(control, command, onError)
         return results
+    }
+
+    private fun submitDeferred(control: CommandRunner, command: String, onError: (Throwable) -> Unit) {
+        try {
+            val result = control.run(command)
+            if (result.timedOut || !result.ok) {
+                onError(IllegalStateException("Deferred reset revoke failed: exit=${result.exitCode}, timedOut=${result.timedOut}"))
+            }
+        } catch (error: Exception) {
+            onError(error)
+        }
     }
 
     /** Only reset permissions that are also automatic GrantCommands helpers have a record key. */
@@ -134,9 +148,18 @@ object SystemReset {
         ResetCommandId.REVOKE_READ_PHONE_STATE to "READ_PHONE_STATE",
     )
 
-    private fun forgetBeforeRevoke(id: ResetCommandId, forgetHelpers: (Set<String>) -> Boolean): Boolean {
+    private fun forgetBeforeRevoke(
+        id: ResetCommandId,
+        forgetHelpers: (Set<String>) -> Boolean,
+        onError: (Throwable) -> Unit,
+    ): Boolean {
         val key = helperKeys[id] ?: return true
-        return try { forgetHelpers(setOf(key)) } catch (_: Exception) { false }
+        val forgotten = try { forgetHelpers(setOf(key)) } catch (error: Exception) {
+            onError(error)
+            return false
+        }
+        if (!forgotten) onError(IllegalStateException("Could not forget reset helper $key before revoke"))
+        return forgotten
     }
 
     private fun runInline(
@@ -146,15 +169,19 @@ object SystemReset {
         id: ResetCommandId,
         command: String,
         permissionGranted: (String) -> Boolean?,
+        onError: (Throwable) -> Unit,
     ): ResetCommandOutcome = try {
         val result = control.run(command)
         when {
             result.timedOut -> ResetCommandOutcome.TIMEOUT
-            result.ok -> readback(control, apiLevel, pkg, id, command, permissionGranted)
+            result.ok -> readback(control, apiLevel, pkg, id, command, permissionGranted, onError)
             result.exitCode < 0 -> ResetCommandOutcome.UNVERIFIED
             else -> ResetCommandOutcome.FAILED
         }
-    } catch (_: Exception) { ResetCommandOutcome.UNVERIFIED }
+    } catch (error: Exception) {
+        onError(error)
+        ResetCommandOutcome.UNVERIFIED
+    }
 
     private fun readback(
         control: CommandRunner,
@@ -163,9 +190,10 @@ object SystemReset {
         id: ResetCommandId,
         command: String,
         permissionGranted: (String) -> Boolean?,
+        onError: (Throwable) -> Unit,
     ): ResetCommandOutcome = when (id) {
-        ResetCommandId.DISABLE_DEVICE_IDLE -> verifyDeviceIdle(control, apiLevel, false)
-        ResetCommandId.ENABLE_DEVICE_IDLE -> verifyDeviceIdle(control, apiLevel, true)
+        ResetCommandId.DISABLE_DEVICE_IDLE -> verifyDeviceIdle(control, apiLevel, false, onError)
+        ResetCommandId.ENABLE_DEVICE_IDLE -> verifyDeviceIdle(control, apiLevel, true, onError)
         ResetCommandId.REVOKE_WRITE_SETTINGS -> verifyWriteSettings(control, pkg)
         else -> verifiedOutcome(permissionGranted(command.substringAfterLast(' '))?.not())
     }
@@ -225,7 +253,12 @@ object SystemReset {
         }
     }
 
-    private fun verifyDeviceIdle(control: CommandRunner, apiLevel: Int, enabled: Boolean): ResetCommandOutcome {
+    private fun verifyDeviceIdle(
+        control: CommandRunner,
+        apiLevel: Int,
+        enabled: Boolean,
+        onError: (Throwable) -> Unit,
+    ): ResetCommandOutcome {
         // The combined "enabled all" value is an AND: 0 does not prove both modes disabled.
         val reads = if (apiLevel >= 24) listOf("cmd deviceidle enabled deep", "cmd deviceidle enabled light")
             else listOf("dumpsys deviceidle enabled")
@@ -244,13 +277,12 @@ object SystemReset {
                         verifiedOutcome(value?.let { it == enabled })
                     }
                 }
-            } catch (_: Exception) { ResetCommandOutcome.UNVERIFIED }
+            } catch (error: Exception) {
+                onError(error)
+                ResetCommandOutcome.UNVERIFIED
+            }
         }
-        return when {
-            ResetCommandOutcome.TIMEOUT in outcomes -> ResetCommandOutcome.TIMEOUT
-            ResetCommandOutcome.FAILED in outcomes -> ResetCommandOutcome.FAILED
-            ResetCommandOutcome.UNVERIFIED in outcomes -> ResetCommandOutcome.UNVERIFIED
-            else -> ResetCommandOutcome.OK
-        }
+        return listOf(ResetCommandOutcome.TIMEOUT, ResetCommandOutcome.FAILED, ResetCommandOutcome.UNVERIFIED)
+            .firstOrNull { it in outcomes } ?: ResetCommandOutcome.OK
     }
 }
