@@ -59,8 +59,9 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
         val remaining = deadline - clock.elapsedRealtime()
         if (remaining <= 0) return CommandResult(-1, emptyList(), emptyList(), 0, true)
         // Translate clock domains once; the lane includes both queues and rechecks before execution.
-        val deadlineNanos = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(minOf(timeoutMs, remaining))
-        return access.controlWithDeadline(command, deadlineNanos) { clock.elapsedRealtime() < deadline }
+        val deadlineNanos = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(remaining)
+        val executionTimeoutNanos = java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(timeoutMs)
+        return access.controlWithDeadline(command, deadlineNanos, executionTimeoutNanos) { clock.elapsedRealtime() < deadline }
             .also { selfTestRecorder?.add(SelfTestCommand.of(command, it)) }
     }
     private val diagnosticLogger: (String, Throwable) -> Unit = { message, error ->

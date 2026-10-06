@@ -4,6 +4,7 @@ import java.util.concurrent.ExecutionException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import java.util.logging.Level
@@ -78,35 +79,27 @@ class CommandLane(
 
     /** Absolute System.nanoTime deadline INCLUDING both queues; expired work never reaches the backend. */
     fun runWithDeadline(command: String, deadlineNanos: Long, admission: Admission): CommandResult {
+        return runWithDeadline(command, deadlineNanos, Long.MAX_VALUE, admission)
+    }
+
+    /** The execution timeout starts on the backend worker, still capped by the shared deadline. */
+    fun runWithDeadline(
+        command: String,
+        deadlineNanos: Long,
+        executionTimeoutNanos: Long,
+        admission: Admission,
+    ): CommandResult {
+        require(executionTimeoutNanos > 0) { "Timeout must be positive" }
         val started = System.nanoTime()
         val remaining = deadlineNanos - started
         if (remaining <= 0) return expired(started)
         val task = queue.submit<CommandResult> {
-            val budget = deadlineNanos - System.nanoTime()
-            if (budget <= 0) return@submit expired(started)
-            val execution = worker.submit<CommandResult> {
-                // The backend queue may still be cleaning up a preceding timed-out process.
-                if (System.nanoTime() >= deadlineNanos) expired(started)
-                else if (!admission.allowed()) CommandResult(-1, emptyList(), listOf("ADMISSION_DENIED"), elapsed(started), false)
-                else if (System.nanoTime() >= deadlineNanos) expired(started)
-                else backend.execute(command)
-            }
-            try {
-                execution.get(budget, TimeUnit.NANOSECONDS)
-            } catch (_: TimeoutException) {
-                execution.cancel(true)
-                resetBackend()
-                expired(started)
-            } catch (e: InterruptedException) {
-                execution.cancel(true)
-                resetBackend()
-                Thread.currentThread().interrupt()
-                failure(e, elapsed(started))
-            } catch (e: ExecutionException) {
-                resetBackend()
-                failure(e.cause ?: e, elapsed(started))
-            }
+            executeBeforeDeadline(command, deadlineNanos, executionTimeoutNanos, admission, started)
         }
+        return awaitQueuedDeadline(task, remaining, started)
+    }
+
+    private fun awaitQueuedDeadline(task: Future<CommandResult>, remaining: Long, started: Long): CommandResult {
         return try {
             val result = task.get(remaining, TimeUnit.NANOSECONDS)
             CommandResult.snapshot(result.exitCode, result.stdout, result.stderr, elapsed(started), result.timedOut)
@@ -119,8 +112,63 @@ class CommandLane(
             Thread.currentThread().interrupt()
             failure(e, elapsed(started))
         } catch (e: ExecutionException) {
-            failure(e.cause ?: e, elapsed(started))
+            return deadlineExecutionFailure(e, started)
         }
+    }
+
+    private fun executeBeforeDeadline(
+        command: String,
+        deadlineNanos: Long,
+        executionTimeoutNanos: Long,
+        admission: Admission,
+        started: Long,
+    ): CommandResult {
+        if (deadlineNanos - System.nanoTime() <= 0) return expired(started)
+        // Signal from the worker, not the supervisor: preceding pipe cleanup also excludes queue time.
+        val executionDeadline = FutureTask<Long> {
+            val now = System.nanoTime()
+            now + minOf(executionTimeoutNanos, maxOf(0L, deadlineNanos - now))
+        }
+        val execution = worker.submit<CommandResult> {
+            executionDeadline.run()
+            executeAdmitted(command, deadlineNanos, admission, started)
+        }
+        return awaitDeadlineExecution(execution, executionDeadline, deadlineNanos, started)
+    }
+
+    private fun executeAdmitted(command: String, deadlineNanos: Long, admission: Admission, started: Long): CommandResult {
+        if (System.nanoTime() >= deadlineNanos) return expired(started)
+        if (!admission.allowed()) return CommandResult(-1, emptyList(), listOf("ADMISSION_DENIED"), elapsed(started), false)
+        if (System.nanoTime() >= deadlineNanos) return expired(started)
+        return backend.execute(command)
+    }
+
+    private fun awaitDeadlineExecution(
+        execution: Future<CommandResult>,
+        executionDeadline: Future<Long>,
+        deadlineNanos: Long,
+        started: Long,
+    ): CommandResult {
+        return try {
+            val deadline = executionDeadline.get(maxOf(0L, deadlineNanos - System.nanoTime()), TimeUnit.NANOSECONDS)
+            execution.get(maxOf(0L, deadline - System.nanoTime()), TimeUnit.NANOSECONDS)
+        } catch (_: TimeoutException) {
+            execution.cancel(true)
+            resetBackend()
+            expired(started)
+        } catch (e: InterruptedException) {
+            execution.cancel(true)
+            resetBackend()
+            Thread.currentThread().interrupt()
+            failure(e, elapsed(started))
+        } catch (e: ExecutionException) {
+            resetBackend()
+            deadlineExecutionFailure(e, started)
+        }
+    }
+
+    private fun deadlineExecutionFailure(error: ExecutionException, started: Long): CommandResult {
+        return failure(error.cause ?: error, elapsed(started))
     }
 
     private fun expired(started: Long) = CommandResult.snapshot(-1, emptyList(), emptyList(), elapsed(started), true)

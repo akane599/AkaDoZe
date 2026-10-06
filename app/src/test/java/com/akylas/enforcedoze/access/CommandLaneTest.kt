@@ -231,6 +231,193 @@ class CommandLaneTest {
     }
 
     @Test(timeout = 20_000)
+    fun deadlineExecutionTimeoutExcludesSupervisorQueueWait() {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val submitted = CountDownLatch(1)
+        val resets = AtomicInteger()
+        val backend = object : CommandBackend {
+            override val level = AccessLevel.SHELL
+            override fun execute(command: String): CommandResult {
+                if (command == "blocker") { started.countDown(); release.await() }
+                return result(command)
+            }
+            override fun reset() { resets.incrementAndGet(); release.countDown() }
+        }
+        val callers = Executors.newSingleThreadExecutor()
+        try {
+            CommandLane(backend).use { lane ->
+                val blocker = lane.submit("blocker", 10_000)
+                assertTrue(started.await(5, TimeUnit.SECONDS))
+                val read = callers.submit<CommandResult> {
+                    submitted.countDown()
+                    lane.runWithDeadline("short-read", System.nanoTime() + TimeUnit.SECONDS.toNanos(5),
+                        TimeUnit.MILLISECONDS.toNanos(100)) { true }
+                }
+                assertTrue(submitted.await(5, TimeUnit.SECONDS))
+                try {
+                    read.get(250, TimeUnit.MILLISECONDS)
+                    fail("Queued read completed before its holder was released")
+                } catch (_: TimeoutException) { }
+                assertFalse(blocker.isDone)
+                release.countDown()
+                assertTrue(blocker.get(5, TimeUnit.SECONDS).ok)
+                val result = read.get(5, TimeUnit.SECONDS)
+                assertFalse("queue wait must not consume the execution timeout", result.timedOut)
+                assertEquals(listOf("short-read"), result.stdout)
+                assertEquals("no spurious reset", 0, resets.get())
+            }
+        } finally { release.countDown(); callers.shutdownNow() }
+    }
+
+    @Test(timeout = 20_000)
+    fun deadlineExecutionTimeoutExcludesBackendCleanupQueueWait() {
+        val started = CountDownLatch(1)
+        val cleaning = CountDownLatch(1)
+        val releaseCleanup = CountDownLatch(1)
+        val submitted = CountDownLatch(1)
+        val backend = object : CommandBackend {
+            override val level = AccessLevel.SHELL
+            override fun execute(command: String): CommandResult {
+                if (command == "blocker") {
+                    started.countDown()
+                    try { CountDownLatch(1).await() }
+                    catch (_: InterruptedException) {
+                        cleaning.countDown()
+                        releaseCleanup.await()
+                    }
+                }
+                return result(command)
+            }
+            override fun reset() = Unit
+        }
+        val callers = Executors.newSingleThreadExecutor()
+        try {
+            CommandLane(backend).use { lane ->
+                val blocker = lane.submit("blocker", 1_000)
+                assertTrue(started.await(5, TimeUnit.SECONDS))
+                assertTrue(blocker.get(5, TimeUnit.SECONDS).timedOut)
+                assertTrue(cleaning.await(5, TimeUnit.SECONDS))
+                val read = callers.submit<CommandResult> {
+                    submitted.countDown()
+                    lane.runWithDeadline("short-read", System.nanoTime() + TimeUnit.SECONDS.toNanos(5),
+                        TimeUnit.MILLISECONDS.toNanos(100)) { true }
+                }
+                assertTrue(submitted.await(5, TimeUnit.SECONDS))
+                try {
+                    read.get(250, TimeUnit.MILLISECONDS)
+                    fail("Read completed while the backend worker was still cleaning up")
+                } catch (_: TimeoutException) { }
+                releaseCleanup.countDown()
+                val result = read.get(5, TimeUnit.SECONDS)
+                assertFalse("worker queue wait must not consume the execution timeout", result.timedOut)
+                assertEquals(listOf("short-read"), result.stdout)
+            }
+        } finally { releaseCleanup.countDown(); callers.shutdownNow() }
+    }
+
+    @Test(timeout = 20_000)
+    fun deadlineBackendFailureIsReportedAndResetBeforeReuse() {
+        val resets = AtomicInteger()
+        val backend = object : CommandBackend {
+            override val level = AccessLevel.SHELL
+            override fun execute(command: String): CommandResult {
+                if (command == "broken") error("backend failed")
+                return result(command)
+            }
+            override fun reset() { resets.incrementAndGet() }
+        }
+        CommandLane(backend).use { lane ->
+            val failed = lane.runWithDeadline("broken", System.nanoTime() + TimeUnit.SECONDS.toNanos(5),
+                TimeUnit.SECONDS.toNanos(1)) { true }
+            assertFalse(failed.ok)
+            assertFalse(failed.timedOut)
+            assertTrue(failed.stderr.single().contains("backend failed"))
+            assertEquals(1, resets.get())
+            assertTrue(lane.run("next", 5_000).ok)
+        }
+    }
+
+    @Test(timeout = 20_000)
+    fun interruptedDeadlineCallerDoesNotInterruptSupervisorOrResetRunningBackend() {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val returned = CountDownLatch(1)
+        val interrupted = AtomicInteger()
+        val resets = AtomicInteger()
+        val backend = object : CommandBackend {
+            override val level = AccessLevel.SHELL
+            override fun execute(command: String): CommandResult {
+                if (command == "held") { started.countDown(); release.await() }
+                return result(command)
+            }
+            override fun reset() { resets.incrementAndGet(); release.countDown() }
+        }
+        CommandLane(backend).use { lane ->
+            val caller = Thread {
+                try {
+                    val failed = lane.runWithDeadline("held", System.nanoTime() + TimeUnit.SECONDS.toNanos(10),
+                        TimeUnit.SECONDS.toNanos(5)) { true }
+                    assertFalse(failed.ok)
+                    assertFalse(failed.timedOut)
+                    assertTrue(failed.stderr.single().contains("InterruptedException"))
+                    if (Thread.currentThread().isInterrupted) interrupted.incrementAndGet()
+                } finally { returned.countDown() }
+            }
+            try {
+                caller.start()
+                assertTrue(started.await(5, TimeUnit.SECONDS))
+                caller.interrupt()
+                assertTrue(returned.await(1, TimeUnit.SECONDS))
+                assertEquals("caller interrupt status is restored", 1, interrupted.get())
+                assertEquals("caller cannot reset an admitted mutation", 0, resets.get())
+                release.countDown()
+                assertTrue(lane.run("marker", 5_000).ok)
+                assertEquals("supervisor completed the mutation without interruption", 0, resets.get())
+            } finally { release.countDown(); caller.interrupt(); caller.join(5_000) }
+        }
+    }
+
+    @Test(timeout = 20_000)
+    fun sharedDeadlineCapsLongerExecutionTimeout() {
+        assertDeadlineTimeout(sharedMs = 1_000, executionMs = 5_000)
+    }
+
+    @Test(timeout = 20_000)
+    fun executionTimeoutCapsLongerSharedDeadline() {
+        assertDeadlineTimeout(sharedMs = 5_000, executionMs = 100)
+    }
+
+    private fun assertDeadlineTimeout(sharedMs: Long, executionMs: Long) {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val resets = AtomicInteger()
+        val backend = object : CommandBackend {
+            override val level = AccessLevel.SHELL
+            override fun execute(command: String): CommandResult {
+                if (command == "wedged") { started.countDown(); release.await() }
+                return result(command)
+            }
+            override fun reset() { resets.incrementAndGet(); release.countDown() }
+        }
+        val callers = Executors.newSingleThreadExecutor()
+        try {
+            CommandLane(backend).use { lane ->
+                val wedged = callers.submit<CommandResult> {
+                    lane.runWithDeadline("wedged", System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(sharedMs),
+                        TimeUnit.MILLISECONDS.toNanos(executionMs)) { true }
+                }
+                assertTrue("backend executes before timeout", started.await(5, TimeUnit.SECONDS))
+                val result = wedged.get(2, TimeUnit.SECONDS)
+                assertTrue("the shorter budget aborts the running command", result.timedOut)
+                assertTrue(result.durationMs >= minOf(sharedMs, executionMs))
+                assertEquals(listOf("next"), lane.run("next", 5_000).stdout)
+                assertEquals("supervisor resets exactly once before reuse", 1, resets.get())
+            }
+        } finally { release.countDown(); callers.shutdownNow() }
+    }
+
+    @Test(timeout = 20_000)
     fun realProcessIsDestroyedOnTimeoutAndLaneRemainsUsable() {
         val command = "exec sleep 60"
         // Start outside the short execution budget, so process creation cannot race the timeout.
