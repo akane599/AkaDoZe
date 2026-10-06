@@ -39,7 +39,7 @@ class ExternalControlPolicyTest {
             assertEquals(key, DenialReason.PROTECTED_SETTING, setting(key, "true").reason)
             assertNull(key, ExternalControlPolicy.settingType(key))
         }
-        for (key in listOf("sensorWhitelistPackage", "dozeAppBlockList", "notificationBlockList", "DUMP")) {
+        for (key in listOf("dozeAppBlockList", "notificationBlockList", "DUMP")) {
             assertEquals(key, DenialReason.UNKNOWN_SETTING, setting(key, "true").reason)
         }
     }

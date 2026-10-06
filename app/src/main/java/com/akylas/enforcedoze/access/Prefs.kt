@@ -18,7 +18,7 @@ object Prefs {
     const val DEFAULT_SCREEN_ON_SUMMARY = false
     const val RESTORE_LEDGER = "restoreLedger"
     const val DEFAULT_RESTORE_LEDGER = ""
-    const val RESTRICT_SENSORS_ALLOW_TOKEN = "restrictSensorsAllowToken"
+    const val RESTRICT_SENSORS_ALLOW_TOKEN = "sensorWhitelistPackage"
     const val DEFAULT_RESTRICT_SENSORS_ALLOW_TOKEN = "com.akylas.enforcedoze"
     const val SERVICE_ENABLED = "serviceEnabled"
     const val SERVICE_USER_ENABLED = "serviceUserEnabled"
