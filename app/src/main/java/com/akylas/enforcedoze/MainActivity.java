@@ -43,7 +43,6 @@ import android.view.View;
 import android.widget.CompoundButton;
 import android.widget.TextView;
 
-import com.afollestad.materialdialogs.MaterialDialog;
 
 
 //import de.cketti.library.changelog.ChangeLog;
@@ -74,15 +73,10 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
     SharedPreferences.Editor editor;
     boolean isDozeEnabledByOEM = true;
     boolean isSuAvailable = false;
-    boolean isShizukuAvailable = false;
-    boolean isDozeDisabled = false;
     boolean serviceEnabled = false;
-    boolean isDumpPermGranted = false;
-    boolean isWriteSecureSettingsPermGranted = false;
     boolean ignoreLockscreenTimeout = true;
 //    boolean showDonateDevDialog = true;
     SwitchCompat toggleForceDozeSwitch;
-    MaterialDialog progressDialog = null;
     TextView textViewStatus;
     CoordinatorLayout coordinatorLayout;
 
@@ -91,14 +85,6 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
     }
 
     private void updateToggleState() {
-        serviceEnabled = settings.getBoolean("serviceEnabled", false);
-        toggleForceDozeSwitch.setOnCheckedChangeListener(null);
-        toggleForceDozeSwitch.setChecked(serviceEnabled);
-        toggleForceDozeSwitch.setOnCheckedChangeListener(this);
-
-        renderServiceStatus();
-    }
-    private void updateToggleEnabled() {
         serviceEnabled = settings.getBoolean("serviceEnabled", false);
         toggleForceDozeSwitch.setOnCheckedChangeListener(null);
         toggleForceDozeSwitch.setChecked(serviceEnabled);
@@ -136,15 +122,12 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         settings = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
         isDozeEnabledByOEM = Utils.checkForAutoPowerModesFlag();
 //        showDonateDevDialog = settings.getBoolean("showDonateDevDialog2", true);
-        isDozeDisabled = settings.getBoolean("isDozeDisabled", false);
         accessManager = AccessManager.getInstance(this);
         accessCard = new AccessCard(this, accessManager);
         if (savedInstanceState == null) handleIntent(getIntent());
         AsyncTask.execute(() -> Utils.repairPreferencesPermissions(getApplicationContext()));
         ignoreLockscreenTimeout = settings.getBoolean("ignoreLockscreenTimeout", true);
         toggleForceDozeSwitch = (SwitchCompat) findViewById(R.id.switch1);
-        isDumpPermGranted = Utils.isDumpPermissionGranted(getApplicationContext());
-        isWriteSecureSettingsPermGranted = Utils.isSecureSettingsPermissionGranted(getApplicationContext());
         textViewStatus = (TextView) findViewById(R.id.textView2);
         updateStateFromTile = new UpdateForceDozeEnabledState();
         LocalBroadcastManager.getInstance(this).registerReceiver(updateStateFromTile, new IntentFilter("update-state-from-tile"));
@@ -289,9 +272,6 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         AccessUi.AccessUpdate update = new AccessUi.AccessUpdate(state, Utils.isShizukuMode(this), helpersRequested);
         lastAccess = state;
         isSuAvailable = update.su;
-        isShizukuAvailable = update.shizuku;
-        isDumpPermGranted = update.dump;
-        isWriteSecureSettingsPermGranted = update.writeSecureSettings;
         settings.edit().putBoolean("isSuAvailable", isSuAvailable).apply();
         helpersRequested = update.helpersRequested;
         update.requestHelpers(() -> AsyncTask.execute(() -> accessManager.grantHelpersAutomatically()));
@@ -308,7 +288,6 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
 
     @Override
     public boolean onPrepareOptionsMenu(Menu menu) {
-        isDumpPermGranted = Utils.isDumpPermissionGranted(getApplicationContext());
 
         if (isDozeEnabledByOEM || (Utils.isDeviceRunningOnN() && !isSuAvailable)) {
             menu.findItem(R.id.action_toggle_doze).setVisible(false);
