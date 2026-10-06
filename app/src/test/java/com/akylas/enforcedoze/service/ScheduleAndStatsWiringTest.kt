@@ -119,7 +119,7 @@ class ScheduleAndStatsWiringTest {
             .substringBefore("public static void stopForceDozeService(")
         val failure = start.substringAfter("catch (IllegalStateException e)").substringBefore("// Hide disabled notification")
         assertTrue(start.contains("ContextCompat.startForegroundService(context, intent)"))
-        assertTrue(failure.contains("EventType.ERROR, \"FOREGROUND_START_DENIED\""))
+        assertTrue(failure.contains("EventCodes.FOREGROUND_START_DENIED"))
         assertTrue(failure.contains("return false;"))
     }
 

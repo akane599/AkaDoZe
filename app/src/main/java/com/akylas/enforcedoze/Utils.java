@@ -71,8 +71,9 @@ public class Utils {
             }
         } catch (IllegalStateException e) {
             logToLogcat("EnforceDoze", "Service start denied: " + e.getMessage());
-            MyApplication.getDozeRuntime(context).getJournal().emit(new com.akylas.enforcedoze.doze.DozeEvent(
-                    com.akylas.enforcedoze.doze.EventType.ERROR, "FOREGROUND_START_DENIED"));
+            MyApplication.getJournal(context).emit(new com.akylas.enforcedoze.doze.DozeEvent(
+                    com.akylas.enforcedoze.doze.EventType.ERROR,
+                    com.akylas.enforcedoze.monitor.EventCodes.FOREGROUND_START_DENIED));
             return false;
         }
 
