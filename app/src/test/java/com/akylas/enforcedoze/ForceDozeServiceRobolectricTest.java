@@ -136,19 +136,34 @@ public class ForceDozeServiceRobolectricTest {
         }
     }
 
+    @Test public void reloadSettingsRefreshesLivePreferenceWithoutOnCreate() {
+        RecordingService service = service();
+        TestAppState.selectNonRootMode(service);
+        AndroidClock clock = new AndroidClock();
+        set(service, "runtime", TestAppState.runtimeWithoutRoot(service, clock, new JournalSink(service, clock)));
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(service);
+        assertEquals("initial live setting", 0, get(service, "dozeEnterDelay"));
+        prefs.edit().putInt("dozeEnterDelay", 17).commit();
+
+        service.reloadSettings();
+
+        assertEquals("reload reads the changed live preference", 17, get(service, "dozeEnterDelay"));
+        assertTrue("reload retains its foreground notification", (Boolean) get(service, "foreground"));
+    }
+
     @Test public void settingsKeepEveryDefaultAndPreferenceSource() {
         RecordingService service = service();
         SharedPreferences normal = service.getSharedPreferences("normal", 0);
         SharedPreferences other = service.getSharedPreferences("other", 0);
         normal.edit().clear().commit(); other.edit().clear().commit();
         service.loadWorkerSettings(normal, other);
-        String[] falseFields = {"turnOffDataInDoze", "turnOffWiFiInDoze", "turnOffAllSensorsInDoze", "turnOffBiometricsInDoze", "turnOnBatterySaverInDoze", "turnOnAirplaneInDoze", "turnOffBluetoothInDoze", "turnOffGPSInDoze", "whitelistMusicAppNetwork", "whitelistCurrentApp", "waitForUnlock", "disableStats", "disableLogcat", "isSuAvailable", "showPersistentNotif"};
+        String[] falseFields = {"whitelistMusicAppNetwork", "whitelistCurrentApp", "waitForUnlock", "disableStats", "disableLogcat", "isSuAvailable", "showPersistentNotif"};
         String[] trueFields = {"ignoreIfHotspot", "ignoreLockscreenTimeout", "disableMotionSensors", "disableWhenCharging"};
         for (String field : falseFields) assertEquals(field, false, get(service, field));
         for (String field : trueFields) assertEquals(field, true, get(service, field));
         assertEquals(0, get(service, "dozeEnterDelay")); assertEquals("", get(service, "sensorWhitelistPackage"));
         for (String field : Arrays.asList("dozeUsageData", "dozeNotificationBlocklist", "dozeAppBlocklist")) assertEquals(Collections.emptySet(), get(service, field));
-        String[] keys = {Prefs.TURN_OFF_DATA, Prefs.TURN_OFF_WIFI, Prefs.TURN_OFF_ALL_SENSORS, Prefs.TURN_OFF_BIOMETRICS, Prefs.TURN_ON_BATTERY_SAVER, Prefs.TURN_ON_AIRPLANE, Prefs.TURN_OFF_BLUETOOTH, Prefs.TURN_OFF_LOCATION, "whitelistMusicAppNetwork", "whitelistCurrentApp", "waitForUnlock", "disableStats", "disableLogcat", "isSuAvailable", "showPersistentNotif"};
+        String[] keys = {"whitelistMusicAppNetwork", "whitelistCurrentApp", "waitForUnlock", "disableStats", "disableLogcat", "isSuAvailable", "showPersistentNotif"};
         SharedPreferences.Editor edit = normal.edit();
         for (String key : keys) edit.putBoolean(key, true);
         for (String field : trueFields) edit.putBoolean(field, false);
