@@ -16,18 +16,18 @@ Legend: ✅ pass · ❌ fail (finding below) · ⚠️ partial / emulator-limite
 - **Passed:** 0, 1, 5, 6, 7, 9, 11, SQ-114/116/118, SQ-117, and the denied/no-access sub-cases of 10 and 13.
 - **Partial (enforcement works, something around it is wrong):** 2, 3, 8, 10, 13, SQ-115; item 4 only weakly checked.
 - **Skipped, device-only:** 12, F5 watchdog, A3, A4, SQ-126 (need app root, real CPU suspend or two SIMs); TalkBack sub-checks.
-- **Findings, all filed and not dispatched:**
+- **Findings:** see the ticket numbers in the table below (several findings have follow-up tickets).
 
   | Finding | Ticket | Severity |
   |---|---|---|
-  | F7 Reset kills the app, nothing reset (READ_LOGS gids) | SQ-7 | high |
-  | F2 sensor verdict wrong for every normal session | SQ-1 | medium (high on the board) |
-  | F9 revoking exact alarms drops the period boundary | SQ-9 | medium-high |
-  | F8 opening Main re-grants access the user revoked | SQ-8 | medium |
-  | F6 "service is disabled" while it runs without access | SQ-6 (UI) | medium |
-  | F4 stale debt notice | SQ-4 | low-medium |
-  | F5 false mobile-data debt after airplane restore | SQ-5 | low-medium |
-  | F1 phantom session card, F3 false "History truncated" | SQ-2, SQ-3 | low |
+  | F7 Reset kills the app, nothing reset (READ_LOGS gids) | SQ-136, SQ-149 | high |
+  | F2 sensor verdict wrong for every normal session | SQ-138 | medium (high on the board) |
+  | F9 revoking exact alarms drops the period boundary | SQ-142 | medium-high |
+  | F8 opening Main re-grants access the user revoked | SQ-137, SQ-148, SQ-153 | medium |
+  | F6 "service is disabled" while it runs without access | SQ-143 (UI) | medium |
+  | F4 stale debt notice | SQ-140 | low-medium |
+  | F5 false mobile-data debt after airplane restore | SQ-141, SQ-151 | low-medium |
+  | F1 phantom session card, F3 false "History truncated" | SQ-138, SQ-139 | low |
 - **Core enforcement held throughout:** forced Doze within the delay, sensors restricted, radios toggled and restored with readback, with survival across crash, update and reboot.
 
 ## Checklist
@@ -58,7 +58,7 @@ Legend: ✅ pass · ❌ fail (finding below) · ⚠️ partial / emulator-limite
 
 ## Findings
 **F7 is the most serious so far (Reset is broken whenever Shizuku/root is used).**
-Filed on the Sidequest board as SQ-1 (F2), SQ-2 (F1), SQ-3 (F3), SQ-4 (F4), SQ-5 (F5), SQ-6 (F6), SQ-7 (F7), SQ-8 (F8), SQ-9 (F9); not dispatched during the emulator run (Gradle load destabilised the emulator earlier).
+Filed on the Sidequest board as SQ-138 (F1/F2), SQ-139 (F3), SQ-140 (F4), SQ-141/SQ-151 (F5), SQ-143 (F6), SQ-136/SQ-149 (F7), SQ-137/SQ-148/SQ-153 (F8), and SQ-142 (F9).
 
 - **F1 (low, monitor UI): phantom session card from pre-session events.** Before the first screen-off, journal rows carry `sessionId=0` (here two `ACCESS_CHANGED` rows written at install/first launch). `SessionAggregator.summarize` keeps `sessionId >= 0` (`monitor/SessionAggregator.kt:47`), so the monitor shows "Session from 8:52 PM, 0 minutes … Partial session, Never reached deep Doze, Sensors unverified" though no screen-off ever happened. Likely one such card per boot. Fix idea: drop `sessionId == 0` from session grouping (keep them in the journal).
 - **F2 (medium, monitor/summary): every normally ended session reports "motion sensors were not restricted".** Journal for the 30-min session: `SENSORS_RESTRICTED sensor=RESTRICTED` at 85 s, then teardown `VERIFY sensor=NORMAL` at 1 910 529 ms, *then* `SCREEN_ON` at 1 910 846 ms (teardown readbacks are journaled before the SCREEN_ON row). `SessionAggregator.summarizeSession` keeps the *last* sensor observation before `end` (`SessionAggregator.kt:130-138`), which is the post-restore NORMAL, so the verdict is `NO`. The headline sensor metric (and likely the screen-on summary notification) is wrong for real sessions. Fix idea: judge restriction from observations before teardown starts (or "any verified RESTRICTED while screen off"); add a JVM test with the real event order.

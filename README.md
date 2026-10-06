@@ -28,7 +28,7 @@ Or download the latest APK from the [Releases Section](https://github.com/farfro
 # Features
 * Force Doze mode immediately after screen off or after a user specified delay, and verify it by reading the Doze state back
 * Disable motion sensors (verified) so Doze stays active even when the phone moves
-* Changes made by a Doze session that are tracked in the restore ledger are put back on screen-on; anything that couldn't be restored stays listed as recovery debt and can be restored later
+* Changes made by a Doze session that are tracked in the restore ledger are restored on screen-on, or after unlock when "Wait for unlock" is enabled (biometrics restore at screen-on); anything that couldn't be restored stays listed as recovery debt and can be restored later
 * Doze Monitor: what happened while the screen was off (deep-idle time, re-forces, maintenance windows, problems), self-tests and a shareable report
 * Works with Shizuku (no root needed) or root; features that need more access are shown disabled with the reason
 * Add/remove apps or packages directly to system Doze whitelist
@@ -47,15 +47,17 @@ disabled with the reason, and your saved choices are never changed by this.
 - **Root**: `su` (Magisk, KernelSU…), or Shizuku started as root.
 - **Shizuku (shell)**: Shizuku started over ADB or wireless debugging. It runs as the shell user, and no
   root is needed.
-- **No privileged access**: only what you granted with ADB (`DUMP`, `WRITE_SECURE_SETTINGS`). Doze sessions don't
-  run at this level. EnforceDoze can still read the Doze state, apply Doze tunables, and undo its own sensor change
-  if Shizuku stops. The access card lists the exact commands.
+- **No privileged access**: only what you granted with ADB (`DUMP`, `WRITE_SECURE_SETTINGS`). With `DUMP` and
+  **Disable motion sensors** enabled, a sensor-only Doze session can restrict motion sensors. Android still
+  decides when the device enters Doze: this level cannot force Doze, and external `REAPPLY_DOZE` is not
+  available. It can also read the Doze state, apply Doze tunables, and undo its own sensor change if Shizuku
+  stops. The access card lists the exact commands.
 
 | Feature | Shizuku (shell) | Root | No privileged access |
 |---|---|---|---|
 | Force Doze after screen-off | ✅ | ✅ | ❌ |
 | Verify Doze state / Doze Monitor evidence | ✅ | ✅ | with `DUMP` |
-| Restrict motion sensors | ✅ | ✅ | ❌ |
+| Restrict motion sensors | ✅ | ✅ | with `DUMP` and setting enabled |
 | Doze tunables | ✅ | ✅ | with `WRITE_SECURE_SETTINGS` |
 | Disable biometrics in Doze | ✅ | ✅ | ❌ |
 | Battery saver, Wi-Fi, mobile data, Bluetooth, location off in Doze | ✅ | ✅ | ❌ |
@@ -67,7 +69,8 @@ disabled with the reason, and your saved choices are never changed by this.
 | Enable Doze on unsupported devices (`setprop`) | ❌ | ✅ | ❌ |
 
 Doze-session changes recorded in the restore ledger (including the forced-idle state and motion
-sensor restriction) are recorded before mutation and restored on screen-on. Tunable changes,
+sensor restriction) are recorded before mutation and restored on screen-on, or after unlock when
+"Wait for unlock" is enabled; only biometrics restore at screen-on in that case. Tunable changes,
 Doze-whitelist edits and `setprop` changes are not ledger-backed and are not automatically undone. A value that can't be confirmed is reported as **unverified**, never as
 success. If access is lost while dozing (for example, Shizuku stops), tracked changes remain listed
 as **recovery debt** and EnforceDoze attempts restoration when access returns. You can also use

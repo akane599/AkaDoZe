@@ -10,14 +10,18 @@
   are told apart from deep idle. If motion knocks the phone out of forced idle, EnforceDoze re-forces it
   within limits.
 - **Tracked session changes are restored.** Before a ledger-backed change, the original value is written to a
-  durable restore ledger. Screen-on restores those entries from the ledger, never from your current settings,
-  and does it in a fixed order: sensors, then unforce, then the rest in reverse. Anything that can't be
-  restored (for example, access was lost) is shown as recovery debt with a "Restore now" action. Doze
-  tunables, whitelist edits and `setprop` changes are not ledger-backed.
-- **Honest root vs Shizuku.** A new access card shows the current mode and what is missing. Settings
+  durable restore ledger. Screen-on starts restoration unless "Wait for unlock" is enabled, in which case
+  restoration waits for unlock (biometrics alone restore at screen-on). Entries come from the ledger, never
+  your current settings, and are restored in a fixed order: sensors, then unforce, then the rest in reverse.
+  Anything that can't be restored (for example, access was lost) is shown as recovery debt with a "Restore
+  now" action. Doze tunables, whitelist edits and `setprop` changes are not ledger-backed.
+- **Honest access levels.** A new access card shows the current mode and what is missing. Settings
   that need root (or a missing permission or Android version) are disabled with the reason; their saved
-  values are never touched. Doze sessions need Shizuku or root: without either, the app says so instead of
-  pretending to work.
+  values are never touched. With DUMP and motion-sensor restriction enabled, a sensor-only session works
+  without Shizuku or root; other Doze sessions need Shizuku or root.
+- **Sensor-only sessions with DUMP.** With ADB-granted `DUMP` and "Disable motion sensors" enabled,
+  EnforceDoze can restrict motion sensors without Shizuku or root. Android decides when Doze begins;
+  this mode does not force Doze and external `REAPPLY_DOZE` cannot reapply it.
 - **Doze Monitor.** A new screen (menu, or long-press the quick tile) lists screen-off sessions with
   verified deep-idle time, re-forces, maintenance windows, the sensor state and problems. It can
   run self-tests and restore system state, and it shares a report. An optional summary notification
