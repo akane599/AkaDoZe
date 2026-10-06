@@ -113,15 +113,7 @@ public class ForceDozeService extends Service {
     boolean disableMotionSensors = true;
     boolean showPersistentNotif = false;
     boolean ignoreLockscreenTimeout = false;
-    boolean turnOffAllSensorsInDoze = false;
-    boolean turnOffBiometricsInDoze = false;
-    boolean turnOnBatterySaverInDoze = false;
-    boolean turnOnAirplaneInDoze = false;
-    boolean turnOffBluetoothInDoze = false;
-    boolean turnOffGPSInDoze = false;
-    boolean turnOffWiFiInDoze = false;
     boolean ignoreIfHotspot = false;
-    boolean turnOffDataInDoze = false;
     boolean whitelistMusicAppNetwork = false;
     boolean whitelistCurrentApp = false;
     boolean maintenance = false;
@@ -287,15 +279,7 @@ public class ForceDozeService extends Service {
     }
 
     void loadWorkerSettings(SharedPreferences prefs, SharedPreferences preferencePrefs) {
-        turnOffDataInDoze = prefs.getBoolean(Prefs.TURN_OFF_DATA, false);
         ignoreIfHotspot = prefs.getBoolean("ignoreIfHotspot", true);
-        turnOffWiFiInDoze = prefs.getBoolean(Prefs.TURN_OFF_WIFI, false);
-        turnOffAllSensorsInDoze = prefs.getBoolean(Prefs.TURN_OFF_ALL_SENSORS, false);
-        turnOffBiometricsInDoze = prefs.getBoolean(Prefs.TURN_OFF_BIOMETRICS, false);
-        turnOnBatterySaverInDoze = prefs.getBoolean(Prefs.TURN_ON_BATTERY_SAVER, false);
-        turnOnAirplaneInDoze = prefs.getBoolean(Prefs.TURN_ON_AIRPLANE, false);
-        turnOffBluetoothInDoze = prefs.getBoolean(Prefs.TURN_OFF_BLUETOOTH, false);
-        turnOffGPSInDoze = prefs.getBoolean(Prefs.TURN_OFF_LOCATION, false);
         whitelistMusicAppNetwork = prefs.getBoolean("whitelistMusicAppNetwork", false);
         whitelistCurrentApp = prefs.getBoolean("whitelistCurrentApp", false);
         ignoreLockscreenTimeout = prefs.getBoolean("ignoreLockscreenTimeout", true);
@@ -620,24 +604,8 @@ public class ForceDozeService extends Service {
         log("EnforceDoze settings reloaded ----------------------------------");
         dozeUsageData = new LinkedHashSet<>(PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).getStringSet("dozeUsageDataAdvanced", new LinkedHashSet<String>()));
         log("dozeUsageData: " + "Total Entries -> " + dozeUsageData.size());
-        turnOffDataInDoze = getDefaultSharedPreferences(getApplicationContext()).getBoolean(Prefs.TURN_OFF_DATA, false);
-        log("turnOffDataInDoze: " + turnOffDataInDoze);
         ignoreIfHotspot = getDefaultSharedPreferences(getApplicationContext()).getBoolean("ignoreIfHotspot", true);
         log("ignoreIfHotspot: " + ignoreIfHotspot);
-        turnOffWiFiInDoze = getDefaultSharedPreferences(getApplicationContext()).getBoolean(Prefs.TURN_OFF_WIFI, false);
-        log("turnOffWiFiInDoze: " + turnOffWiFiInDoze);
-        turnOffAllSensorsInDoze = getDefaultSharedPreferences(getApplicationContext()).getBoolean(Prefs.TURN_OFF_ALL_SENSORS, false);
-        log("turnOffAllSensorsInDoze: " + turnOffAllSensorsInDoze);
-        turnOffBiometricsInDoze = getDefaultSharedPreferences(getApplicationContext()).getBoolean(Prefs.TURN_OFF_BIOMETRICS, false);
-        log("turnOffBiometricsInDoze: " + turnOffBiometricsInDoze);
-        turnOnBatterySaverInDoze = getDefaultSharedPreferences(getApplicationContext()).getBoolean(Prefs.TURN_ON_BATTERY_SAVER, false);
-        log("turnOnBatterySaverInDoze: " + turnOnBatterySaverInDoze);
-        turnOnAirplaneInDoze = getDefaultSharedPreferences(getApplicationContext()).getBoolean(Prefs.TURN_ON_AIRPLANE, false);
-        log("turnOnAirplaneInDoze: " + turnOnAirplaneInDoze);
-        turnOffBluetoothInDoze = getDefaultSharedPreferences(getApplicationContext()).getBoolean(Prefs.TURN_OFF_BLUETOOTH, false);
-        log("turnOffBluetoothInDoze: " + turnOffBluetoothInDoze);
-        turnOffGPSInDoze = getDefaultSharedPreferences(getApplicationContext()).getBoolean(Prefs.TURN_OFF_LOCATION, false);
-        log("turnOffGPSInDoze: " + turnOffGPSInDoze);
         whitelistMusicAppNetwork = getDefaultSharedPreferences(getApplicationContext()).getBoolean("whitelistMusicAppNetwork", false);
         log("whitelistMusicAppNetwork: " + whitelistMusicAppNetwork);
         whitelistCurrentApp = getDefaultSharedPreferences(getApplicationContext()).getBoolean("whitelistCurrentApp", false);
