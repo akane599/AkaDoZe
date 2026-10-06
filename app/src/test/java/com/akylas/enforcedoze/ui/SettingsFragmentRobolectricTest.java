@@ -533,6 +533,88 @@ public class SettingsFragmentRobolectricTest {
         assertTrue(ShadowDialog.getLatestDialog().isShowing());
     }
 
+    // ---- The fragment's shared-preference listener (SQ-192) ----
+
+    private void stopAccessManagerFollowingTheMode() throws Exception {
+        // AccessManager must never see a root pick: root probes su.
+        prefs.unregisterOnSharedPreferenceChangeListener(
+                (SharedPreferences.OnSharedPreferenceChangeListener) get(access, "prefListener"));
+    }
+
+    private void runForceDozeService() {
+        android.app.ActivityManager.RunningServiceInfo info = new android.app.ActivityManager.RunningServiceInfo();
+        info.service = new android.content.ComponentName(app, com.akylas.enforcedoze.ForceDozeService.class);
+        shadowOf(app.getSystemService(android.app.ActivityManager.class))
+                .setServices(java.util.Collections.singletonList(info));
+    }
+
+    private int[] countReloads() {
+        int[] reloads = {0};
+        androidx.localbroadcastmanager.content.LocalBroadcastManager.getInstance(app).registerReceiver(
+                new android.content.BroadcastReceiver() {
+                    @Override
+                    public void onReceive(android.content.Context context, Intent intent) {
+                        reloads[0]++;
+                    }
+                }, new android.content.IntentFilter("reload-settings"));
+        return reloads;
+    }
+
+    @Test
+    public void aModeChangeRerendersFromTheCurrentAccessStateOnceEveryListenerRan() throws Exception {
+        stopAccessManagerFollowingTheMode();
+        Field published = AccessManager.class.getDeclaredField("state");
+        published.setAccessible(true);
+        published.set(access, state(AccessLevel.SHELL, true));
+        prefs.edit().putString("executionMode", "root").commit();
+        prefs.edit().putString("executionMode", "shizuku").commit();
+        assertEquals("Posted, never rendered inside the change", INITIAL, snapshot());
+        idle();
+        assertEquals("Rendered from AccessManager's state, as a published SHELL state is", SHELL, snapshot());
+    }
+
+    @Test
+    public void aModeChangeDoesNotAskARunningServiceToReload() throws Exception {
+        stopAccessManagerFollowingTheMode();
+        runForceDozeService();
+        int[] reloads = countReloads();
+        prefs.edit().putString("executionMode", "root").commit();
+        prefs.edit().putString("executionMode", "shizuku").commit();
+        idle();
+        assertEquals(0, reloads[0]);
+    }
+
+    @Test
+    public void changedCustomPeriodsRefreshTheirSummaryAndExactAlarmStatus() {
+        Preference periods = pref("customDozePeriods");
+        Preference exact = pref("exactAlarmAccess");
+        assertFalse("No exact-alarm status without custom periods", exact.isVisible());
+        prefs.edit().putStringSet("customDozePeriods", new HashSet<>(Arrays.asList("22:00-07:00"))).commit();
+        assertEquals(app.getString(R.string.custom_doze_periods_setting_summary, "22:00-07:00"),
+                String.valueOf(periods.getSummary()));
+        assertTrue("Exact-alarm status shows with custom periods on API 31+", exact.isVisible());
+        assertEquals(app.getString(R.string.exact_alarm_status_best_effort), String.valueOf(exact.getSummary()));
+        prefs.edit().remove("customDozePeriods").commit();
+        assertEquals(app.getString(R.string.custom_doze_periods_setting_summary_empty),
+                String.valueOf(periods.getSummary()));
+        assertFalse(exact.isVisible());
+    }
+
+    @Test
+    public void otherSettingChangesAskOnlyARunningServiceToReload() {
+        int[] reloads = countReloads();
+        prefs.edit().putBoolean("ignoreLockscreenTimeout", false).commit();
+        idle();
+        assertEquals("No service is running", 0, reloads[0]);
+        runForceDozeService();
+        prefs.edit().putBoolean("ignoreLockscreenTimeout", true).commit();
+        idle();
+        assertEquals(1, reloads[0]);
+        prefs.edit().putStringSet("customDozePeriods", new HashSet<>(Arrays.asList("22:00-07:00"))).commit();
+        idle();
+        assertEquals("Custom periods reload the service too", 2, reloads[0]);
+    }
+
     @Test
     public void exactAlarmClickOpensAlarmsAndReminders() {
         click("exactAlarmAccess");
