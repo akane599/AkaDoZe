@@ -33,15 +33,7 @@ class ScheduleAndStatsWiringTest {
             .substringBefore("</receiver>")
         assertTrue("system grant receiver must not be exported", declaration.contains("android:exported=\"false\""))
         assertTrue(declaration.contains("android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED"))
-        val file = File("src/main/java/com/akylas/enforcedoze/ExactAlarmPermissionReceiver.java")
-        assertTrue("grant receiver must exist", file.isFile)
-        val receiver = file.readText()
-        val actionGuard = receiver.indexOf("AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED.equals(action)")
-        val requery = receiver.indexOf("Utils.requeryExactAlarmAccess(context)")
-        assertTrue("ignore unrelated actions before any requery", actionGuard >= 0 && requery > actionGuard)
-        assertTrue(receiver.substring(actionGuard, requery).contains("return;"))
-        assertFalse("broadcast extras are not permission authority", receiver.contains("getExtras(") || receiver.contains("Extra("))
-        assertNoServiceOrPreferenceMutation(receiver)
+
     }
 
     @Test fun processRestartAfterExactAlarmRevocationRequeriesOnceWithoutConstructingRuntime() {

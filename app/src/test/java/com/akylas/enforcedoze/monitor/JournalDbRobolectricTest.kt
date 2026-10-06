@@ -1,6 +1,7 @@
 package com.akylas.enforcedoze.monitor
 
 import android.app.Application
+import com.akylas.enforcedoze.TestAppState
 import com.akylas.enforcedoze.doze.EventType
 import org.junit.After
 import org.junit.Assert.*
@@ -21,6 +22,7 @@ class JournalDbRobolectricTest {
 
     @Before
     fun setUp() {
+        TestAppState.reset()
         ShadowLog.clear()
         journal = JournalDb(RuntimeEnvironment.getApplication())
     }
@@ -32,6 +34,7 @@ class JournalDbRobolectricTest {
         journal.close()
         assertTrue("journal close must drain its worker", worker.awaitTermination(5, TimeUnit.SECONDS))
         ShadowLog.clear()
+        TestAppState.reset()
     }
 
     @Test

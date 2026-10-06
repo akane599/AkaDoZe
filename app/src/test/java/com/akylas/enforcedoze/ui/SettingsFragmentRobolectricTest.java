@@ -16,7 +16,7 @@ import androidx.preference.PreferenceGroup;
 import androidx.preference.PreferenceManager;
 
 import com.afollestad.materialdialogs.MaterialDialog;
-import com.akylas.enforcedoze.MyApplication;
+import com.akylas.enforcedoze.TestAppState;
 import com.akylas.enforcedoze.R;
 import com.akylas.enforcedoze.SettingsActivity;
 import com.akylas.enforcedoze.access.AccessLevel;
@@ -57,6 +57,7 @@ import static org.robolectric.Shadows.shadowOf;
 @Config(application = Application.class)
 public class SettingsFragmentRobolectricTest {
     private Application app;
+    private AccessManager access;
     private SharedPreferences prefs;
     private ActivityController<SettingsActivity> controller;
     private SettingsActivity.SettingsFragment fragment;
@@ -65,9 +66,10 @@ public class SettingsFragmentRobolectricTest {
     public void hostSettings() throws Exception {
         app = RuntimeEnvironment.getApplication();
         prefs = PreferenceManager.getDefaultSharedPreferences(app);
-        // Shizuku mode before AccessManager exists: root mode would start an su probe.
-        prefs.edit().clear().putString("executionMode", "shizuku").commit();
-        resetSingletons();
+        TestAppState.reset();
+        prefs.edit().clear().commit();
+        TestAppState.selectNonRootMode(app);
+        TestAppState.setAppContext(app);
         host();
     }
 
@@ -77,6 +79,7 @@ public class SettingsFragmentRobolectricTest {
         fragment = (SettingsActivity.SettingsFragment) controller.get().getSupportFragmentManager()
                 .findFragmentById(R.id.settings);
         assertNotNull("Settings fragment is hosted", fragment);
+        access = TestAppState.accessWithoutRoot(app);
     }
 
     @After
@@ -85,35 +88,8 @@ public class SettingsFragmentRobolectricTest {
         controller.pause().stop().destroy();
         idle();
         app = null;
-        resetSingletons();
+        TestAppState.reset();
         prefs.edit().clear().commit();
-    }
-
-    private void resetSingletons() throws Exception {
-        Field instance = AccessManager.class.getDeclaredField("instance");
-        instance.setAccessible(true);
-        Object previous = instance.get(null);
-        if (previous != null) {
-            // A later test's mode write must never reach a stale manager (root mode probes su).
-            prefs.unregisterOnSharedPreferenceChangeListener(
-                    (SharedPreferences.OnSharedPreferenceChangeListener) get(previous, "prefListener"));
-        }
-        instance.set(null, null);
-        // Utils' static initializer reads MyApplication's context; onCreate never runs here.
-        Field context = MyApplication.class.getDeclaredField("context");
-        context.setAccessible(true);
-        context.set(null, app);
-        ResetReport.Tracker tracker = ResetReport.TRACKER;
-        set(tracker, "phase", ResetReport.Tracker.Phase.IDLE);
-        set(tracker, "result", null);
-        set(tracker, "prefsCleared", false);
-        set(tracker, "listener", null);
-    }
-
-    private static void set(Object target, String name, Object value) throws Exception {
-        Field field = target.getClass().getDeclaredField(name);
-        field.setAccessible(true);
-        field.set(target, value);
     }
 
     private static Object get(Object target, String name) throws Exception {
@@ -129,7 +105,7 @@ public class SettingsFragmentRobolectricTest {
     /** Publishes a state the way AccessManager does: to every registered access listener. */
     @SuppressWarnings("unchecked")
     private void publish(AccessState state) throws Exception {
-        AccessManager manager = AccessManager.getInstance(app);
+        AccessManager manager = access;
         for (AccessManager.Listener listener : (Collection<AccessManager.Listener>) get(manager, "listeners")) {
             listener.onAccessChanged(state);
         }
@@ -484,7 +460,7 @@ public class SettingsFragmentRobolectricTest {
         assertTrue(change("executionMode", "root"));
         MaterialDialog wait = (MaterialDialog) ShadowDialog.getLatestDialog();
         // The stored mode follows the pick, but AccessManager must never see it: root probes su.
-        AccessManager manager = AccessManager.getInstance(app);
+        AccessManager manager = access;
         prefs.unregisterOnSharedPreferenceChangeListener(
                 (SharedPreferences.OnSharedPreferenceChangeListener) get(manager, "prefListener"));
         prefs.edit().putString("executionMode", "root").commit();
@@ -498,7 +474,7 @@ public class SettingsFragmentRobolectricTest {
     @Test
     public void pickingShizukuWhileItIsNotRunningExplainsWhy() throws Exception {
         // The screen must read root as the previous mode, but AccessManager must never see it: root probes su.
-        AccessManager manager = AccessManager.getInstance(app);
+        AccessManager manager = access;
         prefs.unregisterOnSharedPreferenceChangeListener(
                 (SharedPreferences.OnSharedPreferenceChangeListener) get(manager, "prefListener"));
         prefs.edit().putString("executionMode", "root").commit();

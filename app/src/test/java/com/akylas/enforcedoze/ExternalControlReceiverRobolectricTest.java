@@ -16,6 +16,7 @@ import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
@@ -28,6 +29,10 @@ import static org.robolectric.Shadows.shadowOf;
 @RunWith(RobolectricTestRunner.class)
 @Config(application = Application.class)
 public class ExternalControlReceiverRobolectricTest {
+    @Before public void resetBeforeTest() throws Exception {
+        TestAppState.reset();
+    }
+
     @After public void resetState() throws Exception {
         TestAppState.reset();
     }

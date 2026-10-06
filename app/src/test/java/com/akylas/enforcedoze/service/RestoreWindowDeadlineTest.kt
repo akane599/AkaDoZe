@@ -27,7 +27,7 @@ class RestoreWindowDeadlineTest {
     @After fun cleanup() {
         lanes.forEach { it.close() }
         runtime?.let { it.worker().looper.quit() }
-        AccessManager::class.java.getDeclaredField("instance").apply { isAccessible = true }.set(null, null)
+        TestAppState.reset()
     }
 
     private fun runtime(backend: CommandBackend, submitted: CountDownLatch? = null): DozeRuntime {
