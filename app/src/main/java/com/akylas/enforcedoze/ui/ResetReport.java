@@ -73,14 +73,22 @@ public final class ResetReport {
         Map<String, Object> kept = retained(prefs.getAll(), keysToKeep(result));
         SharedPreferences.Editor editor = prefs.edit().clear();
         for (Map.Entry<String, Object> entry : kept.entrySet()) {
-            Object value = entry.getValue();
-            if (value instanceof String) editor.putString(entry.getKey(), (String) value);
-            else if (value instanceof Boolean) editor.putBoolean(entry.getKey(), (Boolean) value);
-            else if (value instanceof Integer) editor.putInt(entry.getKey(), (Integer) value);
-            else if (value instanceof Long) editor.putLong(entry.getKey(), (Long) value);
-            else if (value instanceof Float) editor.putFloat(entry.getKey(), (Float) value);
+            putTyped(editor, entry.getKey(), entry.getValue());
         }
         return editor.commit() && helperPrefs.edit().clear().commit();
+    }
+
+    /** Re-put supported retained values; unknown types are silently skipped, as before. */
+    static void putTyped(SharedPreferences.Editor editor, String key, Object value) {
+        if (value instanceof String) editor.putString(key, (String) value);
+        else putScalar(editor, key, value);
+    }
+
+    private static void putScalar(SharedPreferences.Editor editor, String key, Object value) {
+        if (value instanceof Boolean) editor.putBoolean(key, (Boolean) value);
+        else if (value instanceof Integer) editor.putInt(key, (Integer) value);
+        else if (value instanceof Long) editor.putLong(key, (Long) value);
+        else if (value instanceof Float) editor.putFloat(key, (Float) value);
     }
 
     /** Steps that did not end readback-confirmed, in the order they ran. */
