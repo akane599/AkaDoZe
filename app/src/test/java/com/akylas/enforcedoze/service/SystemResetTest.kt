@@ -81,8 +81,9 @@ class SystemResetTest {
         apiLevel: Int,
         packageName: String,
         deferred: List<ResetCommandId>,
+        onError: (Throwable) -> Unit = {},
         forgetHelpers: (Set<String>) -> Boolean = { true },
-    ) = SystemReset.runDeferred(control, apiLevel, packageName, deferred, forgetHelpers)
+    ) = SystemReset.runDeferred(control, apiLevel, packageName, deferred, onError, forgetHelpers)
 
     private fun outcome(
         exitComplete: Boolean = true,
@@ -110,6 +111,58 @@ class SystemResetTest {
 
         assertTrue(result.failed)
         assertEquals(listOf(exception), reported)
+    }
+
+    @Test fun throwingPermissionPreflightReportsErrorAndStillDefersUnknownGrant() {
+        val error = IllegalStateException("permission preflight failed")
+        val reported = mutableListOf<Throwable>()
+        val result = runReset(runner, 36, PACKAGE, permissionGranted = {
+            if (it == READ_LOGS) throw error else false
+        }, onError = reported::add) { ResetRestoreOutcome.COMPLETE }
+
+        assertEquals(listOf(error), reported)
+        assertEquals(listOf(ResetCommandId.REVOKE_READ_LOGS), result.deferred)
+        assertFalse("a step exception does not fail the whole job", result.failed)
+    }
+
+    @Test fun throwingHelperForgetReportsErrorAndStillSkipsOnlyItsRevoke() {
+        val error = IllegalStateException("helper forget failed")
+        val reported = mutableListOf<Throwable>()
+        val result = runReset(runner, 36, PACKAGE, permissionGranted = { false },
+            forgetHelpers = { if ("DUMP" in it) throw error else true },
+            onError = reported::add) { ResetRestoreOutcome.COMPLETE }
+
+        assertEquals(listOf(error), reported)
+        assertEquals(ResetCommandOutcome.FAILED, result.commands.single { it.id == ResetCommandId.REVOKE_DUMP }.outcome)
+        assertFalse(runner.commands.contains("pm revoke $PACKAGE android.permission.DUMP"))
+        assertTrue(runner.commands.contains("appops set $PACKAGE WRITE_SETTINGS default"))
+        assertFalse(result.failed)
+    }
+
+    @Test fun throwingInlineCommandReportsErrorAndStillReturnsUnverifiedStep() {
+        val error = IllegalStateException("inline command failed")
+        val reported = mutableListOf<Throwable>()
+        runner.answer("dumpsys deviceidle disable all") { throw error }
+        val result = runReset(runner, 36, PACKAGE, permissionGranted = { false },
+            onError = reported::add) { ResetRestoreOutcome.COMPLETE }
+
+        assertEquals(listOf(error), reported)
+        assertEquals(ResetCommandOutcome.UNVERIFIED, result.commands.first().outcome)
+        assertEquals(7, result.commands.size)
+        assertFalse(result.failed)
+    }
+
+    @Test fun throwingDeviceIdleReadbackReportsErrorAndStillReturnsUnverifiedStep() {
+        val error = IllegalStateException("device idle readback failed")
+        val reported = mutableListOf<Throwable>()
+        runner.answer("cmd deviceidle enabled deep") { throw error }
+        val result = runReset(runner, 36, PACKAGE, permissionGranted = { false },
+            onError = reported::add) { ResetRestoreOutcome.COMPLETE }
+
+        assertEquals(listOf(error), reported)
+        assertEquals(ResetCommandOutcome.UNVERIFIED, result.commands.first().outcome)
+        assertEquals(7, result.commands.size)
+        assertFalse(result.failed)
     }
 
     @Test fun successfulJobDoesNotReportError() {
@@ -815,6 +868,79 @@ class SystemResetTest {
             ResetRestoreOutcome.COMPLETE
         }
         assertEquals(listOf(ResetCommandId.REVOKE_READ_LOGS, ResetCommandId.REVOKE_READ_PHONE_STATE), failedCheck.deferred)
+    }
+
+    private val joinedRevokes = "pm revoke $PACKAGE $READ_LOGS; pm revoke $PACKAGE $PHONE_STATE"
+    private val deferredRevokes = listOf(ResetCommandId.REVOKE_READ_LOGS, ResetCommandId.REVOKE_READ_PHONE_STATE)
+
+    @Test fun throwingDeferredRunnerReportsExactErrorWithoutClaimingConfirmation() {
+        val error = IllegalStateException("deferred runner failed")
+        val reported = mutableListOf<Throwable>()
+        runner.answer(joinedRevokes) { throw error }
+        val result = runDeferredReset(runner, 36, PACKAGE, deferredRevokes, onError = reported::add)
+
+        assertEquals(listOf(error), reported)
+        assertEquals(listOf(joinedRevokes), runner.commands)
+        assertTrue(result.all { it.outcome == ResetCommandOutcome.UNVERIFIED })
+    }
+
+    @Test fun failedOrTimedOutDeferredRunnerReportsThroughSink() {
+        for (reply in listOf(FakeRunner.result("", exit = 1), FakeRunner.result("", exit = -1),
+            FakeRunner.result("", timeout = true))) {
+            val fake = resetRunner()
+            val reported = mutableListOf<Throwable>()
+            fake.answer(joinedRevokes) { reply }
+            val result = runDeferredReset(fake, 36, PACKAGE, deferredRevokes, onError = reported::add)
+
+            assertEquals(1, reported.size)
+            assertEquals("Deferred reset revoke failed: exit=${reply.exitCode}, timedOut=${reply.timedOut}", reported.single().message)
+            assertEquals(listOf(joinedRevokes), fake.commands)
+            assertTrue("even transport success is not a readback", result.all { it.outcome == ResetCommandOutcome.UNVERIFIED })
+        }
+    }
+
+    @Test fun successfulDeferredTransportDoesNotReportErrorOrClaimConfirmation() {
+        val reported = mutableListOf<Throwable>()
+        val result = runDeferredReset(runner, 36, PACKAGE, deferredRevokes, onError = reported::add)
+        assertTrue(reported.isEmpty())
+        assertTrue(result.all { it.outcome == ResetCommandOutcome.UNVERIFIED })
+    }
+
+    @Test fun falseOrThrowingDeferredForgetReportsAndSkipsOnlyMatchingRevoke() {
+        for (throws in listOf(false, true)) {
+            val error = IllegalStateException("deferred forget failed")
+            val reported = mutableListOf<Throwable>()
+            val fake = resetRunner()
+            val result = runDeferredReset(fake, 36, PACKAGE, deferredRevokes, onError = reported::add) {
+                if (throws) throw error else false
+            }
+
+            assertEquals(1, reported.size)
+            if (throws) assertSame(error, reported.single())
+            else assertEquals("Could not forget reset helper READ_PHONE_STATE before revoke", reported.single().message)
+            assertEquals(ResetCommandOutcome.FAILED, result.last().outcome)
+            assertEquals(listOf("pm revoke $PACKAGE $READ_LOGS"), fake.commands)
+        }
+    }
+
+    @Test fun falseInlineForgetReportsAndSkipsMatchingRevoke() {
+        val reported = mutableListOf<Throwable>()
+        val result = runReset(runner, 36, PACKAGE, permissionGranted = { false }, onError = reported::add,
+            forgetHelpers = { "DUMP" !in it }) { ResetRestoreOutcome.COMPLETE }
+        assertEquals("Could not forget reset helper DUMP before revoke", reported.single().message)
+        assertEquals(ResetCommandOutcome.FAILED, result.commands.single { it.id == ResetCommandId.REVOKE_DUMP }.outcome)
+        assertFalse(result.failed)
+    }
+
+    @Test fun throwingPermissionReadbackReportsExactThrowableAndStaysUnverified() {
+        val error = IllegalStateException("permission readback failed")
+        val reported = mutableListOf<Throwable>()
+        val result = runReset(runner, 36, PACKAGE, permissionGranted = {
+            if (it == "android.permission.DUMP") throw error else false
+        }, onError = reported::add) { ResetRestoreOutcome.COMPLETE }
+        assertEquals(listOf(error), reported)
+        assertEquals(ResetCommandOutcome.UNVERIFIED, result.commands.single { it.id == ResetCommandId.REVOKE_DUMP }.outcome)
+        assertFalse(result.failed)
     }
 
     @Test fun deferredStepsNeedSessionAccessAndRunOnlyWhatWasDeferred() {
