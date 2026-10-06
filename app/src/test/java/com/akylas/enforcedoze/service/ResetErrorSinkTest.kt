@@ -59,9 +59,59 @@ class ResetErrorSinkTest {
         assertTrue("throwing job still delivers a failed report", report?.failed == true)
         assertTrue("the actual SQ-105 sink must journal RESET_FAILED",
             events.any { it.detail == EventCodes.RESET_FAILED })
-        val warning = ShadowLog.getLogsForTag("DozeRuntime").single { it.throwable === error }
+        val warning = ShadowLog.getLogsForTag("DozeRuntime").single {
+            it.throwable === error && it.msg == "System reset failed"
+        }
         assertEquals(Log.WARN, warning.type)
         assertEquals("System reset failed", warning.msg)
+    }
+
+    @Test fun historyReadFailureLogsOriginalThrowableAndStillCompletesPresentation() {
+        val error = IllegalStateException("history binder failure")
+        historyRunner { throw error }
+        var completed = false
+        runtime.afterHistoryImport = Runnable { completed = true }
+
+        runtime.importHistory()
+
+        assertTrue(completed)
+        assertEquals(EventCodes.HISTORY_READ_FAILED, events.single().detail)
+        val warning = ShadowLog.getLogsForTag("DozeRuntime").single { it.msg == "History read failed" }
+        assertSame(error, warning.throwable)
+        assertEquals(Log.WARN, warning.type)
+    }
+
+    @Test fun historyReadSuccessAndFailedResultsRetainTheirJournalAndPresentationFlow() {
+        for (exit in listOf(0, 1)) {
+            events.clear()
+            ShadowLog.clear()
+            historyRunner { FakeRunner.result("", exit = exit) }
+            var completed = false
+            runtime.afterHistoryImport = Runnable { completed = true }
+
+            runtime.importHistory()
+
+            assertTrue(completed)
+            assertEquals(if (exit == 0) 0 else 1,
+                events.count { it.detail == EventCodes.HISTORY_READ_FAILED })
+            assertTrue("a command result failure is not an exception", ShadowLog.getLogsForTag("DozeRuntime").isEmpty())
+        }
+    }
+
+    private fun historyRunner(reply: () -> com.akylas.enforcedoze.access.CommandResult) {
+        set(runtime.access, "state", com.akylas.enforcedoze.access.AccessState(
+            com.akylas.enforcedoze.access.AccessLevel.SHELL, null,
+            com.akylas.enforcedoze.access.Grants(false, false), 2000,
+        ))
+        val lane = AccessManager::class.java.getDeclaredField("readRunner")
+        // Implement the existing private lane interface; no host shell/root process is started.
+        val runner = java.lang.reflect.Proxy.newProxyInstance(lane.type.classLoader, arrayOf(lane.type)) { _, method, args ->
+            assertEquals("run", method.name)
+            assertEquals("dumpsys deviceidle", args[0])
+            assertEquals(8_000L, args[1])
+            reply()
+        }
+        set(runtime.access, "readRunner", runner)
     }
 
     @Test fun deferredThrowIsJournaledAndLogsExactThrowableBeforeRestart() {
@@ -163,7 +213,9 @@ class ResetErrorSinkTest {
 
     private fun assertResetWarning(error: Throwable) {
         assertEquals(1, events.count { it.type == EventType.ERROR && it.detail == EventCodes.RESET_FAILED })
-        val warning = ShadowLog.getLogsForTag("DozeRuntime").single { it.throwable === error }
+        val warning = ShadowLog.getLogsForTag("DozeRuntime").single {
+            it.throwable === error && it.msg == "System reset failed"
+        }
         assertEquals(Log.WARN, warning.type)
         assertEquals("System reset failed", warning.msg)
     }

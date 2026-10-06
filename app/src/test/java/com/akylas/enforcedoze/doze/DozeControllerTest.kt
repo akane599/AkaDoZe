@@ -74,8 +74,11 @@ class DozeControllerTest {
     private val controller = newController(store)
     private val config = DozeConfig(36, AccessLevel.SHELL, grants)
 
-    private fun newController(ledger: InMemoryLedgerStore) = DozeController(
+    private val diagnostics = mutableListOf<Pair<String, Throwable>>()
+
+    private fun newController(ledger: LedgerStore) = DozeController(
         runner, CommandCatalog, CapabilityResolver, ledger, clock, DozeEventSink { events.add(it) }, 36, grants,
+        { message, error -> diagnostics.add(message to error) },
     )
     private fun enter(config: DozeConfig = this.config): EnterResult = controller.enter(config, controller.currentGeneration) { true }
     private fun entry(feature: Feature, original: String?, target: String? = null) = LedgerEntry(feature, target, original, 0)
@@ -84,6 +87,63 @@ class DozeControllerTest {
         runner.replies("cmd deviceidle get deep", "IDLE")
     }
     private fun sensorCycle() = runner.replies(SENSORS, "Mode : NORMAL", "Mode : RESTRICTED : $TOKEN", "Mode : NORMAL")
+
+    @Test fun throwingControlRunnerJournalsDistinctCodeAndLogsOriginalThrowable() {
+        val error = IllegalStateException("sensor read binder failure")
+        runner.level = AccessLevel.APP
+        runner.answer(SENSORS) { throw error }
+
+        val result = enter(config.copy(level = AccessLevel.APP, mode = SessionMode.SENSOR_ONLY))
+
+        assertEquals("caught failure is handed to diagnostic logger exactly once", 1, diagnostics.size)
+        assertSame("control runner throwable reaches diagnostic logger", error, diagnostics.single().second)
+        val event = events.single { it.type == EventType.ERROR }
+        assertEquals("CONTROL_RUN_FAILED", event.detail)
+        assertEquals(Reason.UNVERIFIED, event.reason)
+        assertEquals(StepStatus.UNVERIFIED, result.steps.single().status)
+        assertTrue(store.load().entries.isEmpty())
+        assertTrue(runner.mutations().isEmpty())
+    }
+
+    @Test fun throwingRestoreSaveJournalsDistinctCodeAndLogsOriginalThrowable() {
+        val original = RestoreLedger(listOf(entry(Feature.WIFI, "1")))
+        store.save(original)
+        val error = IllegalStateException("restore ledger disk failure")
+        val failingStore = object : LedgerStore by store {
+            override fun save(ledger: RestoreLedger) { throw error }
+        }
+        runner.replies("settings get global wifi_on", "1")
+
+        val result = newController(failingStore).exit()
+
+        assertEquals("caught failure is handed to diagnostic logger exactly once", 1, diagnostics.size)
+        assertSame("restore save throwable reaches diagnostic logger", error, diagnostics.single().second)
+        val event = events.single { it.type == EventType.ERROR }
+        assertEquals("RESTORE_LEDGER_SAVE_FAILED", event.detail)
+        assertEquals(Feature.WIFI, event.feature)
+        assertEquals(Reason.UNVERIFIED, event.reason)
+        assertEquals(listOf(ExitError.LEDGER_SAVE_FAILED), result.errors)
+        assertEquals(original, result.remaining)
+        assertEquals(original, store.load())
+    }
+
+    @Test fun throwingRestoreLoadLogsOriginalThrowableWithoutChangingErrorRow() {
+        val error = IllegalStateException("restore ledger unreadable")
+        val failingStore = object : LedgerStore by store {
+            override fun load(): RestoreLedger { throw error }
+        }
+
+        val result = newController(failingStore).exit()
+
+        assertEquals("caught failure is handed to diagnostic logger exactly once", 1, diagnostics.size)
+        assertSame("restore load throwable reaches diagnostic logger", error, diagnostics.single().second)
+        val event = events.single()
+        assertEquals(EventType.ERROR, event.type)
+        assertEquals("ERROR", event.detail)
+        assertEquals(Reason.UNVERIFIED, event.reason)
+        assertEquals(listOf(ExitError.LEDGER_LOAD_FAILED), result.errors)
+        assertTrue(runner.commands.isEmpty())
+    }
 
     @Test fun sensorOnlyEnterAndCoreOwnOnlyDurableSensorsAndEmitNoForcedIdle() {
         runner.level = AccessLevel.APP

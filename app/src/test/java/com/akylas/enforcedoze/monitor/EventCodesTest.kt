@@ -51,6 +51,8 @@ class EventCodesTest {
             "LEDGER_CORRUPT_LINES" to EventCodes.LEDGER_CORRUPT_LINES,
             "LEDGER_CORRUPT_LINE" to EventCodes.LEDGER_CORRUPT_LINE,
             "LEDGER_CORRUPT_RECOVERED_LINES" to EventCodes.LEDGER_CORRUPT_RECOVERED_LINES,
+            "CONTROL_RUN_FAILED" to EventCodes.CONTROL_RUN_FAILED,
+            "RESTORE_LEDGER_SAVE_FAILED" to EventCodes.RESTORE_LEDGER_SAVE_FAILED,
         )
         assertEquals(expected.keys, EventCodes::class.java.fields.map { it.name }.filter { it != "INSTANCE" }.toSet())
         expected.forEach { (literal, value) -> assertEquals(literal, value) }

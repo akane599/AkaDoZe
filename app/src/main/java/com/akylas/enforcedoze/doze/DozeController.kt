@@ -1,5 +1,6 @@
 package com.akylas.enforcedoze.doze
 
+import com.akylas.enforcedoze.monitor.EventCodes
 import com.akylas.enforcedoze.service.SessionMode
 import com.akylas.enforcedoze.service.SessionAccess
 
@@ -207,7 +208,8 @@ class DozeController @JvmOverloads constructor(
     private fun loadRestoreLedger(): RestoreLedger? {
         return try {
             store.load()
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            diagnosticLogger("Restore ledger load failed", error)
             emit(EventType.ERROR, reason = Reason.UNVERIFIED)
             null
         }
@@ -351,9 +353,11 @@ class DozeController @JvmOverloads constructor(
         return try {
                 store.save(next)
                 result.copy(remaining = next, restored = restoredEntries(result.restored, entry, success))
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                diagnosticLogger("Restore ledger save failed", error)
                 // Keep the durable intent and continue restoring the other entries.
-                emit(EventType.ERROR, entry.feature, entry.target, Reason.UNVERIFIED)
+                emit(EventType.ERROR, entry.feature, entry.target, Reason.UNVERIFIED,
+                    detail = EventCodes.RESTORE_LEDGER_SAVE_FAILED)
                 result.copy(errors = result.errors + ExitError.LEDGER_SAVE_FAILED)
             }
     }
@@ -659,11 +663,14 @@ class DozeController @JvmOverloads constructor(
         return command?.let { run(it, timeoutMs) }
     }
 
-    private fun run(command: String, timeoutMs: Long = CommandRunner.DEFAULT_TIMEOUT_MS): CommandResult? = try {
-        control.run(command, timeoutMs)
-    } catch (_: RuntimeException) {
-        emit(EventType.ERROR, reason = Reason.UNVERIFIED)
-        null
+    private fun run(command: String, timeoutMs: Long = CommandRunner.DEFAULT_TIMEOUT_MS): CommandResult? {
+        return try {
+            control.run(command, timeoutMs)
+        } catch (error: RuntimeException) {
+            diagnosticLogger("Control command failed", error)
+            emit(EventType.ERROR, reason = Reason.UNVERIFIED, detail = EventCodes.CONTROL_RUN_FAILED)
+            null
+        }
     }
 
     private fun skip(feature: Feature, target: String?, reason: Reason): StepResult {

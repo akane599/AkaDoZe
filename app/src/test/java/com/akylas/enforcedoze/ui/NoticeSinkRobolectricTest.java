@@ -6,8 +6,15 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.util.Log;
+
+import androidx.preference.PreferenceManager;
 
 import com.akylas.enforcedoze.MyApplication;
+import com.akylas.enforcedoze.access.Prefs;
+import com.akylas.enforcedoze.doze.Clock;
+import com.akylas.enforcedoze.service.JournalSink;
+import com.akylas.enforcedoze.monitor.JournalDb;
 import com.akylas.enforcedoze.doze.DozeEvent;
 import com.akylas.enforcedoze.doze.EventType;
 import com.akylas.enforcedoze.monitor.EventCodes;
@@ -19,8 +26,12 @@ import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowNotificationManager;
+import org.robolectric.shadows.ShadowLog;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -124,6 +135,71 @@ public class NoticeSinkRobolectricTest {
         assertFalse(notices.getBoolean("debtPosted", true));
         sink.emit(new DozeEvent(EventType.RECOVERY_DEBT, EventCodes.RESTORE_WINDOW_STARVED));
         assertNotNull("A later starvation is announced again", shadow.getNotification(ID_DEBT));
+    }
+
+    @Test
+    public void appliedSessionStillPostsSummary() throws Exception {
+        Context context = RuntimeEnvironment.getApplication();
+        shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS);
+        PreferenceManager.getDefaultSharedPreferences(context).edit()
+                .putBoolean(Prefs.SCREEN_ON_SUMMARY, true).commit();
+        JournalSink journal = summaryJournal(context);
+        try {
+            long now = System.currentTimeMillis();
+            journal.beginSession(now);
+            journal.screen(EventType.SCREEN_OFF, 80, false, 0L, now);
+            journal.emit(new DozeEvent(EventType.ENTER_STEP, "WIFI"));
+            journal.emit(new DozeEvent(EventType.VERIFY, "WIFI"));
+            journal.screen(EventType.SCREEN_ON, 79, false, 2000L, now + 2000L);
+
+            assertTrue("Fixture contains an applied step", MonitorData.hasAppliedStep(
+                    journal.querySession(journal.getSessionId(), journal.getBootId()).get(2, TimeUnit.SECONDS)));
+            postSummary(NoticeSink.get(context), journal);
+
+            assertTrue("Successful presentation emits no failure warning: " + ShadowLog.getLogsForTag("NoticeSink"),
+                    ShadowLog.getLogsForTag("NoticeSink").isEmpty());
+            Notification summary = shadowOf(context.getSystemService(NotificationManager.class)).getNotification(8805);
+            assertNotNull("Applied session still posts the summary", summary);
+            assertNotNull("Summary opens the recorded session", summary.contentIntent);
+        } finally {
+            journalDb(journal).close();
+        }
+    }
+
+    @Test
+    public void rejectedSummaryQueryLogsThrowableAtWarnAndSkipsPresentation() throws Exception {
+        Context context = RuntimeEnvironment.getApplication();
+        JournalSink journal = summaryJournal(context);
+        journalDb(journal).close();
+
+        postSummary(NoticeSink.get(context), journal);
+
+        assertNull("Failed summary does not post a notification",
+                shadowOf(context.getSystemService(NotificationManager.class)).getNotification(8805));
+        assertEquals("Caught presentation failure produces one warning", 1, ShadowLog.getLogsForTag("NoticeSink").size());
+        ShadowLog.LogItem warning = ShadowLog.getLogsForTag("NoticeSink").get(0);
+        assertEquals(Log.WARN, warning.type);
+        assertEquals("Session summary presentation failed", warning.msg);
+        assertTrue("Warning retains the rejected query throwable", warning.throwable instanceof RejectedExecutionException);
+    }
+
+    private JournalSink summaryJournal(Context context) {
+        return new JournalSink(context, new Clock() {
+            @Override public long elapsedRealtime() { return 1000L; }
+            @Override public long wallTime() { return System.currentTimeMillis(); }
+        });
+    }
+
+    private JournalDb journalDb(JournalSink journal) throws Exception {
+        Field db = JournalSink.class.getDeclaredField("db");
+        db.setAccessible(true);
+        return (JournalDb) db.get(journal);
+    }
+
+    private void postSummary(NoticeSink sink, JournalSink journal) throws Exception {
+        Method method = NoticeSink.class.getDeclaredMethod("postSummary", JournalSink.class, long.class, int.class);
+        method.setAccessible(true);
+        method.invoke(sink, journal, journal.getSessionId(), journal.getBootId());
     }
 
     private DebtRules.NoticeGate.Store debtStore(Context context) throws Exception {

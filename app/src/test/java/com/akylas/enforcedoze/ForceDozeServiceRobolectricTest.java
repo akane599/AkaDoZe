@@ -312,6 +312,39 @@ public class ForceDozeServiceRobolectricTest {
         }
     }
 
+    @Test public void featureSelectionFailureJournalsAndLogsThrowableAtWarn() throws Exception {
+        RecordingService service = service();
+        AndroidClock clock = new AndroidClock();
+        JournalSink journal = new JournalSink(service, clock);
+        List<DozeEvent> events = new ArrayList<>();
+        journal.addSink(events::add);
+        TestAppState.selectNonRootMode(service);
+        DozeRuntime runtime = TestAppState.runtimeWithoutRoot(service, clock, journal);
+        set(service, "runtime", runtime);
+        com.akylas.enforcedoze.access.AccessState state = new com.akylas.enforcedoze.access.AccessState(
+                AccessLevel.SHELL, null, new com.akylas.enforcedoze.access.Grants(true, true), 2000);
+        setField(runtime.getAccess(), "state", state);
+        Field readinessField = DozeRuntime.class.getDeclaredField("readiness");
+        readinessField.setAccessible(true);
+        com.akylas.enforcedoze.service.AccessReadiness readiness =
+                (com.akylas.enforcedoze.service.AccessReadiness) readinessField.get(runtime);
+        assertTrue(readiness.recover(state, () -> state, () -> kotlin.Unit.INSTANCE));
+        assertTrue(runtime.getSession().activate(0, () -> 0L, () -> false));
+        shadowOf(service.getSystemService(PowerManager.class)).setIsInteractive(false);
+        PreferenceManager.getDefaultSharedPreferences(service).edit()
+                .putBoolean(Prefs.SERVICE_ENABLED, true).putInt(Prefs.TURN_OFF_WIFI, 1).commit();
+        Method method = ForceDozeService.class.getDeclaredMethod("enterConfiguredDoze", Boolean.class, long.class);
+        method.setAccessible(true);
+
+        assertNull("selection failure retains null fallback", method.invoke(service, false, 0L));
+
+        assertEquals("actual selection catch journals exactly one failure", 1,
+                events.stream().filter(e -> EventCodes.FEATURE_SELECTION_FAILED.equals(e.getDetail())).count());
+        assertTrue("actual feature selection catch logs the preference throwable at WARN",
+                ShadowLog.getLogsForTag("ForceDozeService").stream().anyMatch(log ->
+                        log.type == Log.WARN && log.throwable instanceof ClassCastException));
+    }
+
     @Test public void teardownFailureLogsOriginalThrowable() throws Exception {
         List<DozeEvent> events = new ArrayList<>();
         List<Runnable> jobs = new ArrayList<>();
