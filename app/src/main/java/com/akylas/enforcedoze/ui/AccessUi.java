@@ -18,6 +18,7 @@ import android.view.View;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.StringRes;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.lifecycle.DefaultLifecycleObserver;
 import androidx.lifecycle.LifecycleOwner;
@@ -102,7 +103,70 @@ public final class AccessUi {
      * restores, nothing more. CHECKING: access isn't known yet, so nothing is claimed. Switched off with no
      * usable access: UNAVAILABLE once access is resolved, RESOLVING before.
      */
-    public enum ServiceStatus { INACTIVE, CHECKING, FORCING, SENSORS_ONLY, PASSIVE, UNAVAILABLE, RESOLVING }
+    public enum ServiceStatus {
+        INACTIVE(R.string.service_inactive),
+        CHECKING(R.string.service_checking),
+        FORCING(R.string.service_active),
+        SENSORS_ONLY(R.string.service_sensors_only),
+        PASSIVE(R.string.service_needs_session_access),
+        UNAVAILABLE(R.string.service_disabled),
+        RESOLVING(R.string.access_status_checking);
+
+        @StringRes private final int text;
+
+        ServiceStatus(@StringRes int text) {
+            this.text = text;
+        }
+    }
+
+    /** The main screen's status line for a {@link #mainStatus} result. */
+    @StringRes
+    public static int mainStatusText(ServiceStatus status) {
+        return status.text;
+    }
+
+    /**
+     * What the main screen takes from a published access state. Helpers are requested at most once while
+     * root or Shizuku access holds; the request flag resets when that access drops, so a later return asks
+     * again. {@code isSuAvailable} is root whatever the execution mode.
+     */
+    public static final class AccessUpdate {
+        public final boolean su;
+        public final boolean shizuku;
+        public final boolean dump;
+        public final boolean writeSecureSettings;
+        /** Root, Shizuku or DUMP. */
+        public final boolean usable;
+        /** The helpers-requested flag once this update is applied. */
+        public final boolean helpersRequested;
+        private final boolean requestHelpers;
+
+        public AccessUpdate(AccessState state, boolean shizukuMode, boolean helpersRequested) {
+            su = state.getLevel() == AccessLevel.ROOT;
+            shizuku = shizukuAvailable(state.getLevel(), shizukuMode);
+            dump = state.getGrants().getDump();
+            writeSecureSettings = state.getGrants().getWriteSecureSettings();
+            boolean helperAccess = su || shizuku;
+            this.helpersRequested = helperAccess;
+            requestHelpers = helperAccess && !helpersRequested;
+            usable = helperAccess || dump;
+        }
+
+        /** Runs {@code grant} only on the update that first sees root or Shizuku access. */
+        public void requestHelpers(Runnable grant) {
+            if (requestHelpers) grant.run();
+        }
+
+        /** Usable access runs the full setup; otherwise only the status line is redrawn. */
+        public void render(Runnable setup, Runnable status) {
+            (usable ? setup : status).run();
+        }
+    }
+
+    /** Shizuku mode with a shell or root Shizuku uid. */
+    static boolean shizukuAvailable(AccessLevel level, boolean shizukuMode) {
+        return shizukuMode && (level == AccessLevel.SHELL || level == AccessLevel.ROOT);
+    }
 
     /**
      * Main screen status. {@code usable}: root, Shizuku or DUMP. A switched-on service is described by what

@@ -110,28 +110,8 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
     /** Forcing, sensor-only (Android keeps the idle timing), passive or still checking: say which. */
     private void renderServiceStatus() {
         toggleForceDozeSwitch.setEnabled(AccessUi.mainSwitchEnabled(serviceEnabled, accessUsable));
-        switch (AccessUi.mainStatus(serviceEnabled, accessUsable, lastAccess, AccessUi.sensorsEnabled(this))) {
-            case FORCING:
-                textViewStatus.setText(R.string.service_active);
-                break;
-            case SENSORS_ONLY:
-                textViewStatus.setText(R.string.service_sensors_only);
-                break;
-            case PASSIVE:
-                textViewStatus.setText(R.string.service_needs_session_access);
-                break;
-            case CHECKING:
-                textViewStatus.setText(R.string.service_checking);
-                break;
-            case UNAVAILABLE:
-                textViewStatus.setText(R.string.service_disabled);
-                break;
-            case RESOLVING:
-                textViewStatus.setText(R.string.access_status_checking);
-                break;
-            default:
-                textViewStatus.setText(R.string.service_inactive);
-        }
+        textViewStatus.setText(AccessUi.mainStatusText(
+                AccessUi.mainStatus(serviceEnabled, accessUsable, lastAccess, AccessUi.sensorsEnabled(this))));
     }
 
     @Override
@@ -306,24 +286,17 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
     }
 
     private void onAccessChanged(AccessState state) {
+        AccessUi.AccessUpdate update = new AccessUi.AccessUpdate(state, Utils.isShizukuMode(this), helpersRequested);
         lastAccess = state;
-        isSuAvailable = state.getLevel() == AccessLevel.ROOT;
-        isShizukuAvailable = Utils.isShizukuMode(this)
-                && (state.getLevel() == AccessLevel.SHELL || isSuAvailable);
-        isDumpPermGranted = state.getGrants().getDump();
-        isWriteSecureSettingsPermGranted = state.getGrants().getWriteSecureSettings();
+        isSuAvailable = update.su;
+        isShizukuAvailable = update.shizuku;
+        isDumpPermGranted = update.dump;
+        isWriteSecureSettingsPermGranted = update.writeSecureSettings;
         settings.edit().putBoolean("isSuAvailable", isSuAvailable).apply();
-        if (isSuAvailable || isShizukuAvailable) {
-            if (!helpersRequested) {
-                helpersRequested = true;
-                AsyncTask.execute(() -> accessManager.grantHelpersAutomatically());
-            }
-        } else {
-            helpersRequested = false;
-        }
-        accessUsable = isSuAvailable || isShizukuAvailable || isDumpPermGranted;
-        if (accessUsable) doAfterSuCheckSetup();
-        else renderServiceStatus();
+        helpersRequested = update.helpersRequested;
+        update.requestHelpers(() -> AsyncTask.execute(() -> accessManager.grantHelpersAutomatically()));
+        accessUsable = update.usable;
+        update.render(this::doAfterSuCheckSetup, this::renderServiceStatus);
     }
 
     public void doAfterSuCheckSetup() {
