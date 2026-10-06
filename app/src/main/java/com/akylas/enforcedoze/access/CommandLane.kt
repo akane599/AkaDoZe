@@ -96,6 +96,10 @@ class CommandLane(
         val task = queue.submit<CommandResult> {
             executeBeforeDeadline(command, deadlineNanos, executionTimeoutNanos, admission, started)
         }
+        return awaitQueuedDeadline(task, remaining, started)
+    }
+
+    private fun awaitQueuedDeadline(task: Future<CommandResult>, remaining: Long, started: Long): CommandResult {
         return try {
             val result = task.get(remaining, TimeUnit.NANOSECONDS)
             CommandResult.snapshot(result.exitCode, result.stdout, result.stderr, elapsed(started), result.timedOut)
@@ -108,7 +112,7 @@ class CommandLane(
             Thread.currentThread().interrupt()
             failure(e, elapsed(started))
         } catch (e: ExecutionException) {
-            failure(e.cause ?: e, elapsed(started))
+            return deadlineExecutionFailure(e, started)
         }
     }
 
@@ -159,8 +163,12 @@ class CommandLane(
             failure(e, elapsed(started))
         } catch (e: ExecutionException) {
             resetBackend()
-            failure(e.cause ?: e, elapsed(started))
+            deadlineExecutionFailure(e, started)
         }
+    }
+
+    private fun deadlineExecutionFailure(error: ExecutionException, started: Long): CommandResult {
+        return failure(error.cause ?: error, elapsed(started))
     }
 
     private fun expired(started: Long) = CommandResult.snapshot(-1, emptyList(), emptyList(), elapsed(started), true)

@@ -317,6 +317,68 @@ class CommandLaneTest {
     }
 
     @Test(timeout = 20_000)
+    fun deadlineBackendFailureIsReportedAndResetBeforeReuse() {
+        val resets = AtomicInteger()
+        val backend = object : CommandBackend {
+            override val level = AccessLevel.SHELL
+            override fun execute(command: String): CommandResult {
+                if (command == "broken") error("backend failed")
+                return result(command)
+            }
+            override fun reset() { resets.incrementAndGet() }
+        }
+        CommandLane(backend).use { lane ->
+            val failed = lane.runWithDeadline("broken", System.nanoTime() + TimeUnit.SECONDS.toNanos(5),
+                TimeUnit.SECONDS.toNanos(1)) { true }
+            assertFalse(failed.ok)
+            assertFalse(failed.timedOut)
+            assertTrue(failed.stderr.single().contains("backend failed"))
+            assertEquals(1, resets.get())
+            assertTrue(lane.run("next", 5_000).ok)
+        }
+    }
+
+    @Test(timeout = 20_000)
+    fun interruptedDeadlineCallerDoesNotInterruptSupervisorOrResetRunningBackend() {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val returned = CountDownLatch(1)
+        val interrupted = AtomicInteger()
+        val resets = AtomicInteger()
+        val backend = object : CommandBackend {
+            override val level = AccessLevel.SHELL
+            override fun execute(command: String): CommandResult {
+                if (command == "held") { started.countDown(); release.await() }
+                return result(command)
+            }
+            override fun reset() { resets.incrementAndGet(); release.countDown() }
+        }
+        CommandLane(backend).use { lane ->
+            val caller = Thread {
+                try {
+                    val failed = lane.runWithDeadline("held", System.nanoTime() + TimeUnit.SECONDS.toNanos(10),
+                        TimeUnit.SECONDS.toNanos(5)) { true }
+                    assertFalse(failed.ok)
+                    assertFalse(failed.timedOut)
+                    assertTrue(failed.stderr.single().contains("InterruptedException"))
+                    if (Thread.currentThread().isInterrupted) interrupted.incrementAndGet()
+                } finally { returned.countDown() }
+            }
+            try {
+                caller.start()
+                assertTrue(started.await(5, TimeUnit.SECONDS))
+                caller.interrupt()
+                assertTrue(returned.await(1, TimeUnit.SECONDS))
+                assertEquals("caller interrupt status is restored", 1, interrupted.get())
+                assertEquals("caller cannot reset an admitted mutation", 0, resets.get())
+                release.countDown()
+                assertTrue(lane.run("marker", 5_000).ok)
+                assertEquals("supervisor completed the mutation without interruption", 0, resets.get())
+            } finally { release.countDown(); caller.interrupt(); caller.join(5_000) }
+        }
+    }
+
+    @Test(timeout = 20_000)
     fun sharedDeadlineCapsLongerExecutionTimeout() {
         assertDeadlineTimeout(sharedMs = 1_000, executionMs = 5_000)
     }
