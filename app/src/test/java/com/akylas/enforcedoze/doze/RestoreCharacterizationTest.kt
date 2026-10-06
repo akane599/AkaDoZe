@@ -61,7 +61,7 @@ class RestoreCharacterizationTest {
             RestoreLedger(listOf(wifi.copy(attempts = 1)))), result)
         assertEquals(listOf(150L, 150L, 150L, 150L), f.waits)
         assertEquals(1_600L, f.clock.elapsed)
-        assertEquals(List(4) { WIFI_READ to 100L },
+        assertEquals(listOf(WIFI_READ to 8_000L) + List(3) { WIFI_READ to 100L },
             f.readTimeouts.filter { it.first == WIFI_READ })
     }
 
