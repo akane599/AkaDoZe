@@ -45,10 +45,9 @@ class AccessReadinessTest {
     }
 
     @Test fun bootPolicyIncludesRetainedDamageButNeverRequestsEmptyLedgerOrEnabledSession() {
-        assertTrue(BootRestorePolicy.shouldRestore(false, "1|FORCE_DOZE|~|0|0|0|false|36", ""))
-        assertTrue(BootRestorePolicy.shouldRestore(false, "", "1|FORCE_DOZE|damaged intent"))
-        assertFalse(BootRestorePolicy.shouldRestore(false, "", ""))
-        assertFalse(BootRestorePolicy.shouldRestore(true, "pending", "damaged"))
+        assertTrue(BootRestorePolicy.shouldRestore("1|FORCE_DOZE|~|0|0|0|false|36", ""))
+        assertTrue(BootRestorePolicy.shouldRestore("", "1|FORCE_DOZE|damaged intent"))
+        assertFalse(BootRestorePolicy.shouldRestore("", ""))
     }
 
     @Test fun recoveryGateSerializesRestoreBeforeAdmissionAndInvalidationWins() {

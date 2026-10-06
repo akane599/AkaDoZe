@@ -5,12 +5,12 @@ import com.akylas.enforcedoze.doze.RestoreLedgerCodec
 /** Receiver preflight; null snapshots mean unreadable intent, never an empty ledger. */
 object BootRestorePolicy {
     @JvmStatic
-    fun shouldRestore(serviceEnabled: Boolean, encoded: String?, retained: String?): Boolean =
-        !serviceEnabled && (encoded == null || retained == null || hasPending(encoded, retained))
+    fun shouldRestore(encoded: String?, retained: String?): Boolean =
+        encoded == null || retained == null || hasPending(encoded, retained)
 
     @JvmStatic
-    fun restoreIfPending(serviceEnabled: Boolean, encoded: String?, retained: String?, restore: Runnable): Boolean {
-        if (!shouldRestore(serviceEnabled, encoded, retained)) return false
+    fun restoreIfPending(encoded: String?, retained: String?, restore: Runnable): Boolean {
+        if (!shouldRestore(encoded, retained)) return false
         restore.run()
         return true
     }

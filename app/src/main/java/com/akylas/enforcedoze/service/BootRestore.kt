@@ -8,7 +8,7 @@ object BootRestore {
     @JvmStatic
     fun restoreIfPending(context: Context, restore: Runnable): Boolean {
         val snapshot = readSnapshot(context)
-        return BootRestorePolicy.restoreIfPending(false, snapshot?.first, snapshot?.second, restore)
+        return BootRestorePolicy.restoreIfPending(snapshot?.first, snapshot?.second, restore)
     }
 
     private fun readSnapshot(context: Context): Pair<String, String>? = try {

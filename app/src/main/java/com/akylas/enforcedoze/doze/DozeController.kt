@@ -522,7 +522,7 @@ class DozeController @JvmOverloads constructor(
         val readback = readResult(entry.feature, entry.target, original = true, apiLevel = apiLevel)
         val value = restoredValue(entry, apiLevel, readback)
         val expected = expectedRestoreValue(entry, apiLevel)
-        // An initial timeout also resets the root lane; settling must not reopen its shell.
+        // An initial timeout also resets the shared control lane; settling must not reopen its shell.
         val settled = if (readback?.timedOut == true) value else
             settleRestoreValue(entry, apiLevel, airplaneRestored, value, expected, admission)
         val verified = settled != null && settled == expected
@@ -584,7 +584,7 @@ class DozeController @JvmOverloads constructor(
         repeat(RADIO_REREADS) {
             if (!awaitRadioRead(deadline, admission)) return value
             val result = run(command, RADIO_READ_MS)
-            if (result?.timedOut == true) return value // The root lane reset its shell; do not reopen it just to settle.
+            if (result?.timedOut == true) return value // The shared control lane reset its shell; do not reopen it just to settle.
             value = radioReadValue(entry, apiLevel, result)
             if (value == expected) return value
         }

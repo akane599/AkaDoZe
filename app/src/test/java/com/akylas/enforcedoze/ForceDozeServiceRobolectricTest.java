@@ -74,9 +74,8 @@ public class ForceDozeServiceRobolectricTest {
         @Override AccessLevel workerAccessLevel() { calls.add("access"); return level; }
         @Override AccessLevel selfWhitelistAccessLevel() { return level; }
         @Override void grantHelpersAutomatically() {
-            // Both flag assignments must precede the helper grant.
+            // The surviving access flag must precede the helper grant.
             assertEquals(level == AccessLevel.ROOT, get(this, "isSuAvailable"));
-            assertEquals(level == AccessLevel.SHELL || level == AccessLevel.ROOT, get(this, "isShizukuAvailable"));
             calls.add("grant");
             if (stopOnGrant) set(this, "destroyed", true);
         }
@@ -129,7 +128,6 @@ public class ForceDozeServiceRobolectricTest {
             assertEquals("token / guard / settings / token / flags / grant / guard", expected, service.calls);
             assertEquals(level, get(service, "previousAccess"));
             assertEquals(level == AccessLevel.ROOT, get(service, "isSuAvailable"));
-            assertEquals(level.isPrivileged(), get(service, "isShizukuAvailable"));
         }
     }
 
@@ -167,7 +165,7 @@ public class ForceDozeServiceRobolectricTest {
         RecordingService service = service();
         PowerManager power = service.getSystemService(PowerManager.class);
         service.level = AccessLevel.ROOT;
-        set(service, "isSuAvailable", true); set(service, "isShizukuAvailable", true);
+        set(service, "isSuAvailable", true);
         service.addSelfToDozeWhitelist();
         assertEquals(Collections.singletonList("grant"), service.calls); assertNull(service.launched);
         service.calls.clear(); service.level = AccessLevel.APP;

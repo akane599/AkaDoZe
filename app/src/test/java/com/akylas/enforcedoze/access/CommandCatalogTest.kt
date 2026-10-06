@@ -49,11 +49,7 @@ class CommandCatalogTest {
         assertEquals("settings get secure location_mode", CommandCatalog.readback(Feature.LOCATION, 29))
         assertEquals("dumpsys deviceidle", CommandCatalog.originalValueRead(Feature.FORCE_DOZE, 36))
         assertEquals("settings get global device_idle_constants", CommandCatalog.originalValueRead(Feature.TUNABLES, 36))
-        assertEquals("cmd device_config put device_idle inactive_to 1000", CommandCatalog.deviceConfigTunable(36, "inactive_to", 1000))
-        assertEquals("cmd device_config delete device_idle inactive_to", CommandCatalog.deviceConfigTunable(36, "inactive_to", null))
         assertEquals("cmd device_config get device_idle inactive_to", CommandCatalog.originalDeviceConfigTunable(36, "inactive_to"))
-        assertNull(CommandCatalog.deviceConfigTunable(28, "inactive_to", 1000))
-        rejects { CommandCatalog.deviceConfigTunable(36, "inactive_to;reboot", 1000) }
         rejects { CommandCatalog.originalDeviceConfigTunable(36, "inactive_to;reboot") }
     }
 

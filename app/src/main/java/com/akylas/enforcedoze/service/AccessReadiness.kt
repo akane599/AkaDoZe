@@ -4,7 +4,7 @@ import com.akylas.enforcedoze.access.AccessLevel
 import com.akylas.enforcedoze.access.AccessState
 import java.util.concurrent.atomic.AtomicLong
 
-/** Worker-owned recovery barrier; invalidation may interrupt a running enter on the main thread. */
+/** Worker-owned recovery barrier; caller-thread invalidation fences admission on the worker. */
 class AccessReadiness {
     private data class ReadinessState(val level: AccessLevel, val resolved: Boolean, val mode: SessionMode)
 
