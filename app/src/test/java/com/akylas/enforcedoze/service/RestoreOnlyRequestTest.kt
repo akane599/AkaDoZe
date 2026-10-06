@@ -107,8 +107,28 @@ class RestoreOnlyRequestTest {
         fixture.drain()
     }
 
+    @Test fun terminalStarvedWindowWithCleanLedgerDoesNotReportDebt() {
+        val fixture = RestoreWindowFixture()
+        val store = InMemoryLedgerStore()
+        fixture.pending = { store.load().entries.isNotEmpty() }
+        fixture.ready()
+        val timeout = fixture.start(allowContinuation = false)
+        fixture.drainMain()
+        fixture.now = 7_001L
+        fixture.runWorker()
+        fixture.drainMain()
+        timeout()
+        fixture.ready()
+        fixture.drain()
+        assertEquals("A healthy empty ledger owes no restore", 0, fixture.skips)
+        assertEquals("No attempt below the floor", 0, fixture.restores)
+        assertEquals(0, fixture.retries)
+        assertTrue(fixture.access.listeners.isEmpty())
+    }
+
     @Test fun terminalStarvedWindowReportsDebtOnlyOnceWithoutRestore() {
         val fixture = RestoreWindowFixture()
+        fixture.pending = { true }
         fixture.ready()
         val timeout = fixture.start(allowContinuation = false)
         fixture.drainMain()

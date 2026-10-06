@@ -15,7 +15,8 @@ interface RecoveryAccess {
  * Main-thread-owned receiver window. It always drops its own subscription when it ends; a window that
  * could not restore at SHELL/ROOT hands the later restore to the runtime's single [continuation].
  * A null continuation marks the terminal follow-up window: it never arms another and calls [skipped]
- * if it ends without an admitted restore. [dispatchRestore] queues worker work; [restore] runs
+ * if it ends without an admitted restore and still has pending recovery. [dispatchRestore] queues
+ * worker work; [restore] runs
  * synchronously only after worker-time admission with at least [MIN_READY_BUDGET_MS] remaining.
  */
 class RestoreOnlyRequest(
@@ -81,13 +82,21 @@ class RestoreOnlyRequest(
         finished = true
         val state = access.state
         // Admission is not completion: a deadline or lost access can leave durable intent behind.
-        val later = !state.resolved || state.level < AccessLevel.SHELL || !restoredReady || hasPendingRestore()
+        val later = needsFollowUp(state)
         access.removeListener(listener)
         cancelTimeout?.invoke()
         // Acquire a ready follow-up's wakeful window before releasing this window or goAsync result.
         if (later) continuation?.arm(announcedNoAccess)
         completed()
-        if (continuation == null && !restoredReady && !announcedNoAccess) skipped()
+        if (shouldReportSkipped()) skipped()
+    }
+
+    private fun needsFollowUp(state: AccessState): Boolean {
+        return !state.resolved || state.level < AccessLevel.SHELL || !restoredReady || hasPendingRestore()
+    }
+
+    private fun shouldReportSkipped(): Boolean {
+        return continuation == null && !restoredReady && !announcedNoAccess && hasPendingRestore()
     }
 
     private companion object {

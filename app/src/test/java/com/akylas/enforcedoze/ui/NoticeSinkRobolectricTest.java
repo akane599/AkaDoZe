@@ -7,6 +7,11 @@ import android.app.NotificationManager;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import com.akylas.enforcedoze.MyApplication;
+import com.akylas.enforcedoze.doze.DozeEvent;
+import com.akylas.enforcedoze.doze.EventType;
+import com.akylas.enforcedoze.monitor.EventCodes;
+
 import org.junit.After;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -21,6 +26,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
@@ -39,6 +45,11 @@ public class NoticeSinkRobolectricTest {
         Field instance = NoticeSink.class.getDeclaredField("instance");
         instance.setAccessible(true);
         instance.set(null, null);
+        for (String name : Arrays.asList("context", "dozeRuntime")) {
+            Field field = MyApplication.class.getDeclaredField(name);
+            field.setAccessible(true);
+            field.set(null, null);
+        }
         Field debtViews = NoticeSink.class.getDeclaredField("debtViews");
         debtViews.setAccessible(true);
         ((AtomicInteger) debtViews.get(null)).set(0);
@@ -86,6 +97,31 @@ public class NoticeSinkRobolectricTest {
         assertNotNull("Store cancellation leaves other IDs alone", shadow.getNotification(ID_OTHER));
         assertTrue("Settled keys are removed", notices.getStringSet("debtNotified", Collections.emptySet()).isEmpty());
         assertFalse("Cancellation writes posted=false", notices.getBoolean("debtPosted", true));
+    }
+
+    @Test
+    public void emittedStarvationPostsRestoreActionAndCleanLedgerSettlesIt() {
+        Context context = RuntimeEnvironment.getApplication();
+        shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS);
+        NoticeSink sink = NoticeSink.get(context);
+        SharedPreferences notices = context.getSharedPreferences("notices", Context.MODE_PRIVATE);
+        ShadowNotificationManager shadow = shadowOf(context.getSystemService(NotificationManager.class));
+
+        sink.emit(new DozeEvent(EventType.RECOVERY_DEBT, EventCodes.RESTORE_WINDOW_STARVED));
+        Notification notice = shadow.getNotification(ID_DEBT);
+        assertNotNull("Journal starvation reaches the real notice poster", notice);
+        assertEquals("Starvation offers the existing Restore now action", 1, notice.actions.length);
+        assertNotNull("Restore action is wired", notice.actions[0].actionIntent);
+        assertTrue("The real emit mapping records the starvation key",
+                notices.getStringSet("debtNotified", Collections.emptySet()).contains(EventCodes.RESTORE_WINDOW_STARVED));
+
+        NoticeSink.restoresChecked(context, true);
+        assertNotNull("Unsettled ledger keeps the notice", shadow.getNotification(ID_DEBT));
+        NoticeSink.restoresChecked(context, false);
+        assertNull("A clean runtime ledger check cancels starvation", shadow.getNotification(ID_DEBT));
+        assertFalse(notices.getBoolean("debtPosted", true));
+        sink.emit(new DozeEvent(EventType.RECOVERY_DEBT, EventCodes.RESTORE_WINDOW_STARVED));
+        assertNotNull("A later starvation is announced again", shadow.getNotification(ID_DEBT));
     }
 
     private DebtRules.NoticeGate.Store debtStore(Context context) throws Exception {
