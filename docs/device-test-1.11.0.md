@@ -1,7 +1,6 @@
 # EnforceDoze 1.11.0 — on-device test checklist
 
-Nothing below could be run here: there is no device, emulator or KVM. Every item is a real-device check.
-The Doze Monitor (menu → "Doze monitor", or long-press the quick tile) is the evidence source for most of them.
+No physical device was available for this checklist. The emulator-runnable checks were run separately and are recorded in `device-test-emulator-status.md`; device-only items below still need a real phone. The Doze Monitor (menu → "Doze monitor", or long-press the quick tile) is the evidence source for most of them.
 Run them on Android 16 with Shizuku (shell) first, then repeat items 1–4 with root if you have it.
 
 **Before starting:** install over the old version, then open the app once. Settings should look the same as
