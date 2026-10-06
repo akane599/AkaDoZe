@@ -47,6 +47,56 @@ public class NoticeSinkRobolectricTest {
     }
 
     @Test
+    public void postedDefaultsTrueAndSetPostedWritesOnlyWhenChanged() throws Exception {
+        Context context = RuntimeEnvironment.getApplication();
+        SharedPreferences notices = context.getSharedPreferences("notices", Context.MODE_PRIVATE);
+        DebtRules.NoticeGate.Store store = debtStore(context);
+        assertFalse("No posted flag exists initially", notices.contains("debtPosted"));
+        assertTrue("Pre-flag notices default to posted", store.posted());
+
+        store.setPosted(true);
+        assertFalse("An unchanged default must not write a flag", notices.contains("debtPosted"));
+        store.setPosted(false);
+        assertTrue("A changed value writes the flag", notices.contains("debtPosted"));
+        assertFalse("False is stored", notices.getBoolean("debtPosted", true));
+        store.setPosted(false);
+        assertFalse("An unchanged false remains false", store.posted());
+        store.setPosted(true);
+        assertTrue("A changed true is stored", notices.getBoolean("debtPosted", false));
+    }
+
+    @Test
+    public void settledLedgerCancelsPreFlagDebtThroughStoreAndClearsPostedFlag() {
+        Context context = RuntimeEnvironment.getApplication();
+        SharedPreferences notices = context.getSharedPreferences("notices", Context.MODE_PRIVATE);
+        notices.edit().putStringSet("debtNotified", Collections.singleton("WIFI|wifi")).commit();
+        NotificationManager manager = context.getSystemService(NotificationManager.class);
+        manager.createNotificationChannel(new NotificationChannel("test_debt", "Debt", NotificationManager.IMPORTANCE_DEFAULT));
+        Notification notification = new Notification.Builder(context, "test_debt")
+                .setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("Debt").build();
+        manager.notify(ID_DEBT, notification);
+        manager.notify(ID_OTHER, notification);
+        ShadowNotificationManager shadow = shadowOf(manager);
+        assertNotNull("Pre-flag debt is present", shadow.getNotification(ID_DEBT));
+        assertFalse("Legacy notice has no posted flag", notices.contains("debtPosted"));
+
+        NoticeSink.restoresChecked(context, false);
+
+        assertNull("Store cancels ID_DEBT when ledger debt settles", shadow.getNotification(ID_DEBT));
+        assertNotNull("Store cancellation leaves other IDs alone", shadow.getNotification(ID_OTHER));
+        assertTrue("Settled keys are removed", notices.getStringSet("debtNotified", Collections.emptySet()).isEmpty());
+        assertFalse("Cancellation writes posted=false", notices.getBoolean("debtPosted", true));
+    }
+
+    private DebtRules.NoticeGate.Store debtStore(Context context) throws Exception {
+        Field gate = NoticeSink.class.getDeclaredField("debtGate");
+        gate.setAccessible(true);
+        Field store = DebtRules.NoticeGate.class.getDeclaredField("store");
+        store.setAccessible(true);
+        return (DebtRules.NoticeGate.Store) store.get(gate.get(NoticeSink.get(context)));
+    }
+
+    @Test
     public void cancelDebtCancelsOnlyDebtAndClearsStoredGateState() {
         Context context = RuntimeEnvironment.getApplication();
         SharedPreferences notices = context.getSharedPreferences("notices", Context.MODE_PRIVATE);

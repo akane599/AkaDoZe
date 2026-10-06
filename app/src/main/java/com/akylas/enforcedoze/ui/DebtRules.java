@@ -84,11 +84,16 @@ public final class DebtRules {
             Set<String> notified = new HashSet<>(store.load());
             if (notified.contains(key)) return false;
             boolean posted = !shownInApp && poster.post();
-            if (!posted && !shownInApp) return false;
+            if (!shouldRecord(posted, shownInApp)) return false;
             notified.add(key);
             store.save(notified);
             if (posted) store.setPosted(true);
             return posted;
+        }
+
+        /** A denied post retries later unless the app already presented this debt item. */
+        static boolean shouldRecord(boolean posted, boolean shownInApp) {
+            return posted || shownInApp;
         }
 
         public void clear(String key) {
