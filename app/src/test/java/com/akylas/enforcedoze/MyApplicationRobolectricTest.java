@@ -42,12 +42,13 @@ public class MyApplicationRobolectricTest {
     @Test public void preNBootRequeriesEvenIfUserIsMarkedLocked() throws Exception {
         RecordingApplication app = app(false);
         // Exercise the API guard without fetching a second Android SDK from the network.
+        int sdk = android.os.Build.VERSION.SDK_INT;
         org.robolectric.util.ReflectionHelpers.setStaticField(android.os.Build.VERSION.class, "SDK_INT", 23);
         try {
             app.onCreate();
             assertEquals("pre-N does not consult direct boot", 1, app.requeries); TestAppState.assertNoRuntimeOrDiscovery();
         } finally {
-            org.robolectric.util.ReflectionHelpers.setStaticField(android.os.Build.VERSION.class, "SDK_INT", 36);
+            org.robolectric.util.ReflectionHelpers.setStaticField(android.os.Build.VERSION.class, "SDK_INT", sdk);
         }
     }
 }

@@ -24,6 +24,15 @@ class EnforcementWiringTest {
                 source.contains("AccessManager.getInstance(this).grantHelpersAutomatically()"))
         assertFalse("no service-owned command may bypass the grant record", whitelist.contains("whitelist +"))
         assertTrue(whitelist.contains("RequestIgnoreBatteryActivity.class"))
+        val level = source.substringAfter("AccessLevel selfWhitelistAccessLevel() {").substringBefore("}")
+        assertTrue("the whitelist decision reads the live access level",
+            level.contains("return AccessManager.getInstance(this).getLevel();"))
+        assertFalse(level.contains("sessionMode()") || level.contains("SessionMode.FORCE"))
+    }
+
+    @Test fun workerInitReadsTheRuntimeAccessLevel() {
+        val level = service().substringAfter("AccessLevel workerAccessLevel() {").substringBefore("}")
+        assertTrue(level.contains("return runtime.getAccess().getLevel();"))
     }
 
     @Test fun forceOnlyUsesDurableGenerationCheckedControllerWithoutDeferredSelection() {
