@@ -6,6 +6,8 @@ import com.akylas.enforcedoze.doze.FakeClock
 import com.akylas.enforcedoze.doze.InMemoryLedgerStore
 import com.akylas.enforcedoze.doze.LedgerEntry
 import com.akylas.enforcedoze.doze.RestoreLedger
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.*
 import org.junit.Test
@@ -17,9 +19,10 @@ class RadioSettleCommandLaneTest {
         val kills = AtomicInteger()
         val reads = AtomicInteger()
         val resets = AtomicInteger()
+        val blockedReread = CountDownLatch(1)
+        val shellKilled = CountDownLatch(1)
         val root = RootCommandRunner { available ->
             opens.incrementAndGet()
-            Thread.sleep(150) // Initial default timeout admits opening; a 100ms reread would not.
             available(true)
             object : RootSession {
                 @Volatile private var running = true
@@ -28,7 +31,8 @@ class RadioSettleCommandLaneTest {
                     val output = when (command) {
                         "cmd connectivity airplane-mode" -> "disabled"
                         "settings get global mobile_data" -> {
-                            if (reads.incrementAndGet() > 1) Thread.sleep(120)
+                            // Only timeout/reset can release this read, regardless of supervisor scheduling.
+                            if (reads.incrementAndGet() > 1) blockedReread.await()
                             "0"
                         }
                         else -> ""
@@ -39,6 +43,8 @@ class RadioSettleCommandLaneTest {
                     if (running) {
                         running = false
                         kills.incrementAndGet()
+                        blockedReread.countDown()
+                        shellKilled.countDown()
                     }
                 }
             }
@@ -64,6 +70,7 @@ class RadioSettleCommandLaneTest {
                 sleeper = { waits.add(it); clock.elapsed += it },
             )
             val result = controller.exit()
+            assertTrue("timeout must finish killing the shell", shellKilled.await(1, TimeUnit.SECONDS))
             assertFalse(result.complete)
             assertEquals("only the initial read and timed-out reread reach su", 2, reads.get())
             assertEquals("one lane timeout reset before close", 1, resets.get())

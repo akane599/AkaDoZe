@@ -515,9 +515,12 @@ class DozeController @JvmOverloads constructor(
         airplaneRestored: Boolean,
         admission: () -> Boolean,
     ): Boolean {
-        val value = restoredValue(entry, apiLevel)
+        val readback = readResult(entry.feature, entry.target, original = true, apiLevel = apiLevel)
+        val value = restoredValue(entry, apiLevel, readback)
         val expected = expectedRestoreValue(entry, apiLevel)
-        val settled = settleRestoreValue(entry, apiLevel, airplaneRestored, value, expected, admission)
+        // An initial timeout also resets the root lane; settling must not reopen its shell.
+        val settled = if (readback?.timedOut == true) value else
+            settleRestoreValue(entry, apiLevel, airplaneRestored, value, expected, admission)
         val verified = settled != null && settled == expected
         emitRestoreVerification(entry, verified)
         return verified
@@ -545,12 +548,13 @@ class DozeController @JvmOverloads constructor(
         }
     }
 
-    private fun restoredValue(entry: LedgerEntry, apiLevel: Int): String? =
-        if (entry.feature == Feature.APP_SUSPEND && entry.originalValue == "0") {
-            FeatureReadback.restoredSuspensionValue(
-                read(entry.feature, entry.target, original = true, apiLevel = apiLevel), entry.target, control.level,
-            )
-        } else readValue(entry.feature, entry.target, original = true, apiLevel = apiLevel)
+    private fun restoredValue(entry: LedgerEntry, apiLevel: Int, result: CommandResult?): String? {
+        val output = if (result?.ok == true) result.stdout else emptyList()
+        if (entry.feature == Feature.MOTION_SENSORS) lastSensor = SensorModeParser.parse(output).mode
+        return if (entry.feature == Feature.APP_SUSPEND && entry.originalValue == "0") {
+            FeatureReadback.restoredSuspensionValue(output, entry.target, control.level)
+        } else FeatureReadback.value(entry.feature, apiLevel, output, entry.target)
+    }
 
     /** Three reads only, at most 750ms including waits and read timeouts; never repeat a mutation. */
     private fun settleRadioReadback(
@@ -642,10 +646,17 @@ class DozeController @JvmOverloads constructor(
         feature: Feature, target: String?, original: Boolean, apiLevel: Int = this.apiLevel,
         timeoutMs: Long = CommandRunner.DEFAULT_TIMEOUT_MS,
     ): List<String> {
+        val result = readResult(feature, target, original, apiLevel, timeoutMs)
+        return if (result?.ok == true) result.stdout else emptyList()
+    }
+
+    private fun readResult(
+        feature: Feature, target: String?, original: Boolean, apiLevel: Int = this.apiLevel,
+        timeoutMs: Long = CommandRunner.DEFAULT_TIMEOUT_MS,
+    ): CommandResult? {
         val command = if (original) catalog.originalValueRead(feature, apiLevel, target)
             else catalog.readback(feature, apiLevel, target)
-        val result = command?.let { run(it, timeoutMs) }
-        return if (result?.ok == true) result.stdout else emptyList()
+        return command?.let { run(it, timeoutMs) }
     }
 
     private fun run(command: String, timeoutMs: Long = CommandRunner.DEFAULT_TIMEOUT_MS): CommandResult? = try {
