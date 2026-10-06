@@ -750,7 +750,7 @@ class SystemResetTest {
         val granted = held.associateWith { true }.toMutableMap()
         runner.beforeMutation = { command ->
             if (command.startsWith("pm revoke $PACKAGE ")) {
-                val permission = command.substringAfterLast(' ')
+                val permission = command.substringBefore(';').substringAfterLast(' ')
                 if (granted[permission] == true && permission in listOf(READ_LOGS, PHONE_STATE)) throw ProcessKilled(command)
                 granted[permission] = false
             }
@@ -787,7 +787,7 @@ class SystemResetTest {
                 listOf(ResetCommandId.REVOKE_READ_LOGS, ResetCommandId.REVOKE_READ_PHONE_STATE))
             null
         } catch (killed: ProcessKilled) { killed }
-        val expected = "pm revoke $PACKAGE $READ_LOGS; pm revoke $PACKAGE $PHONE_STATE"
+        val expected = joinedRevokes
         assertEquals("both revokes must be submitted before app death", listOf(expected), runner.commands)
         assertEquals(expected, killed?.message)
     }
@@ -831,7 +831,7 @@ class SystemResetTest {
             runDeferredReset(runner, 36, PACKAGE, result.deferred)
             null
         } catch (killed: ProcessKilled) { killed }
-        assertEquals("pm revoke $PACKAGE $PHONE_STATE", killed?.message)
+        assertEquals(markedPhoneRevoke, killed?.message)
     }
 
     @Test fun deferredStepIsNeverCountedAsConfirmed() {
@@ -870,8 +870,92 @@ class SystemResetTest {
         assertEquals(listOf(ResetCommandId.REVOKE_READ_LOGS, ResetCommandId.REVOKE_READ_PHONE_STATE), failedCheck.deferred)
     }
 
-    private val joinedRevokes = "pm revoke $PACKAGE $READ_LOGS; pm revoke $PACKAGE $PHONE_STATE"
+    private val markedReadLogsRevoke = "pm revoke $PACKAGE $READ_LOGS; echo \"__AKADOZE_RESET_REVOKE_READ_LOGS=\$?\""
+    private val markedPhoneRevoke = "pm revoke $PACKAGE $PHONE_STATE; echo \"__AKADOZE_RESET_REVOKE_READ_PHONE_STATE=\$?\""
+    private val joinedRevokes = "$markedReadLogsRevoke; $markedPhoneRevoke"
     private val deferredRevokes = listOf(ResetCommandId.REVOKE_READ_LOGS, ResetCommandId.REVOKE_READ_PHONE_STATE)
+
+    @Test fun firstDeferredRevokeFailureIsReportedEvenWhenJoinedExitIsZero() {
+        val reported = mutableListOf<Throwable>()
+        // Answer the submitted shell in either baseline or candidate form: only the assertion
+        // about the first revoke's swallowed status is the negative-control oracle.
+        runner.beforeMutation = { command ->
+            runner.answer(command) {
+                FakeRunner.result("__AKADOZE_RESET_REVOKE_READ_LOGS=1\n__AKADOZE_RESET_REVOKE_READ_PHONE_STATE=0")
+            }
+        }
+
+        val result = runDeferredReset(runner, 36, PACKAGE, deferredRevokes, onError = reported::add)
+
+        assertEquals("the first revoke's failure must survive a successful last revoke", 1, reported.size)
+        assertEquals("Deferred reset revoke REVOKE_READ_LOGS failed: exit=1", reported.single().message)
+        assertEquals(1, runner.commands.size)
+        assertTrue(result.all { it.outcome == ResetCommandOutcome.UNVERIFIED })
+    }
+
+    @Test fun joinedShellCapturesEachRevokeStatusWithoutSkippingLaterRevoke() {
+        val reported = mutableListOf<Throwable>()
+        runner.beforeMutation = { command ->
+            runner.answer(command) {
+                // Harmless host-shell stand-in: no Android permissions are touched.
+                val shell = ProcessBuilder("sh", "-c", """
+                    pm() { echo "ran:${'$'}3"; case "${'$'}3" in *READ_LOGS) return 1;; *) return 0;; esac; }
+                    $command
+                """.trimIndent()).start()
+                assertTrue("shell probe must terminate", shell.waitFor(5, java.util.concurrent.TimeUnit.SECONDS))
+                val output = shell.inputStream.bufferedReader().readText().trimEnd()
+                assertEquals(listOf("ran:$READ_LOGS", "__AKADOZE_RESET_REVOKE_READ_LOGS=1",
+                    "ran:$PHONE_STATE", "__AKADOZE_RESET_REVOKE_READ_PHONE_STATE=0"), output.lines())
+                FakeRunner.result(output, exit = shell.exitValue())
+            }
+        }
+        runDeferredReset(runner, 36, PACKAGE, deferredRevokes, onError = reported::add)
+        assertEquals(listOf("Deferred reset revoke REVOKE_READ_LOGS failed: exit=1"), reported.map { it.message })
+        assertEquals(listOf(joinedRevokes), runner.commands)
+    }
+
+    @Test fun eachNonzeroDeferredStatusReportsOnlyItsOwnRevoke() {
+        val reported = mutableListOf<Throwable>()
+        runner.beforeMutation = { command ->
+            runner.answer(command) {
+                FakeRunner.result("__AKADOZE_RESET_REVOKE_READ_LOGS=2\n__AKADOZE_RESET_REVOKE_READ_PHONE_STATE=3")
+            }
+        }
+        runDeferredReset(runner, 36, PACKAGE, deferredRevokes.reversed(), onError = reported::add)
+
+        assertEquals(listOf("Deferred reset revoke REVOKE_READ_LOGS failed: exit=2",
+            "Deferred reset revoke REVOKE_READ_PHONE_STATE failed: exit=3"), reported.map { it.message })
+        assertEquals(listOf(joinedRevokes), runner.commands)
+    }
+
+    @Test fun absentMalformedOrAmbiguousDeferredStatusNeverClaimsFailure() {
+        for (output in listOf("", "__AKADOZE_RESET_REVOKE_READ_LOGS=0",
+            "__AKADOZE_RESET_REVOKE_READ_LOGS=unknown", "__AKADOZE_RESET_REVOKE_READ_LOGS=1 extra",
+            "__AKADOZE_RESET_REVOKE_READ_LOGS=1\n__AKADOZE_RESET_REVOKE_READ_LOGS=0")) {
+            val fake = resetRunner()
+            val reported = mutableListOf<Throwable>()
+            fake.beforeMutation = { command -> fake.answer(command) { FakeRunner.result(output) } }
+            val result = runDeferredReset(fake, 36, PACKAGE, deferredRevokes, onError = reported::add)
+
+            assertTrue(output, reported.isEmpty())
+            assertTrue(output, result.all { it.outcome == ResetCommandOutcome.UNVERIFIED })
+        }
+    }
+
+    @Test fun skippedRevokeStatusIsNotAttributedToTheSurvivingRevoke() {
+        val reported = mutableListOf<Throwable>()
+        runner.beforeMutation = { command ->
+            runner.answer(command) { FakeRunner.result("__AKADOZE_RESET_REVOKE_READ_PHONE_STATE=1") }
+        }
+        val result = runDeferredReset(runner, 36, PACKAGE, deferredRevokes, onError = reported::add,
+            forgetHelpers = { false })
+
+        assertEquals("only the failed forget is reported, not a status for a revoke that did not run",
+            listOf("Could not forget reset helper READ_PHONE_STATE before revoke"), reported.map { it.message })
+        assertEquals(listOf(markedReadLogsRevoke), runner.commands)
+        assertEquals(ResetCommandOutcome.UNVERIFIED, result.first().outcome)
+        assertEquals(ResetCommandOutcome.FAILED, result.last().outcome)
+    }
 
     @Test fun throwingDeferredRunnerReportsExactErrorWithoutClaimingConfirmation() {
         val error = IllegalStateException("deferred runner failed")
@@ -919,7 +1003,7 @@ class SystemResetTest {
             if (throws) assertSame(error, reported.single())
             else assertEquals("Could not forget reset helper READ_PHONE_STATE before revoke", reported.single().message)
             assertEquals(ResetCommandOutcome.FAILED, result.last().outcome)
-            assertEquals(listOf("pm revoke $PACKAGE $READ_LOGS"), fake.commands)
+            assertEquals(listOf(markedReadLogsRevoke), fake.commands)
         }
     }
 
@@ -951,7 +1035,7 @@ class SystemResetTest {
         assertTrue(runner.commands.isEmpty())
         runner.level = AccessLevel.SHELL
         runDeferredReset(runner, 36, PACKAGE, listOf(ResetCommandId.REVOKE_READ_PHONE_STATE))
-        assertEquals(listOf("pm revoke $PACKAGE $PHONE_STATE"), runner.commands)
+        assertEquals(listOf(markedPhoneRevoke), runner.commands)
     }
 
     @Test fun invalidPackageNeverReachesTheShell() {
@@ -1053,7 +1137,7 @@ class SystemResetTest {
             listOf(ResetCommandId.REVOKE_READ_LOGS, ResetCommandId.REVOKE_READ_PHONE_STATE),
         ) { forget(helpers, it) }
         assertEquals("only matching revoke is skipped; READ_LOGS has no GrantCommands key",
-            listOf("pm revoke $PACKAGE $READ_LOGS"), runner.commands)
+            listOf(markedReadLogsRevoke), runner.commands)
         assertEquals(ResetCommandOutcome.FAILED, result.single { it.id == ResetCommandId.REVOKE_READ_PHONE_STATE }.outcome)
         assertTrue(result.none { it.outcome == ResetCommandOutcome.OK })
     }

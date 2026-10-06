@@ -104,8 +104,9 @@ object SystemReset {
      * doze-worker only, after the user confirmed the reported result. Durably forget matching helpers
      * again here: a service start may have re-recorded them since the report's preference clear.
      * Submit eligible revokes as one ';'-joined command so a failed revoke does not skip the rest.
+     * Each revoke echoes its own status, so a successful later revoke cannot hide its failure.
      * Completion after this process is killed is backend-dependent and unverified on Shizuku devices.
-     * No deferred step is readback-confirmed.
+     * Missing status markers remain UNVERIFIED, not FAILED. No deferred step is readback-confirmed.
      */
     fun runDeferred(
         control: CommandRunner,
@@ -124,20 +125,36 @@ object SystemReset {
             ResetCommandResult(id, if (forgetBeforeRevoke(id, forgetHelpers, onError))
                 ResetCommandOutcome.UNVERIFIED else ResetCommandOutcome.FAILED)
         }
-        val command = selected.filterIndexed { index, _ -> results[index].outcome != ResetCommandOutcome.FAILED }
-            .joinToString("; ") { it.second }
-        if (command.isNotEmpty()) submitDeferred(control, command, onError)
+        val eligible = selected.filterIndexed { index, _ -> results[index].outcome != ResetCommandOutcome.FAILED }
+        if (eligible.isNotEmpty()) submitDeferred(control, eligible, onError)
         return results
     }
 
-    private fun submitDeferred(control: CommandRunner, command: String, onError: (Throwable) -> Unit) {
+    private fun submitDeferred(
+        control: CommandRunner,
+        commands: List<Pair<ResetCommandId, String>>,
+        onError: (Throwable) -> Unit,
+    ) {
+        val command = commands.joinToString("; ") { (id, revoke) ->
+            "$revoke; echo \"__AKADOZE_RESET_${id.name}=\$?\""
+        }
         try {
             val result = control.run(command)
+            commands.forEach { (id, _) -> reportDeferredStatus(id, result.stdout, onError) }
             if (result.timedOut || !result.ok) {
                 onError(IllegalStateException("Deferred reset revoke failed: exit=${result.exitCode}, timedOut=${result.timedOut}"))
             }
         } catch (error: Exception) {
             onError(error)
+        }
+    }
+
+    private fun reportDeferredStatus(id: ResetCommandId, stdout: List<String>, onError: (Throwable) -> Unit) {
+        val marker = Regex("__AKADOZE_RESET_${id.name}=([0-9]+)")
+        val exitCode = stdout.mapNotNull { marker.matchEntire(it)?.groupValues?.get(1) }
+            .singleOrNull()?.toIntOrNull()
+        if ((exitCode ?: 0) > 0) {
+            onError(IllegalStateException("Deferred reset revoke ${id.name} failed: exit=$exitCode"))
         }
     }
 
