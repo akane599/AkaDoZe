@@ -18,25 +18,7 @@ class TeardownRecoveryTest {
     )
     private fun debtKeys() = events.filter { it.type == EventType.RECOVERY_DEBT }.map { it.feature to it.target }
 
-    @Test fun queuedButNotStartedTeardownAtDeadlineEmitsTimeoutDebt() {
-        if (TeardownTimeout.shouldReport(finished = false)) {
-            events += DozeEvent(EventType.RECOVERY_DEBT, "TEARDOWN_TIMEOUT")
-        }
-        assertEquals(listOf(null to null), debtKeys())
-        assertEquals(listOf("TEARDOWN_TIMEOUT"), events.filter { it.type == EventType.RECOVERY_DEBT }.map { it.detail })
-    }
-
-    @Test fun timeoutDebtDependsOnlyOnWhetherTeardownFinished() {
-        assertTrue(TeardownTimeout.shouldReport(finished = false))
-        assertFalse(TeardownTimeout.shouldReport(finished = true))
-    }
-
-    @Test fun serviceReportsTimeoutDebtForAnyUnfinishedTeardown() {
-        val source = File("src/main/java/com/akylas/enforcedoze/ForceDozeService.java").readText()
-        val teardown = source.substringAfter("public void onDestroy()").substringBefore("public int onStartCommand(")
-        assertTrue(teardown.contains("!stopped.await(SessionLifecycle.TEARDOWN_WAIT_MS, TimeUnit.MILLISECONDS)\n                    && TeardownTimeout.shouldReport(stopped.getCount() == 0)"))
-        assertFalse(teardown.contains("started"))
-    }
+    // Timeout decisions and actual service wiring are exercised by ForceDozeServiceRobolectricTest.
 
     @Test fun budgetExhaustionDefersMidCommandAndUnreachedEntriesWithoutFalseDebt() {
         val clock = FakeClock(0)
@@ -275,15 +257,15 @@ class TeardownRecoveryTest {
     @Test fun teardownStartsBudgetOnWorkerAndQueuesDeadlineFreeWakeProtectedRestoreBeforeRetirement() {
         val source = File("src/main/java/com/akylas/enforcedoze/ForceDozeService.java").readText()
         val teardown = source.substringAfter("public void onDestroy()").substringBefore("public int onStartCommand(")
-        val detach = teardown.indexOf("runtime.detachService(() -> {")
+        val detach = teardown.indexOf("runtime.detachService(() -> runTeardown(stopped))")
         val deadline = teardown.indexOf("long deadline =")
         assertTrue("incomplete teardown must queue follow-up restoration", teardown.contains("if (!complete.get()) queueTeardownRestore();"))
         assertTrue("budget starts inside the worker teardown, never on main", detach >= 0 && deadline > detach)
         assertTrue("incomplete exit drives follow-up", teardown.contains("complete.set(result.getComplete())"))
         assertTrue("exit admission shares the command deadline", teardown.contains(
-            "exit(Build.VERSION.SDK_INT, runtime.grants(),\n                            () -> runtime.getClock().elapsedRealtime() < deadline)"))
+            "exit(Build.VERSION.SDK_INT, runtime.grants(),\n                        () -> runtime.getClock().elapsedRealtime() < deadline)"))
         assertTrue("queue failure cannot bypass teardown cleanup", Regex(
-            "try \\{\\s*if \\(!complete.get\\(\\)\\) queueTeardownRestore\\(\\);\\s*} finally \\{\\s*runtime.getSession\\(\\).recordExit\\(\\);",
+            "try \\{\\s*if \\(!complete.get\\(\\)\\) queueTeardownRestore\\(\\);\\s*} finally \\{\\s*finishTeardown\\(stopped\\);",
         ).containsMatchIn(teardown))
         assertTrue("exception forces follow-up", teardown.substringAfter("catch (Exception error)").contains("complete.set(false)"))
         val enqueue = teardown.indexOf("if (!complete.get()) queueTeardownRestore();")

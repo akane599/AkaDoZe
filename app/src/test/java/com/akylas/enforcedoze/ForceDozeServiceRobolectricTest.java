@@ -1,5 +1,27 @@
 package com.akylas.enforcedoze;
 
+import android.content.ContextWrapper;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
+import com.akylas.enforcedoze.doze.DozeEvent;
+import com.akylas.enforcedoze.monitor.EventCodes;
+import com.akylas.enforcedoze.service.AndroidClock;
+import com.akylas.enforcedoze.service.DozeRuntime;
+import com.akylas.enforcedoze.service.JournalSink;
+import com.akylas.enforcedoze.service.ServiceResetQueue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import org.robolectric.annotation.Implements;
+import org.robolectric.annotation.Implementation;
+import org.robolectric.shadow.api.Shadow;
+import org.robolectric.shadows.ShadowLog;
+import org.robolectric.shadows.ShadowPowerManager.ShadowWakeLock;
 import android.app.Application;
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -165,6 +187,157 @@ public class ForceDozeServiceRobolectricTest {
         assertEquals(1, notice.priority); assertEquals(0, notice.flags & Notification.FLAG_ONGOING_EVENT);
         assertEquals(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS, shadowOf(notice.contentIntent).getSavedIntent().getAction());
         assertTrue(notice.contentIntent.isImmutable());
+    }
+
+    public static class TeardownService extends ForceDozeService {
+        // onCreate is deliberately not run, so there is no registered platform receiver.
+        @Override public void unregisterReceiver(android.content.BroadcastReceiver receiver) {}
+    }
+
+    @Implements(PowerManager.WakeLock.class)
+    public static class RacingWakeLock extends ShadowWakeLock {
+        boolean failRelease;
+        int racedReleases;
+        @Override @Implementation protected void release(int flags) {
+            if (failRelease) {
+                failRelease = false;
+                racedReleases++;
+                throw new RuntimeException("WakeLock under-locked after timeout");
+            }
+            super.release(flags);
+        }
+    }
+
+    private TeardownService teardownService(List<DozeEvent> events,
+            Consumer<Runnable> post) {
+        try {
+            Field context = MyApplication.class.getDeclaredField("context");
+            context.setAccessible(true); context.set(null, RuntimeEnvironment.getApplication());
+        } catch (Exception error) { throw new AssertionError(error); }
+        TeardownService service = Robolectric.buildService(TeardownService.class).get();
+        AndroidClock clock = new AndroidClock();
+        JournalSink journal = new JournalSink(service, clock);
+        journal.addSink(events::add);
+        DozeRuntime runtime = new DozeRuntime(service, clock, journal);
+        setField(runtime, "resets", new ServiceResetQueue(runtime, job -> {
+            post.accept(job);
+            return kotlin.Unit.INSTANCE;
+        }));
+        // No real HandlerThread or access discovery; the fixture owns all queued jobs.
+        setField(runtime, "shutdownQueued", true);
+        set(service, "runtime", runtime);
+        set(service, "pm", service.getSystemService(PowerManager.class));
+        set(service, "worker", new Handler(Looper.getMainLooper()));
+        PreferenceManager.getDefaultSharedPreferences(service).edit().putBoolean("serviceEnabled", true).commit();
+        return service;
+    }
+
+    @Test public void queuedButNotStartedTeardownEmitsTimeoutFromOnDestroy() {
+        List<DozeEvent> events = new ArrayList<>();
+        List<Runnable> jobs = new ArrayList<>();
+        TeardownService service = teardownService(events, jobs::add);
+        service.onDestroy();
+        assertEquals("teardown queued, never executed", 1, jobs.size());
+        assertEquals("actual service emits exactly one timeout for an unfinished wait", 1,
+                events.stream().filter(e -> EventCodes.TEARDOWN_TIMEOUT.equals(e.getDetail())).count());
+    }
+
+    @Test public void startedButUnfinishedTeardownEmitsTimeoutFromOnDestroy() throws Exception {
+        List<DozeEvent> events = new ArrayList<>();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        AtomicReference<Future<?>> task = new AtomicReference<>();
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch resume = new CountDownLatch(1);
+        TeardownService service = teardownService(events, job -> task.set(executor.submit(job)));
+        DozeRuntime runtime = (DozeRuntime) get(service, "runtime");
+        setField(runtime, "app", new ContextWrapper(service.getApplicationContext()) {
+            @Override public int checkSelfPermission(String permission) {
+                started.countDown();
+                try { assertTrue(resume.await(10, TimeUnit.SECONDS)); }
+                catch (InterruptedException error) { Thread.currentThread().interrupt(); throw new AssertionError(error); }
+                return super.checkSelfPermission(permission);
+            }
+        });
+        try {
+            service.onDestroy();
+            assertEquals("production teardown entered grants inside withDeadline", 0, started.getCount());
+            assertEquals("started but unfinished teardown reports timeout", 1, events.stream().filter(
+                    e -> EventCodes.TEARDOWN_TIMEOUT.equals(e.getDetail())).count());
+        } finally {
+            resume.countDown();
+            try { if (task.get() != null) task.get().get(10, TimeUnit.SECONDS); }
+            finally {
+                executor.shutdownNow();
+                assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+            }
+        }
+    }
+
+    @Test public void waitOutcomeSeamEmitsOnlyForUnfinishedTeardown() {
+        List<String> events = new ArrayList<>();
+        ForceDozeService.reportTeardownWait(false, () -> events.add("not-started"));
+        ForceDozeService.reportTeardownWait(false, () -> events.add("started-unfinished"));
+        ForceDozeService.reportTeardownWait(true, () -> events.add("finished"));
+        assertEquals(Arrays.asList("not-started", "started-unfinished"), events);
+    }
+
+    @Test @Config(shadows = RacingWakeLock.class)
+    public void throwingWakeLockReleaseStillCompletesTeardownLatch() throws Exception {
+        List<DozeEvent> events = new ArrayList<>();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        AtomicReference<Future<?>> task = new AtomicReference<>();
+        AtomicReference<TeardownService> owner = new AtomicReference<>();
+        AtomicReference<RacingWakeLock> race = new AtomicReference<>();
+        TeardownService service = teardownService(events, job -> {
+            PowerManager.WakeLock lock = owner.get().getSystemService(PowerManager.class)
+                    .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "test:teardown");
+            lock.acquire();
+            RacingWakeLock shadow = Shadow.extract(lock);
+            shadow.failRelease = true;
+            race.set(shadow);
+            owner.get().tempWakeLock = lock;
+            task.set(executor.submit(job));
+        });
+        owner.set(service);
+        try {
+            service.onDestroy();
+            assertEquals("worker exercised the timeout/release race", 1, race.get().racedReleases);
+            assertTrue("release failure must not skip latch countdown or create false timeout",
+                    events.stream().noneMatch(e -> EventCodes.TEARDOWN_TIMEOUT.equals(e.getDetail())));
+            task.get().get(10, TimeUnit.SECONDS);
+        } finally {
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test public void teardownFailureLogsOriginalThrowable() throws Exception {
+        List<DozeEvent> events = new ArrayList<>();
+        List<Runnable> jobs = new ArrayList<>();
+        TeardownService service = teardownService(events, jobs::add);
+        DozeRuntime runtime = (DozeRuntime) get(service, "runtime");
+        IllegalStateException error = new IllegalStateException("teardown ledger read failed");
+        setField(runtime, "app", new ContextWrapper(service.getApplicationContext()) {
+            @Override public int checkSelfPermission(String permission) { throw error; }
+        });
+        service.onDestroy();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            executor.submit(jobs.get(0)).get(10, TimeUnit.SECONDS);
+            assertTrue("actual teardown catch journals failure", events.stream().anyMatch(
+                    e -> EventCodes.TEARDOWN_FAILED.equals(e.getDetail())));
+            assertTrue("actual teardown catch logs the exact throwable at WARN",
+                    ShadowLog.getLogsForTag("ForceDozeService").stream()
+                            .anyMatch(log -> log.type == Log.WARN && log.throwable == error));
+        } finally {
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+        }
+    }
+
+    private static void setField(Object instance, String name, Object value) {
+        try { Field field = instance.getClass().getDeclaredField(name); field.setAccessible(true); field.set(instance, value); }
+        catch (Exception error) { throw new AssertionError(error); }
     }
 
     static Object get(Object instance, String name) {

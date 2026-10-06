@@ -37,7 +37,6 @@ import com.akylas.enforcedoze.service.AccessReadiness;
 import com.akylas.enforcedoze.service.DozeRuntime;
 import com.akylas.enforcedoze.service.LegacyDozeStats;
 import com.akylas.enforcedoze.service.SessionLifecycle;
-import com.akylas.enforcedoze.service.TeardownTimeout;
 import com.akylas.enforcedoze.service.SessionAccess;
 import com.akylas.enforcedoze.service.SessionMode;
 import com.akylas.enforcedoze.service.FeatureSelection;
@@ -428,45 +427,63 @@ public class ForceDozeService extends Service {
         cancelEnter();
         if (pendingNotification != null) worker.removeCallbacks(pendingNotification);
         CountDownLatch stopped = new CountDownLatch(1);
-        runtime.detachService(() -> {
-            long deadline = runtime.getClock().elapsedRealtime() + SessionLifecycle.TEARDOWN_COMMAND_MS;
-            AtomicBoolean complete = new AtomicBoolean();
-            try {
-                runtime.withDeadline(deadline, () -> {
-                    ExitResult result = runtime.getController().exit(Build.VERSION.SDK_INT, runtime.grants(),
-                            () -> runtime.getClock().elapsedRealtime() < deadline);
-                    complete.set(result.getComplete());
-                    runtime.recordExit(result);
-                    runtime.checkSafety();
-                });
-            } catch (Exception error) {
-                complete.set(false);
-                runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.TEARDOWN_FAILED));
-            } finally {
-                try {
-                    if (!complete.get()) queueTeardownRestore();
-                } finally {
-                    runtime.getSession().recordExit(); // A destroyed session cannot suppress a replacement ENTER.
-                    releaseWakeLock();
-                    runtime.quitIfDetached();
-                    stopped.countDown();
-                }
-            }
-        });
-        try {
-            if (!stopped.await(SessionLifecycle.TEARDOWN_WAIT_MS, TimeUnit.MILLISECONDS)
-                    && TeardownTimeout.shouldReport(stopped.getCount() == 0)) {
-                runtime.getJournal().emit(new DozeEvent(EventType.RECOVERY_DEBT, EventCodes.TEARDOWN_TIMEOUT));
-            }
-        } catch (InterruptedException error) {
-            Thread.currentThread().interrupt();
-        }
+        runtime.detachService(() -> runTeardown(stopped));
+        awaitTeardown(stopped);
         releaseWakeLock();
         if (!getDefaultSharedPreferences(this).getBoolean("serviceEnabled", false)) {
             Utils.showDisabledNotification(this);
         }
         Utils.updateTileState(this);
         super.onDestroy();
+    }
+
+    private void runTeardown(CountDownLatch stopped) {
+        long deadline = runtime.getClock().elapsedRealtime() + SessionLifecycle.TEARDOWN_COMMAND_MS;
+        AtomicBoolean complete = new AtomicBoolean();
+        try {
+            runtime.withDeadline(deadline, () -> {
+                ExitResult result = runtime.getController().exit(Build.VERSION.SDK_INT, runtime.grants(),
+                        () -> runtime.getClock().elapsedRealtime() < deadline);
+                complete.set(result.getComplete());
+                runtime.recordExit(result);
+                runtime.checkSafety();
+            });
+        } catch (Exception error) {
+            complete.set(false);
+            runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.TEARDOWN_FAILED));
+            Log.w("ForceDozeService", "Teardown failed", error);
+        } finally {
+            try {
+                if (!complete.get()) queueTeardownRestore();
+            } finally {
+                finishTeardown(stopped);
+            }
+        }
+    }
+
+    private void finishTeardown(CountDownLatch stopped) {
+        runtime.getSession().recordExit(); // A destroyed session cannot suppress a replacement ENTER.
+        try {
+            releaseWakeLock();
+        } catch (RuntimeException ignored) {
+            // API 23-27 timeout release can race isHeld()/release() and under-lock.
+        }
+        runtime.quitIfDetached();
+        stopped.countDown();
+    }
+
+    private void awaitTeardown(CountDownLatch stopped) {
+        try {
+            reportTeardownWait(stopped.await(SessionLifecycle.TEARDOWN_WAIT_MS, TimeUnit.MILLISECONDS),
+                    () -> runtime.getJournal().emit(new DozeEvent(EventType.RECOVERY_DEBT, EventCodes.TEARDOWN_TIMEOUT)));
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /** Pure wait-outcome seam: queue admission is irrelevant once the wait has expired. */
+    static void reportTeardownWait(boolean finished, Runnable emitTimeout) {
+        if (!finished) emitTimeout.run();
     }
 
     /** Queued before idle retirement, after withDeadline has cleared the teardown budget. */

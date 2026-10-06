@@ -589,12 +589,6 @@ internal class ServiceResetQueue(private val lock: Any = Any(), private val post
     }
 }
 
-/** Pure timeout decision shared by the service and JVM regressions. */
-object TeardownTimeout {
-    @JvmStatic
-    fun shouldReport(finished: Boolean): Boolean = !finished
-}
-
 /** Read-only command failure never provides a successful readback. */
 internal fun readRuntimeCommand(control: CommandRunner, command: String): List<String> {
     return try {
