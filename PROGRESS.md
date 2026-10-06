@@ -66,6 +66,20 @@ _Work items, stories and blockers live on the Sidequest board. This file keeps w
   - D: leave them.
 
   JUnit-only JVM tests can't run them. (US-7)
+- 2026-10-06: US-8 is SQ-154 options C1 + C2, picked by the orchestrator when the user said "dispatch SQ-154, your pick" a second time. The 16 Android-glue offenders were brought below the ceiling with no behaviour change, merged on `akadoze-2.0` (fba885b..a11c1f1, 755 JVM tests). Base untouched.
+  - C2 alone can't work: any uncovered branch scores CRAP ≥ 6, because CRAP = cc²(1−cov)³ + cc.
+  - Every function with cc ≥ 6 was split regardless of coverage, because CRAP ≥ cc.
+  - SQ-160 added the harness. SQ-161 split MainActivity status and access handling into `AccessUi` rules. SQ-162 split `onCreatePreferences` (cc30) into section binders, pinned by key→state goldens recorded before the split. SQ-163 covered NoticeGate, `clearPreferences` and the NoticeSink store. SQ-164 covered service init, self-whitelist, `MyApplication.onCreate`, debt notice and `AccessManager.publish`.
+  - SQ-164 was high-stakes; review SQ-165 PASSED it, and its two test advisories were fixed in a11c1f1.
+- 2026-10-06: The JVM Android harness is Robolectric 4.16, test-only, pinned to SDK 36 in `app/src/test/resources/robolectric.properties`, with `includeAndroidResources`.
+  - `app/src/test/AndroidManifest.xml` repeats the Shizuku `overrideLibrary`, because the generated unit-test manifest doesn't inherit it.
+  - Under `-PcrapCoverage`, JaCoCo sets `includeNoLocationClasses` so it measures Robolectric-loaded classes.
+  - Tests use `@Config(application = Application.class)` so `MyApplication` never builds DozeRuntime, and reset singletons in @After (`TestAppState`).
+  - Activities whose `onCreate` reaches `AccessManager` discovery (MainActivity) aren't hosted; their glue is reduced to cc1 instead. Hosting SettingsActivity is safe only in Shizuku mode with no binder.
+  - Release and debug runtime classpaths and merged manifests are byte-identical. (US-8; SQ-160)
+- 2026-10-06: Some lizard rows are span artifacts, not offenders:
+  - `DozeRuntime.(anonymous)@470` cc27 is the unchanged `checkSafetyLocked`, absorbed after SQ-164 added a one-line lambda above it (confirmed by SQ-165).
+  - `sessionMode@265-439` cc4 is really the restore-only window's completion callback (hand cc4, coverage 0, CRAP 20). Covering it needs a DozeRuntime harness or a change to a restore path, so it is backlog SQ-166 rather than part of a metric sweep. (US-8)
 
 ## Audit status
 | Area | Last run | Result | How |
@@ -76,7 +90,7 @@ _Work items, stories and blockers live on the Sidequest board. This file keeps w
 | Code audit | 2026-10-05 | `/code-audit` (8 reviewers, fable/high, run in a separate environment) over 61f061a..112cf3c: 7 verified findings (1 P2, 6 P3), fixed in US-4 (SQ-93..SQ-99); bound reviews SQ-100 PASS, SQ-101 PASS; low review notes held in SQ-92 | `/code-audit` |
 | PR review | 2026-10-05 | review of 61f061a..5aa3e68 + post-release backlog → US-5 (SQ-104..SQ-135); bound reviews SQ-130 PASS, SQ-131 FAIL→SQ-132, SQ-134 FAIL→SQ-135; 623 JVM tests green at 15091cb | `/code-review` + `review-audit` (Opus) |
 | Emulator QA | 2026-10-06 | `docs/device-test-1.11.0.md` on an emulator (run elsewhere, Shizuku): 9 findings F1–F9 → US-6 (SQ-136..SQ-153); bound reviews SQ-146 FAIL→SQ-148, SQ-152 PASS; 697 JVM tests green at c9abb12 | emulator, `docs/device-test-emulator-status.md` |
-| Coverage / CRAP | 2026-10-06 | At 1d1f938: 344 of 880 functions at CRAP ≥ 6 vs Base 42f8e73 (0 unmeasured); was 352 of 794. US-7 cleared the 9 pure-Kotlin offenders US-6 touched (SQ-155/156/157; review SQ-158 PASS). The 16 Android-glue ones stay in SQ-154 for the user's pick (C1 Robolectric / C2 extract / D leave). One more touched row (`enterGroupsSafely`) is a lizard span artifact: hand cc 2, CRAP 2 | `quartermaster crap --json` |
+| Coverage / CRAP | 2026-10-06 | At a11c1f1: 309 of 926 functions at CRAP ≥ 6 vs Base 42f8e73 (0 unmeasured). It was 344 of 880 after US-7 and 352 of 794 at bdb5dcd. US-7 cleared the 9 pure-Kotlin offenders. US-8 cleared all 16 Android-glue offenders from SQ-154 using Robolectric plus splits (SQ-160..164; review SQ-165 PASS). The one touched row still failing, `DozeRuntime.(anonymous)@470` cc27, is a lizard spill over the unchanged `checkSafetyLocked`. The remaining hidden offender (restore-window completion, hand CRAP 20) is backlog SQ-166 | `quartermaster crap --json` |
 | Security | — | — | `/claude-security` |
 | UI / design | — | — | `/ui-overhaul` phase review |
 | Lint | 2026-10-03 | baseline captured: 160 pre-existing issues in app/lint-baseline.xml (only new issues fail) | `./gradlew :app:lintDebug -q` |
