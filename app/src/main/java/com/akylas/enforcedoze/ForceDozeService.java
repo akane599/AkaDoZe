@@ -262,40 +262,59 @@ public class ForceDozeService extends Service {
 
     private void initializeWorker() {
         // Load settings now; recovery waits for discovery and still precedes every admitted enter.
-        runtime.configureAllowToken(getDefaultSharedPreferences(this).getString("sensorWhitelistPackage", ""));
+        configureWorkerAllowToken(getDefaultSharedPreferences(this).getString("sensorWhitelistPackage", ""));
         if (destroyed) return;
-        turnOffDataInDoze = getDefaultSharedPreferences(getApplicationContext()).getBoolean(Prefs.TURN_OFF_DATA, false);
-        ignoreIfHotspot = getDefaultSharedPreferences(getApplicationContext()).getBoolean("ignoreIfHotspot", true);
-        turnOffWiFiInDoze = getDefaultSharedPreferences(getApplicationContext()).getBoolean(Prefs.TURN_OFF_WIFI, false);
-        turnOffAllSensorsInDoze = getDefaultSharedPreferences(getApplicationContext()).getBoolean(Prefs.TURN_OFF_ALL_SENSORS, false);
-        turnOffBiometricsInDoze = getDefaultSharedPreferences(getApplicationContext()).getBoolean(Prefs.TURN_OFF_BIOMETRICS, false);
-        turnOnBatterySaverInDoze = getDefaultSharedPreferences(getApplicationContext()).getBoolean(Prefs.TURN_ON_BATTERY_SAVER, false);
-        turnOnAirplaneInDoze = getDefaultSharedPreferences(getApplicationContext()).getBoolean(Prefs.TURN_ON_AIRPLANE, false);
-        turnOffBluetoothInDoze = getDefaultSharedPreferences(getApplicationContext()).getBoolean(Prefs.TURN_OFF_BLUETOOTH, false);
-        turnOffGPSInDoze = getDefaultSharedPreferences(getApplicationContext()).getBoolean(Prefs.TURN_OFF_LOCATION, false);
-        whitelistMusicAppNetwork = getDefaultSharedPreferences(getApplicationContext()).getBoolean("whitelistMusicAppNetwork", false);
-        whitelistCurrentApp = getDefaultSharedPreferences(getApplicationContext()).getBoolean("whitelistCurrentApp", false);
-        ignoreLockscreenTimeout = getDefaultSharedPreferences(getApplicationContext()).getBoolean("ignoreLockscreenTimeout", true);
-        waitForUnlock = getDefaultSharedPreferences(getApplicationContext()).getBoolean("waitForUnlock", false);
-        dozeEnterDelay = getDefaultSharedPreferences(getApplicationContext()).getInt("dozeEnterDelay", 0);
-        sensorWhitelistPackage = getDefaultSharedPreferences(getApplicationContext()).getString("sensorWhitelistPackage", "");
-        disableMotionSensors = getDefaultSharedPreferences(getApplicationContext()).getBoolean("disableMotionSensors", true);
-        disableStats = getDefaultSharedPreferences(getApplicationContext()).getBoolean("disableStats", false);
-        disableLogcat = getDefaultSharedPreferences(getApplicationContext()).getBoolean("disableLogcat", false);
-        disableWhenCharging = getDefaultSharedPreferences(getApplicationContext()).getBoolean("disableWhenCharging", true);
-        isSuAvailable = getDefaultSharedPreferences(getApplicationContext()).getBoolean("isSuAvailable", false);
-        showPersistentNotif = PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).getBoolean("showPersistentNotif", false);
-        dozeUsageData = new LinkedHashSet<>(PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).getStringSet("dozeUsageDataAdvanced", new LinkedHashSet<String>()));
-        dozeNotificationBlocklist = PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).getStringSet(Prefs.NOTIFICATION_BLOCKLIST, new LinkedHashSet<String>());
-        dozeAppBlocklist = PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).getStringSet(Prefs.APP_BLOCKLIST, new LinkedHashSet<String>());
+        loadWorkerSettings(getDefaultSharedPreferences(getApplicationContext()),
+                PreferenceManager.getDefaultSharedPreferences(getApplicationContext()));
 
-        runtime.configureAllowToken(sensorWhitelistPackage);
-        previousAccess = runtime.getAccess().getLevel();
+        configureWorkerAllowToken(sensorWhitelistPackage);
+        previousAccess = workerAccessLevel();
         updateAccessFlags(previousAccess);
         if (previousAccess.isPrivileged()) {
-            AccessManager.getInstance(this).grantHelpersAutomatically();
+            grantHelpersAutomatically();
         }
         if (destroyed) return;
+    }
+
+    // Narrow adapters keep initialization testable without constructing runtime/access discovery.
+    void configureWorkerAllowToken(String token) {
+        runtime.configureAllowToken(token);
+    }
+
+    AccessLevel workerAccessLevel() {
+        return runtime.getAccess().getLevel();
+    }
+
+    void grantHelpersAutomatically() {
+        AccessManager.getInstance(this).grantHelpersAutomatically();
+    }
+
+    void loadWorkerSettings(SharedPreferences prefs, SharedPreferences preferencePrefs) {
+        turnOffDataInDoze = prefs.getBoolean(Prefs.TURN_OFF_DATA, false);
+        ignoreIfHotspot = prefs.getBoolean("ignoreIfHotspot", true);
+        turnOffWiFiInDoze = prefs.getBoolean(Prefs.TURN_OFF_WIFI, false);
+        turnOffAllSensorsInDoze = prefs.getBoolean(Prefs.TURN_OFF_ALL_SENSORS, false);
+        turnOffBiometricsInDoze = prefs.getBoolean(Prefs.TURN_OFF_BIOMETRICS, false);
+        turnOnBatterySaverInDoze = prefs.getBoolean(Prefs.TURN_ON_BATTERY_SAVER, false);
+        turnOnAirplaneInDoze = prefs.getBoolean(Prefs.TURN_ON_AIRPLANE, false);
+        turnOffBluetoothInDoze = prefs.getBoolean(Prefs.TURN_OFF_BLUETOOTH, false);
+        turnOffGPSInDoze = prefs.getBoolean(Prefs.TURN_OFF_LOCATION, false);
+        whitelistMusicAppNetwork = prefs.getBoolean("whitelistMusicAppNetwork", false);
+        whitelistCurrentApp = prefs.getBoolean("whitelistCurrentApp", false);
+        ignoreLockscreenTimeout = prefs.getBoolean("ignoreLockscreenTimeout", true);
+        waitForUnlock = prefs.getBoolean("waitForUnlock", false);
+        dozeEnterDelay = prefs.getInt("dozeEnterDelay", 0);
+        sensorWhitelistPackage = prefs.getString("sensorWhitelistPackage", "");
+        disableMotionSensors = prefs.getBoolean("disableMotionSensors", true);
+        disableStats = prefs.getBoolean("disableStats", false);
+        disableLogcat = prefs.getBoolean("disableLogcat", false);
+        disableWhenCharging = prefs.getBoolean("disableWhenCharging", true);
+        isSuAvailable = prefs.getBoolean("isSuAvailable", false);
+        showPersistentNotif = preferencePrefs.getBoolean("showPersistentNotif", false);
+        dozeUsageData = new LinkedHashSet<>(preferencePrefs.getStringSet("dozeUsageDataAdvanced", new LinkedHashSet<String>()));
+        dozeNotificationBlocklist = preferencePrefs.getStringSet(Prefs.NOTIFICATION_BLOCKLIST, new LinkedHashSet<String>());
+        dozeAppBlocklist = preferencePrefs.getStringSet(Prefs.APP_BLOCKLIST, new LinkedHashSet<String>());
+
     }
 
 
@@ -634,13 +653,17 @@ public class ForceDozeService extends Service {
         log("Apps blocklist reloaded ----------------------------------");
     }
 
+    AccessLevel selfWhitelistAccessLevel() {
+        return AccessManager.getInstance(this).getLevel();
+    }
+
     public void addSelfToDozeWhitelist() {
         log("Checking self-whitelist capability....");
         log("Nougat: " + Utils.isDeviceRunningOnN());
         log("SU available: " + isSuAvailable);
         String packageName = getPackageName();
-        if (AccessManager.getInstance(this).getLevel().isPrivileged()) {
-            AccessManager.getInstance(this).grantHelpersAutomatically();
+        if (selfWhitelistAccessLevel().isPrivileged()) {
+            grantHelpersAutomatically();
         } else if (!pm.isIgnoringBatteryOptimizations(packageName)) {
             log("Requesting user to disable battery optimizations via system dialog...");
             try {
