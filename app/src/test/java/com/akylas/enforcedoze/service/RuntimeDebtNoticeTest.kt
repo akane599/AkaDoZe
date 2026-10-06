@@ -6,7 +6,7 @@ import com.akylas.enforcedoze.monitor.EventCodes
 import android.app.Application
 import android.app.NotificationManager
 import android.content.Context
-import com.akylas.enforcedoze.MyApplication
+import com.akylas.enforcedoze.TestAppState
 import com.akylas.enforcedoze.ui.NoticeSink
 import com.akylas.enforcedoze.ui.DebtRules
 import java.io.File
@@ -19,7 +19,6 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
-import java.util.concurrent.atomic.AtomicInteger
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
@@ -31,10 +30,7 @@ class RuntimeDebtNoticeTest {
     @Before fun allowNotices() { shadowOf(app).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS) }
 
     @After fun resetNoticeState() {
-        NoticeSink::class.java.getDeclaredField("instance").apply { isAccessible = true }.set(null, null)
-        (NoticeSink::class.java.getDeclaredField("debtViews").apply { isAccessible = true }.get(null) as AtomicInteger).set(0)
-        MyApplication::class.java.getDeclaredField("context").apply { isAccessible = true }.set(null, null)
-        MyApplication::class.java.getDeclaredField("dozeRuntime").apply { isAccessible = true }.set(null, null)
+        TestAppState.reset()
         app.getSharedPreferences("notices", Context.MODE_PRIVATE).edit().clear().commit()
     }
     private val notices = DebtNoticeStore()
