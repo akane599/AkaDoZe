@@ -69,8 +69,10 @@ before, and nothing should be reset.
       the report still appears on the new screen, and OK still finishes.
     - Reset with the service running (SQ-93 / SQ-92 F4): over Shizuku, start the service, then confirm
       Settings → Reset. Expect teardown before reset commands, no 4-second UI stall behind the reset job,
-      and no "Sensors/Doze may still be restricted" notification or `RECOVERY_DEBT TEARDOWN_TIMEOUT`
-      journal row for queued-but-not-started teardown. A successful report still requires readbacks.
+      and no false "Sensors/Doze may still be restricted" notification after successful readbacks.
+      If teardown has not finished within the 4-second wait, expect a `RECOVERY_DEBT TEARDOWN_TIMEOUT`
+      journal row even when teardown is queued but not started (SQ-103); the row alone is not a
+      restore-failure verdict. A successful report still requires readbacks.
       Record elapsed time from confirmation to the report and UI responsiveness during teardown/reset;
       repeat over root and record both durations. Check notifications and the monitor journal before
       tapping OK/restarting, so restart cannot conceal a false notice. Device timing remains unverified.
