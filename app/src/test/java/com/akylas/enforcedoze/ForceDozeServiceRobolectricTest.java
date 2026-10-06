@@ -218,7 +218,8 @@ public class ForceDozeServiceRobolectricTest {
         AndroidClock clock = new AndroidClock();
         JournalSink journal = new JournalSink(service, clock);
         journal.addSink(events::add);
-        DozeRuntime runtime = new DozeRuntime(service, clock, journal);
+        TestAppState.selectNonRootMode(service);
+        DozeRuntime runtime = TestAppState.runtimeWithoutRoot(service, clock, journal);
         setField(runtime, "resets", new ServiceResetQueue(runtime, job -> {
             post.accept(job);
             return kotlin.Unit.INSTANCE;

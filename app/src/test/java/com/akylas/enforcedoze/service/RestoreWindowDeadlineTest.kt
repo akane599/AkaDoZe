@@ -2,6 +2,7 @@ package com.akylas.enforcedoze.service
 
 import android.app.Application
 import android.os.SystemClock
+import com.akylas.enforcedoze.TestAppState
 import com.akylas.enforcedoze.access.*
 import com.akylas.enforcedoze.doze.*
 import java.lang.reflect.Proxy
@@ -32,7 +33,8 @@ class RestoreWindowDeadlineTest {
     private fun runtime(backend: CommandBackend, submitted: CountDownLatch? = null): DozeRuntime {
         val app = RuntimeEnvironment.getApplication()
         val clock = AndroidClock()
-        val core = DozeRuntime(app, clock, JournalSink(app, clock))
+        TestAppState.selectNonRootMode(app)
+        val core = TestAppState.runtimeWithoutRoot(app, clock, JournalSink(app, clock))
         runtime = core
         AccessManager::class.java.getDeclaredField("state").apply { isAccessible = true }
             .set(core.access, AccessState(AccessLevel.SHELL, null, Grants(true, true), 2000))

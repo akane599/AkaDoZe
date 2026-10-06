@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import com.akylas.enforcedoze.TestAppState
 import com.akylas.enforcedoze.access.AccessManager
 import com.akylas.enforcedoze.access.Prefs
 import com.akylas.enforcedoze.doze.EventType
@@ -27,7 +28,10 @@ class ResetErrorSinkTest {
     private val events = mutableListOf<DozeEvent>()
     private val jobs = java.util.ArrayDeque<Runnable>()
     private val journal = JournalSink(app, AndroidClock()).also { it.addSink(DozeEventSink(events::add)) }
-    private val runtime = DozeRuntime(app, AndroidClock(), journal).also {
+    private val runtime = run {
+        TestAppState.selectNonRootMode(app)
+        TestAppState.runtimeWithoutRoot(app, AndroidClock(), journal)
+    }.also {
         // Execute the actual runtime job, but use a deterministic serial queue instead of a thread.
         set(it, "resets", ServiceResetQueue(it) { job -> jobs.add(job) })
         set(it, "shutdownQueued", true)
