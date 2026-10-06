@@ -38,7 +38,7 @@ import com.akylas.enforcedoze.ui.DebtRules
 import com.akylas.enforcedoze.ui.NoticeSink
 import com.akylas.enforcedoze.doze.parse.SensorModeParser
 
-/** Owned by MyApplication: one controller/ledger for service, recovery and future self-test callers. */
+/** Owned by MyApplication: one controller/ledger shared by service, recovery and self-test callers. */
 class DozeRuntime(context: Context, val clock: AndroidClock, val journal: JournalSink) {
     private val app = context.applicationContext
     val access: AccessManager = AccessManager.getInstance(app)

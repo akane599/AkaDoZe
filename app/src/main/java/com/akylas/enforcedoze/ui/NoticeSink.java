@@ -333,7 +333,7 @@ public final class NoticeSink implements DozeEventSink {
     }
 
     // --- Screen-on summary (opt-in, default off): armed by SCREEN_ON, posted after the exit-time
-    // history import so OS history is merged first. Every gate is re-checked at post time, because
+    // history import attempt so available OS history is merged first. Every gate is re-checked at post time, because
     // the pref can also be switched on externally without the Settings permission flow.
 
     private static final int ID_SUMMARY = 8805;

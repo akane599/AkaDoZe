@@ -201,15 +201,6 @@ object CommandCatalog {
         return listOf("service call notification $transaction s16 $pkg i32 $uid i32 ${if (enabled) 1 else 0}")
     }
 
-    /** SHELL alternative to the APP+WSS global settings fallback. Null restores an absent override. */
-    @JvmStatic
-    fun deviceConfigTunable(apiLevel: Int, key: String, value: Long?): String? {
-        require(Regex("[A-Za-z][A-Za-z0-9_]*").matches(key)) { "Invalid tunable key" }
-        if (apiLevel < 29) return null
-        return if (value == null) "cmd device_config delete device_idle $key"
-        else "cmd device_config put device_idle $key $value"
-    }
-
     @JvmStatic
     fun originalDeviceConfigTunable(apiLevel: Int, key: String): String? {
         require(Regex("[A-Za-z][A-Za-z0-9_]*").matches(key)) { "Invalid tunable key" }

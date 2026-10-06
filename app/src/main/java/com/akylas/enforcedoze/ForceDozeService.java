@@ -110,7 +110,6 @@ public class ForceDozeService extends Service {
     private Runnable pendingRootRetry;
     private AccessManager.Listener accessListener;
     boolean isSuAvailable = false;
-    boolean isShizukuAvailable = false;
     boolean disableMotionSensors = true;
     boolean showPersistentNotif = false;
     boolean ignoreLockscreenTimeout = false;
@@ -272,7 +271,6 @@ public class ForceDozeService extends Service {
         if (previousAccess.isPrivileged()) {
             grantHelpersAutomatically();
         }
-        if (destroyed) return;
     }
 
     // Narrow adapters keep initialization testable without constructing runtime/access discovery.
@@ -332,7 +330,6 @@ public class ForceDozeService extends Service {
 
     private void updateAccessFlags(AccessLevel level) {
         isSuAvailable = level == AccessLevel.ROOT;
-        isShizukuAvailable = level == AccessLevel.SHELL || level == AccessLevel.ROOT;
     }
 
     private SessionMode sessionMode() {

@@ -5,8 +5,6 @@ import com.akylas.enforcedoze.doze.ExactAlarmAccessPolicy;
 import com.akylas.enforcedoze.doze.SchedulePolicy;
 import android.app.ActivityManager;
 import android.app.AlarmManager;
-import android.app.AppOpsManager;
-import android.app.KeyguardManager;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -113,7 +111,7 @@ public class Utils {
         return true;
     }
 
-    /** Shared by the system grant receiver and foreground return; never applies the current window. */
+    /** Requeries on app startup, grant broadcasts and foreground returns; never applies the current window. */
     public static ExactAlarmAccessPolicy.Access requeryExactAlarmAccess(Context context) {
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         boolean exactAllowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
@@ -221,50 +219,12 @@ public class Utils {
         return false;
     }
 
-    public static boolean isWriteSettingsPermissionGranted(Context context) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            return Settings.System.canWrite(context);
-        }
-        return context.checkCallingOrSelfPermission(Manifest.permission.WRITE_SETTINGS) == PackageManager.PERMISSION_GRANTED;
-    }
-
-    public static boolean isDumpPermissionGranted(Context context) {
-        return context.checkCallingOrSelfPermission(Manifest.permission.DUMP) == PackageManager.PERMISSION_GRANTED;
-    }
-
     public static boolean isPostNotificationPermissionGranted(Context context) {
         return context.checkCallingOrSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
     }
 
     public static boolean isReadPhoneStatePermissionGranted(Context context) {
         return context.checkCallingOrSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED;
-    }
-
-    public static boolean isUsageStatsPermissionGranted(Context context) {
-        boolean granted = false;
-        AppOpsManager appOps = (AppOpsManager) context
-                .getSystemService(Context.APP_OPS_SERVICE);
-        int mode = appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS,
-                android.os.Process.myUid(), context.getPackageName());
-
-        if (mode == AppOpsManager.MODE_DEFAULT) {
-            granted = (context.checkCallingOrSelfPermission(android.Manifest.permission.PACKAGE_USAGE_STATS) == PackageManager.PERMISSION_GRANTED);
-        } else {
-            granted = (mode == AppOpsManager.MODE_ALLOWED);
-        }
-        return granted;
-    }
-    public static boolean isReadLogsPermissionGranted(Context context) {
-        return context.checkCallingOrSelfPermission(Manifest.permission.READ_LOGS) == PackageManager.PERMISSION_GRANTED;
-    }
-
-    public static boolean isSecureSettingsPermissionGranted(Context context) {
-        return context.checkCallingOrSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED;
-    }
-    public static boolean isSecureSensorPrivacyPermissionGranted(Context context) {
-        if (context.checkCallingOrSelfPermission("android.permission.MANAGE_SENSOR_PRIVACY") == PackageManager.PERMISSION_GRANTED)
-            return true;
-        else return false;
     }
 
     public static boolean isConnectedToCharger(Context context) {
@@ -325,26 +285,6 @@ public class Utils {
                 " seconds";
     }
 
-    public static void setAutoRotateEnabled(Context context, boolean enabled) {
-        Settings.System.putInt(context.getContentResolver(), Settings.System.ACCELEROMETER_ROTATION, enabled ? 1 : 0);
-    }
-
-    public static boolean isAutoRotateEnabled(Context context) {
-        return android.provider.Settings.System.getInt(context.getContentResolver(), Settings.System.ACCELEROMETER_ROTATION, 0) == 1;
-    }
-
-    public static boolean isAutoBrightnessEnabled(Context context) {
-        try {
-            return android.provider.Settings.System.getInt(context.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS_MODE) == Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC;
-        } catch (Settings.SettingNotFoundException e) {
-            return false;
-        }
-    }
-
-    public static void setAutoBrightnessEnabled(Context context, boolean enabled) {
-        Settings.System.putInt(context.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS_MODE, enabled ? Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC : Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL);
-    }
-
     public static boolean isUserInCommunicationCall(Context context) {
         AudioManager manager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
         return manager.getMode() == AudioManager.MODE_IN_CALL || manager.getMode() == AudioManager.MODE_IN_COMMUNICATION;
@@ -358,43 +298,9 @@ public class Utils {
         return false;
     }
 
-    public static boolean isMobileDataEnabled(Context context) {
-        //reading "mobile_data" does not work on all devices
-        // return Settings.Secure.getInt(context.getContentResolver(), "mobile_data", 1) == 1;
-        boolean mobileYN = false;
-
-        TelephonyManager tm = (TelephonyManager) context.getSystemService(Context.TELEPHONY_SERVICE);
-        if (tm.getSimState() == TelephonyManager.SIM_STATE_READY) {
-            int dataState = tm.getDataState();
-            if(dataState != TelephonyManager.DATA_DISCONNECTED){
-                mobileYN = true;
-            }
-
-        }
-
-        return mobileYN;
-    }
-
     public static boolean isWiFiEnabled(Context context) {
         WifiManager wifi = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
         return wifi.isWifiEnabled();
-    }
-    public static boolean isBatterSaverEnabled(ContentResolver contentResolver) {
-        return Settings.Global.getInt(contentResolver, "low_power", 0) >= 1;
-    }
-    public static boolean isAirplaneEnabled(ContentResolver contentResolver) {
-        return Settings.Global.getInt(contentResolver,
-                Settings.Global.AIRPLANE_MODE_ON, 0) != 0;
-    }
-    public static boolean isBluetoothEnabled(ContentResolver contentResolver) {
-        // Note: Settings.Global.BLUETOOTH_ON is not available in the public API
-        // Using the hardcoded string "bluetooth_on" is the standard approach
-        return Settings.Global.getInt(contentResolver,
-                "bluetooth_on", 0) != 0;
-    }
-    public static boolean isLocationEnabled(ContentResolver contentResolver) {
-        return Settings.Secure.getInt(contentResolver,
-                Settings.Secure.LOCATION_MODE, Settings.Secure.LOCATION_MODE_OFF) != Settings.Secure.LOCATION_MODE_OFF;
     }
     public static boolean isHotspotEnabled(Context context) {
         WifiManager wifi = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
@@ -421,30 +327,13 @@ public class Utils {
         return ((Settings.Secure.getInt(contentResolver, "lock_screen_lock_after_timeout", 5000) / 1000f) / 60f);
     }
 
-    public static boolean doesSettingExist(String settingName) {
-        return com.akylas.enforcedoze.access.ExternalControlPolicy.settingType(settingName) != null;
-    }
-
     public static void updateSettingBool(Context context, String settingName, boolean settingValue) {
         PreferenceManager.getDefaultSharedPreferences(context).edit().putBoolean(settingName, settingValue).apply();
-    }
-
-    public static void updateSettingInt(Context context, String settingName, int settingValue) {
-        PreferenceManager.getDefaultSharedPreferences(context).edit().putInt(settingName, settingValue).apply();
-    }
-
-    public static boolean isSettingBool(String settingName) {
-        return com.akylas.enforcedoze.access.ExternalControlPolicy.settingType(settingName)
-                == com.akylas.enforcedoze.access.ExternalControlPolicy.SettingType.BOOLEAN;
     }
 
     public static boolean isScreenOn(Context context) {
         PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
         return pm != null && pm.isInteractive();
-    }
-    public static boolean isDeviceLocked(Context context) {
-        KeyguardManager km = (KeyguardManager) context.getSystemService(Context.KEYGUARD_SERVICE);
-        return km.isKeyguardLocked();
     }
     static class ReloadSettingsReceiver extends BroadcastReceiver {
         @Override
