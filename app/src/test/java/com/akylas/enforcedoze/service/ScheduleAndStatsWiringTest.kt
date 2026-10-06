@@ -218,18 +218,20 @@ class ScheduleAndStatsWiringTest {
 
     @Test fun explicitExternalOnStartsImmediatelyAndResumesAtTheNextBoundary() {
         val on = File("src/main/java/com/akylas/enforcedoze/ExternalControlReceiver.java").readText()
-            .substringAfter("case ENABLE_SERVICE:").substringBefore("case DISABLE_SERVICE:")
+            .substringAfter("private void enableService(").substringBefore("private void disableService(")
         assertExplicitOnStartsImmediately(on, "app", "Prefs.SERVICE_ENABLED")
     }
 
     @Test fun externalServiceControlsPersistUserIntentWithoutBypassingAdmissionOrWriteFailures() {
         val receiver = File("src/main/java/com/akylas/enforcedoze/ExternalControlReceiver.java").readText()
-        val on = receiver.substringAfter("case ENABLE_SERVICE:").substringBefore("case DISABLE_SERVICE:")
-        val off = receiver.substringAfter("case DISABLE_SERVICE:").substringBefore("case REAPPLY_DOZE:")
+        val on = receiver.substringAfter("private void enableService(").substringBefore("private void disableService(")
+        val off = receiver.substringAfter("private void disableService(").substringBefore("private void reapplyDoze(")
+        val admission = receiver.substringAfter("private void basicControl(").substringBefore("private void enableService(")
+        assertTrue("basic admission precedes all control dispatch", admission.indexOf("if (!admitted())") in 0 until admission.indexOf("switch (action)"))
         for ((block, enabled) in listOf(on to true, off to false)) {
             val intent = block.indexOf("putBoolean(Prefs.SERVICE_USER_ENABLED, $enabled).commit()")
             assertTrue("both controls must be admitted before writing intent",
-                intent >= 0 && block.indexOf("if (!admitted())") in 0 until intent)
+                intent >= 0 && admission.contains(if (enabled) "enableService();" else "disableService();"))
             assertTrue("preference failures remain reported", block.contains("ExecutionReason.PREFERENCE_WRITE_FAILED"))
         }
         assertTrue(off.contains("Utils.cancelCustomDozePeriodAlarm(app)"))

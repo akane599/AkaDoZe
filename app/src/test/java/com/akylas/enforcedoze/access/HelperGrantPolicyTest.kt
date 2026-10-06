@@ -75,7 +75,13 @@ class HelperGrantPolicyTest {
             })
             val expected = commands.keys.take(failedCommit)
             assertEquals("failed and later commands must not run", expected, executed)
-            assertEquals("return earlier results without a crash", expected, results.keys.toList())
+            assertEquals("report every helper, including the not-run suffix", commands.keys.toList(), results.keys.toList())
+            for (item in commands.keys.drop(failedCommit)) {
+                val result = results.getValue(item)
+                assertFalse("not-run helpers cannot report transport success", result.ok)
+                assertEquals(listOf("RECORD_WRITE_FAILED"), result.stderr)
+                assertEquals(HelperGrantPolicy.NotRunReason.RECORD_WRITE_FAILED, HelperGrantPolicy.notRunReason(result))
+            }
             assertEquals(expected.toSet(), diskRecord)
             assertEquals("stop at the first failed commit", failedCommit + 1, commits)
         }
@@ -91,6 +97,7 @@ class HelperGrantPolicyTest {
         }, execute = { CommandResult(1, emptyList(), emptyList(), 0, false) })
         assertEquals(commands.keys, results.keys)
         assertTrue(results.values.none { it.ok })
+        assertTrue("real backend failures are not policy not-run results", results.values.all { HelperGrantPolicy.notRunReason(it) == null })
         assertTrue(HelperGrantPolicy.commands(helpers(), diskRecord.toSet(), HelperGrantPolicy.Trigger.AUTOMATIC).isEmpty())
         assertEquals(commands, HelperGrantPolicy.commands(helpers(), diskRecord, HelperGrantPolicy.Trigger.EXPLICIT))
     }
