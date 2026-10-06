@@ -1,6 +1,7 @@
 package com.akylas.enforcedoze.monitor
 
 import com.akylas.enforcedoze.access.Feature
+import com.akylas.enforcedoze.access.Reason
 import com.akylas.enforcedoze.doze.DeepState
 import com.akylas.enforcedoze.doze.EventType
 import com.akylas.enforcedoze.doze.LightState
@@ -156,8 +157,11 @@ object SessionAggregator {
     }
 
     private fun hasStateMarker(event: JournalEvent): Boolean {
-        return (event.type in setOf(EventType.VERIFY, EventType.IDLE_CHANGED) && event.sensor == null) ||
-                event.type in setOf(EventType.MAINT_START, EventType.MAINT_END)
+        return when (event.type) {
+            EventType.VERIFY -> event.detail?.substringBefore(':') == Feature.FORCE_DOZE.name
+            EventType.IDLE_CHANGED, EventType.MAINT_START, EventType.MAINT_END -> true
+            else -> false
+        }
     }
 
     private fun coverageTimes(
@@ -281,31 +285,52 @@ object SessionAggregator {
         return battery.first?.let { if (battery.second > 0) it * 3_600_000.0 / battery.second else null }
     }
 
-    /** Restore markers identify the immediately preceding app VERIFY as a restore readback. */
+    /** Restore outcomes identify preceding app sensor VERIFYs, including a restore retry. */
     private fun screenOffSensor(events: List<JournalEvent>): SensorMode? {
-        var restoring = false
+        var restoreReadbacks = 0
         // OS history can be interleaved with app rows, but never carries sensor observations.
         for (event in events.filter { it.source == Source.APP }.asReversed()) {
-            if (event.type == EventType.SENSORS_RESTORED) {
-                restoring = isMotionSensors(event)
+            if (event.type in setOf(EventType.SENSORS_RESTORED, EventType.RESTORE_FAILED)) {
+                restoreReadbacks = sensorRestoreReadbacks(event)
                 continue
             }
-            if (isRestoreReadback(event, restoring)) {
-                restoring = false
+            if (isRestoreReadback(event, restoreReadbacks)) {
+                restoreReadbacks--
                 continue
             }
-            restoring = false
+            restoreReadbacks = 0
             if (event.sensor != null) return event.sensor
         }
         return null
+    }
+
+    private fun sensorRestoreReadbacks(event: JournalEvent): Int {
+        val hasReadback = when (event.type) {
+            EventType.SENSORS_RESTORED -> isMotionSensors(event)
+            // These failures identify a readback; unavailable restores can fail without one.
+            EventType.RESTORE_FAILED -> event.detail == "${Feature.MOTION_SENSORS.name}: ${Reason.UNVERIFIED.name}"
+            else -> false
+        }
+        return if (hasReadback) 2 else 0 // One restore readback and at most one failed retry predecessor.
     }
 
     private fun isMotionSensors(event: JournalEvent): Boolean {
         return event.detail?.substringBefore(':') == Feature.MOTION_SENSORS.name
     }
 
-    private fun isRestoreReadback(event: JournalEvent, restoring: Boolean): Boolean {
-        return restoring && event.type == EventType.VERIFY && isMotionSensors(event)
+    private fun isRestoreReadback(event: JournalEvent, remaining: Int): Boolean {
+        if (event.type != EventType.VERIFY || !isMotionSensors(event)) return false
+        return when (remaining) {
+            2 -> true
+            1 -> isSensorRestoreRetry(event)
+            else -> false
+        }
+    }
+
+    private fun isSensorRestoreRetry(event: JournalEvent): Boolean {
+        // NORMAL succeeds and UNVERIFIED is not retried by DozeController.
+        return event.sensor in setOf(SensorMode.RESTRICTED, SensorMode.OTHER) &&
+            event.detail == "${Feature.MOTION_SENSORS.name}: ${Reason.UNVERIFIED.name}"
     }
 
     private fun coverage(deep: DeepState?, light: LightState?): Coverage = when {
