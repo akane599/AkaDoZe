@@ -59,7 +59,9 @@ class DiagnosticsWiringTest {
     @Test fun everyServiceGroupEnterUsesGuardAndIdleFailureHasNoRetry() {
         val service = File("src/main/java/com/akylas/enforcedoze/ForceDozeService.java").readText()
         assertFalse("No raw group enter may escape the worker", service.contains(".enterGroups("))
-        assertEquals(3, Regex("\\.enterGroupsSafely\\(").findAll(service).count())
+        assertEquals("three service paths use the guarded adapter", 3, Regex("enterGroupsSafely\\(selectedGroups,").findAll(service).count())
+        assertEquals("only the pass-through adapter calls the controller", 1, Regex("\\.enterGroupsSafely\\(").findAll(service).count())
+        assertTrue(service.contains("return runtime.getController().enterGroupsSafely(config, generation, admission, errorDetail);"))
         val idle = service.substringAfter("private void idleChanged()")
             .substringBefore("private void forceOnly")
         assertTrue(idle.contains("enterGroupsSafely(selectedGroups"))

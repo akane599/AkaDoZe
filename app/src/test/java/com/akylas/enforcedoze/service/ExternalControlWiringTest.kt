@@ -150,9 +150,10 @@ class ExternalControlWiringTest {
         assertTrue(start.substring(stateRead, consent).contains("now = runtime.getClock().elapsedRealtime();"))
         val skipped = start.substringAfter("if (decision instanceof Decision.SKIP)").substringBefore("reapplyEnter(generation, epoch);")
         assertTrue("a typed policy rejection is journaled and returns before enter", skipped.contains("journalReapplySkipped(runtime, ((Decision.SKIP) decision).getReason())") && skipped.contains("return;"))
-        val enterCore = service().substringAfter("private void enterDoze(boolean sensors, long generation,").substringBefore("private EnterResult enterConfiguredDoze(")
+        val enterCore = service().substringAfter("private EnterResult enterCoreForMode(").substringBefore("private boolean enterWasCancelled(")
         assertTrue("only force entries start watchdog spacing", enterCore.contains("if (mode == SessionMode.FORCE) runtime.getWatchdog().recordEnter();"))
-        assertTrue("every force enter starts watchdog spacing before mutation", enterCore.indexOf("runtime.getWatchdog().recordEnter();") in 0 until enterCore.indexOf("runtime.getController().enterCore("))
+        assertTrue("every force enter starts watchdog spacing before mutation", enterCore.indexOf("runtime.getWatchdog().recordEnter();") in 0 until enterCore.indexOf("enterCore(core, generation,"))
+        assertTrue("core adapter forwards the original admission", service().contains("return runtime.getController().enterCore(config, generation, admission);"))
         val call = receiver().substringAfter("private void reapplyDoze(").substringBefore("private void writeSetting(")
         assertTrue("broadcast remains REQUESTED, never claims a completed reforce", call.contains("Outcome.REQUESTED, ExecutionReason.REAPPLY_REQUESTED"))
     }
