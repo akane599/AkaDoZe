@@ -229,13 +229,13 @@ public final class NoticeSink implements DozeEventSink {
                         .build()));
     }
 
-    /** Called by the UI once a ledger check shows nothing left to restore; later debt is announced again. */
+    /** UI debt-free reads cannot settle starvation while unattempted restore intent may remain. */
     public static void cancelDebt(Context context) {
         NoticeSink sink = get(context);
         synchronized (sink) {
+            if (!sink.debtGate.clearFromUi()) return;
             NotificationManager manager = context.getSystemService(NotificationManager.class);
             if (manager != null) manager.cancel(ID_DEBT);
-            sink.debtGate.clearAll();
         }
     }
 
@@ -247,11 +247,16 @@ public final class NoticeSink implements DozeEventSink {
         }
     }
 
-    /** Runtime check after restoration, without UI session suppression; cancels once all debt settles. */
+    /** Compatibility debt-only check: false is clean, but does not establish an empty ledger. */
     public static void restoresChecked(Context context, boolean debt) {
+        restoresChecked(context, debt ? DebtRules.LedgerState.DEBT : DebtRules.LedgerState.CLEAN);
+    }
+
+    /** Runtime check without UI session suppression; starvation settles only on readable empty intent. */
+    public static void restoresChecked(Context context, DebtRules.LedgerState ledger) {
         NoticeSink sink = get(context);
         synchronized (sink) {
-            sink.debtGate.ledgerChecked(debt);
+            sink.debtGate.ledgerChecked(ledger);
         }
     }
 

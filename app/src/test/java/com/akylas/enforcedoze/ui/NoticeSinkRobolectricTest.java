@@ -118,7 +118,9 @@ public class NoticeSinkRobolectricTest {
         NoticeSink.restoresChecked(context, true);
         assertNotNull("Unsettled ledger keeps the notice", shadow.getNotification(ID_DEBT));
         NoticeSink.restoresChecked(context, false);
-        assertNull("A clean runtime ledger check cancels starvation", shadow.getNotification(ID_DEBT));
+        assertNotNull("Debt-free pending intent keeps starvation", shadow.getNotification(ID_DEBT));
+        NoticeSink.restoresChecked(context, DebtRules.LedgerState.EMPTY);
+        assertNull("An empty runtime ledger check cancels starvation", shadow.getNotification(ID_DEBT));
         assertFalse(notices.getBoolean("debtPosted", true));
         sink.emit(new DozeEvent(EventType.RECOVERY_DEBT, EventCodes.RESTORE_WINDOW_STARVED));
         assertNotNull("A later starvation is announced again", shadow.getNotification(ID_DEBT));

@@ -33,6 +33,15 @@ public final class DebtRules {
         return false;
     }
 
+    /** CLEAN is readable and undamaged with no attempted/debt-flagged entries; it need not be empty. */
+    public enum LedgerState { DEBT, CLEAN, EMPTY }
+
+    /** Runtime evidence without UI session suppression; damaged/unreadable intent never settles. */
+    public static LedgerState ledgerState(List<LedgerEntry> entries, boolean damaged) {
+        if (isDebt(entries, damaged, false)) return LedgerState.DEBT;
+        return entries.isEmpty() ? LedgerState.EMPTY : LedgerState.CLEAN;
+    }
+
     /**
      * Feature tokens of the damaged records the user may dismiss (LedgerRecovery: forced Doze and motion
      * sensor records are recovered automatically and never offered). Null stands for an unnamed record.
@@ -106,25 +115,40 @@ public final class DebtRules {
             store.setPosted(false);
         }
 
-        /**
-         * A ledger check found no debt: the items that check disproves are settled, so their next
-         * occurrence is announced again even if the user swiped the earlier notice away. Event-raised
-         * debt the ledger can't see (ACCESS_LOST, SafetyNet's readback debts) keeps its own clearing.
-         */
+        /** UI debt-free reads cannot disprove a starved window's unattempted restore intent. */
+        public boolean clearFromUi() {
+            if (store.load().contains(EventCodes.RESTORE_WINDOW_STARVED)) {
+                rearmFromLedger(false);
+                return false;
+            }
+            clearAll();
+            return true;
+        }
+
+        /** A debt-only observation does not establish that a readable ledger is empty. */
         public void ledgerChecked(boolean debt) {
-            if (debt) return;
-            rearmFromLedger(false);
+            ledgerChecked(debt ? LedgerState.DEBT : LedgerState.CLEAN);
+        }
+
+        /** Runtime settlement uses committed ledger evidence, including whether any intent remains. */
+        public void ledgerChecked(LedgerState ledger) {
+            if (ledger == LedgerState.DEBT) return;
+            rearmFromLedger(ledger);
             cancelIfSettled();
         }
 
         /** UI reads suppress in-session debt: they may re-arm keys but cannot authorize cancellation. */
         public void rearmFromLedger(boolean debt) {
-            if (debt) return;
+            rearmFromLedger(debt ? LedgerState.DEBT : LedgerState.CLEAN);
+        }
+
+        private void rearmFromLedger(LedgerState ledger) {
+            if (ledger == LedgerState.DEBT) return;
             Set<String> notified = new HashSet<>(store.load());
             boolean changed = false;
             // No Collection.removeIf: minSdk 23.
             for (Iterator<String> keys = notified.iterator(); keys.hasNext(); ) {
-                if (settledByCleanLedger(keys.next())) {
+                if (settledByLedger(keys.next(), ledger)) {
                     keys.remove();
                     changed = true;
                 }
@@ -138,6 +162,12 @@ public final class DebtRules {
             store.cancel();
             store.setPosted(false);
         }
+    }
+
+    /** Starvation is disproved only by readable empty intent, not by a debt-free pending session. */
+    static boolean settledByLedger(String key, LedgerState ledger) {
+        if (EventCodes.RESTORE_WINDOW_STARVED.equals(key)) return ledger == LedgerState.EMPTY;
+        return settledByCleanLedger(key);
     }
 
     /** Runtime debt about the ledger itself, plus every per-entry item (key(feature, target)). */
@@ -154,6 +184,5 @@ public final class DebtRules {
     /** Runtime debts a clean ledger read disproves (MonitorData.checkDebt fails closed on load errors). */
     private static final Set<String> LEDGER_KEYS = new HashSet<>(Arrays.asList(
             EventCodes.TEARDOWN_TIMEOUT, EventCodes.LEDGER_DAMAGED, EventCodes.SAFETY_READ_UNAVAILABLE,
-            EventCodes.LEDGER_LOAD_FAILED, EventCodes.LEDGER_RECOVERY_COMMIT_FAILED,
-            EventCodes.RESTORE_WINDOW_STARVED));
+            EventCodes.LEDGER_LOAD_FAILED, EventCodes.LEDGER_RECOVERY_COMMIT_FAILED));
 }
