@@ -37,8 +37,11 @@ class DozeRuntimeWiringTest {
         assertTrue("controller must share the command runner's live remaining budget",
             controller.contains("{ commandDeadline?.minus(clock.elapsedRealtime()) },"))
         val runner = runtime.substringAfter("val control: CommandRunner").substringBefore("private val diagnosticLogger")
-        assertTrue(runner.contains("val remaining = commandDeadline?.minus(clock.elapsedRealtime())"))
-        assertTrue(runner.contains("minOf(timeoutMs, remaining ?: timeoutMs)"))
+        assertTrue(runner.contains("val remaining = deadline - clock.elapsedRealtime()"))
+        assertTrue(runner.contains("minOf(timeoutMs, remaining)"))
+        assertTrue(runner.contains("access.controlWithDeadline(command, deadlineNanos) { clock.elapsedRealtime() < deadline }"))
+        assertTrue("no shared deadline retains the execution-only timeout", runner.contains(
+            "return access.control().run(command, timeoutMs)"))
     }
 
     private fun shellReadState(): String =

@@ -48,11 +48,20 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
     val control: CommandRunner = object : CommandRunner {
         override val level: AccessLevel get() = access.level
         override fun run(command: String, timeoutMs: Long): CommandResult {
-            val remaining = commandDeadline?.minus(clock.elapsedRealtime())
-            if (remaining != null && remaining <= 0) return CommandResult(-1, emptyList(), emptyList(), 0, true)
-            return access.control().run(command, minOf(timeoutMs, remaining ?: timeoutMs))
+            val deadline = commandDeadline
+            if (deadline != null) return runBeforeDeadline(command, timeoutMs, deadline)
+            return access.control().run(command, timeoutMs)
                 .also { selfTestRecorder?.add(SelfTestCommand.of(command, it)) }
         }
+    }
+
+    private fun runBeforeDeadline(command: String, timeoutMs: Long, deadline: Long): CommandResult {
+        val remaining = deadline - clock.elapsedRealtime()
+        if (remaining <= 0) return CommandResult(-1, emptyList(), emptyList(), 0, true)
+        // Translate clock domains once; the lane includes both queues and rechecks before execution.
+        val deadlineNanos = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(minOf(timeoutMs, remaining))
+        return access.controlWithDeadline(command, deadlineNanos) { clock.elapsedRealtime() < deadline }
+            .also { selfTestRecorder?.add(SelfTestCommand.of(command, it)) }
     }
     private val diagnosticLogger: (String, Throwable) -> Unit = { message, error ->
         Log.w("DozeRuntime", message, error)
@@ -277,7 +286,9 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
     /** doze-worker only: access-return recovery precedes resuming even an existing session. */
     fun recoverAccess(): Boolean = readiness.recover(access.state, { access.state }) {
         bumpGeneration()
-        recordExit(controller.reconcile(Build.VERSION.SDK_INT, grants()))
+        recordExit(controller.reconcile(Build.VERSION.SDK_INT, grants()) {
+            commandDeadline?.let { clock.elapsedRealtime() < it } ?: true
+        })
         checkSafety()
     }
 

@@ -377,7 +377,11 @@ class DozeController @JvmOverloads constructor(
     }
 
     @JvmOverloads
-    fun reconcile(apiLevel: Int = this.apiLevel, grants: Grants = this.grants): ExitResult = exit(apiLevel, grants)
+    fun reconcile(
+        apiLevel: Int = this.apiLevel,
+        grants: Grants = this.grants,
+        admission: () -> Boolean = { true },
+    ): ExitResult = exit(apiLevel, grants, admission)
 
     /** Temporarily restore/reapply only durable radio entries; never consult current preferences. */
     @Synchronized
