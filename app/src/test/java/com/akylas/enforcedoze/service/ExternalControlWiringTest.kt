@@ -11,7 +11,7 @@ class ExternalControlWiringTest {
 
     @Test fun settingWriteAndVerifiedOutcomeOnlyRunThroughParsedValueAdmission() {
         val source = receiver()
-        val change = source.substringAfter("case CHANGE_SETTING:").substringBefore("case ENABLE_SERVICE:")
+        val change = source.substringAfter("private void changeSetting(").substringBefore("private void basicControl(")
         assertTrue(change.contains("Admission.setting(current,"))
         assertTrue(change.contains("complete(Permission.DENIED, ExternalCallOutcome.DENIED, reason)"))
         assertTrue(change.contains("this::writeSetting"))
@@ -104,12 +104,13 @@ class ExternalControlWiringTest {
     }
 
     @Test fun explicitEnableRetainsStartThenPersistOrderingAndOriginalOutcomes() {
-        val on = receiver().substringAfter("case ENABLE_SERVICE:").substringBefore("case DISABLE_SERVICE:")
+        val on = receiver().substringAfter("private void enableService(").substringBefore("private void disableService(")
         val start = on.indexOf("if (!Utils.startForceDozeService(app)) {")
         val persist = on.indexOf("else if (!prefs.edit().putBoolean(Prefs.SERVICE_ENABLED, true)")
         assertTrue("admitted enable must start unconditionally before persisting enabled state",
             start >= 0 && persist > start)
-        assertTrue("admission must still precede the service start", on.indexOf("if (!admitted())") in 0 until start)
+        val basic = receiver().substringAfter("private void basicControl(").substringBefore("private void enableService(")
+        assertTrue("admission must still precede enable dispatch", basic.indexOf("if (!admitted())") in 0 until basic.indexOf("enableService();"))
         val failure = on.substring(start, persist)
         assertTrue("a denied start must retain FAILED / FOREGROUND_START_DENIED",
             failure.contains("complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.FOREGROUND_START_DENIED);"))
@@ -152,7 +153,7 @@ class ExternalControlWiringTest {
         val enterCore = service().substringAfter("private void enterDoze(boolean sensors, long generation,").substringBefore("private EnterResult enterConfiguredDoze(")
         assertTrue("only force entries start watchdog spacing", enterCore.contains("if (mode == SessionMode.FORCE) runtime.getWatchdog().recordEnter();"))
         assertTrue("every force enter starts watchdog spacing before mutation", enterCore.indexOf("runtime.getWatchdog().recordEnter();") in 0 until enterCore.indexOf("runtime.getController().enterCore("))
-        val call = receiver().substringAfter("case REAPPLY_DOZE:").substringBefore("break;")
+        val call = receiver().substringAfter("private void reapplyDoze(").substringBefore("private void writeSetting(")
         assertTrue("broadcast remains REQUESTED, never claims a completed reforce", call.contains("Outcome.REQUESTED, ExecutionReason.REAPPLY_REQUESTED"))
     }
 

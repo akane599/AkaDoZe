@@ -79,19 +79,27 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
                 return;
             }
             T input;
-            Decision decision;
             try {
                 input = decode.get();
-                decision = policy.apply(input);
             } catch (RuntimeException invalidExtra) {
                 denied.accept(DenialReason.INVALID_EXTRA);
                 return;
             }
+            Decision decision = evaluatePolicy(policy, input);
             if (!decision.getAllowed()) {
                 denied.accept(decision.getReason());
                 return;
             }
             admitted.accept(input);
+        }
+
+        private static <T> Decision evaluatePolicy(Policy<T> policy, T input) {
+            try {
+                return policy.apply(input);
+            } catch (RuntimeException error) {
+                android.util.Log.e("ExternalControl", "Admission policy failed", error);
+                return new Decision(DenialReason.INTERNAL_ERROR, null);
+            }
         }
 
         /** Only a parsed scalar can authorize a preference write and VERIFIED outcome. */
@@ -129,13 +137,18 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
     @Override
     public final void onReceive(Context context, Intent intent) {
         Context app = context.getApplicationContext();
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(app);
-        String caller = Build.VERSION.SDK_INT >= 34 ? getSentFromPackage() : null;
-        // Closed gates take precedence and do not require decoding untrusted extras.
-        Admission.run(decide(prefs, null, null, null), () -> decode(intent),
-                input -> decide(prefs, input.key, input.value, input.pkg),
-                reason -> journal(app, caller, Permission.DENIED, ExternalCallOutcome.DENIED, reason),
-                input -> execute(app, prefs, caller, input));
+        try {
+            SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(app);
+            String caller = Build.VERSION.SDK_INT >= 34 ? getSentFromPackage() : null;
+            // Closed gates take precedence and do not require decoding untrusted extras.
+            Admission.run(decide(prefs, null, null, null), () -> decode(intent),
+                    input -> decide(prefs, input.key, input.value, input.pkg),
+                    reason -> journal(app, caller, Permission.DENIED, ExternalCallOutcome.DENIED, reason),
+                    input -> execute(app, prefs, caller, input));
+        } catch (RuntimeException error) {
+            android.util.Log.e("ExternalControl", "External control admission failed", error);
+            journal(app, null, Permission.DENIED, ExternalCallOutcome.DENIED, DenialReason.INTERNAL_ERROR);
+        }
     }
 
     private Input decode(Intent intent) {
@@ -234,56 +247,86 @@ public abstract class ExternalControlReceiver extends BroadcastReceiver {
         @Override
         public void run() {
             if (!live()) { complete(Permission.ALLOWED, ExternalCallOutcome.UNVERIFIED, ExecutionReason.TIMED_OUT); return; }
-            Decision current = decide(prefs, key, value, pkg);
-            if (!current.getAllowed()) { complete(Permission.DENIED, ExternalCallOutcome.DENIED, current.getReason()); return; }
             try {
-                switch (action) {
-                    case ADD_WHITELIST:
-                    case REMOVE_WHITELIST:
-                        editWhitelist();
-                        break;
-                    case CHANGE_SETTING:
-                        if (!admitted()) { complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.ADMISSION_CHANGED); return; }
-                        Admission.setting(current,
-                                reason -> complete(Permission.DENIED, ExternalCallOutcome.DENIED, reason),
-                                this::writeSetting);
-                        break;
-                    case ENABLE_SERVICE:
-                        if (!admitted()) { complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.ADMISSION_CHANGED); return; }
-                        // Never persist a false enabled state when background FGS start was denied.
-                        if (!Utils.startForceDozeService(app)) {
-                            complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.FOREGROUND_START_DENIED);
-                        } else if (!prefs.edit().putBoolean(Prefs.SERVICE_ENABLED, true)
-                                .putBoolean(Prefs.SERVICE_USER_ENABLED, true).commit()) {
-                            complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.PREFERENCE_WRITE_FAILED);
-                        } else {
-                            Utils.scheduleNextCustomDozePeriodBoundary(app);
-                            complete(Permission.ALLOWED, ExternalCallOutcome.REQUESTED, ExecutionReason.SERVICE_START_REQUESTED);
-                        }
-                        break;
-                    case DISABLE_SERVICE:
-                        if (!admitted()) { complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.ADMISSION_CHANGED); return; }
-                        if (!prefs.edit().putBoolean(Prefs.SERVICE_ENABLED, false)
-                                .putBoolean(Prefs.SERVICE_USER_ENABLED, false).commit()) {
-                            complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.PREFERENCE_WRITE_FAILED); return;
-                        }
-                        Utils.cancelCustomDozePeriodAlarm(app);
-                        Utils.stopForceDozeService(app);
-                        complete(Permission.ALLOWED, ExternalCallOutcome.REQUESTED, ExecutionReason.SERVICE_STOP_REQUESTED);
-                        break;
-                    case REAPPLY_DOZE:
-                        if (!admitted() || Utils.isScreenOn(app) || !Utils.isMyServiceRunning(ForceDozeService.class, app)) {
-                            complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.NOT_ADMITTED); return;
-                        }
-                        app.startService(new Intent(app, ForceDozeService.class)
-                                .setAction(ForceDozeService.ACTION_REAPPLY_DOZE)
-                                .putExtra(ForceDozeService.EXTRA_REAPPLY_DEADLINE, deadlineElapsed));
-                        complete(Permission.ALLOWED, ExternalCallOutcome.REQUESTED, ExecutionReason.REAPPLY_REQUESTED);
-                        break;
-                }
+                Decision current = decide(prefs, key, value, pkg);
+                if (!current.getAllowed()) { complete(Permission.DENIED, ExternalCallOutcome.DENIED, current.getReason()); return; }
+                dispatch(current);
             } catch (Exception error) {
+                android.util.Log.e("ExternalControl", "External control execution failed", error);
                 complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.EXECUTION_FAILED);
             }
+        }
+
+        private void dispatch(Decision current) {
+            switch (action) {
+                case ADD_WHITELIST:
+                case REMOVE_WHITELIST:
+                    editWhitelist();
+                    break;
+                case CHANGE_SETTING:
+                    changeSetting(current);
+                    break;
+                default:
+                    basicControl();
+                    break;
+            }
+        }
+
+        private void changeSetting(Decision current) {
+            if (!admitted()) { complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.ADMISSION_CHANGED); return; }
+            Admission.setting(current,
+                    reason -> complete(Permission.DENIED, ExternalCallOutcome.DENIED, reason),
+                    this::writeSetting);
+        }
+
+        private void basicControl() {
+            if (action == Action.REAPPLY_DOZE) { reapplyDoze(); return; }
+            if (!admitted()) { complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.ADMISSION_CHANGED); return; }
+            switch (action) {
+                case ENABLE_SERVICE:
+                    enableService();
+                    break;
+                case DISABLE_SERVICE:
+                    disableService();
+                    break;
+                default:
+                    throw new IllegalStateException("Not a basic control action");
+            }
+        }
+
+        private void enableService() {
+            // Explicit ON starts at once; persist intent only after the start is accepted.
+            if (!Utils.startForceDozeService(app)) {
+                complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.FOREGROUND_START_DENIED);
+            } else if (!prefs.edit().putBoolean(Prefs.SERVICE_ENABLED, true)
+                    .putBoolean(Prefs.SERVICE_USER_ENABLED, true).commit()) {
+                // Cancel a pending start too: Utils.stopForceDozeService only stops running services.
+                app.stopService(new Intent(app, ForceDozeService.class));
+                complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.PREFERENCE_WRITE_FAILED);
+            } else {
+                Utils.scheduleNextCustomDozePeriodBoundary(app);
+                complete(Permission.ALLOWED, ExternalCallOutcome.REQUESTED, ExecutionReason.SERVICE_START_REQUESTED);
+            }
+        }
+
+        private void disableService() {
+            if (!prefs.edit().putBoolean(Prefs.SERVICE_ENABLED, false)
+                    .putBoolean(Prefs.SERVICE_USER_ENABLED, false).commit()) {
+                complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.PREFERENCE_WRITE_FAILED); return;
+            }
+            Utils.cancelCustomDozePeriodAlarm(app);
+            Utils.stopForceDozeService(app);
+            complete(Permission.ALLOWED, ExternalCallOutcome.REQUESTED, ExecutionReason.SERVICE_STOP_REQUESTED);
+        }
+
+        private void reapplyDoze() {
+            if (!admitted() || Utils.isScreenOn(app) || !Utils.isMyServiceRunning(ForceDozeService.class, app)) {
+                complete(Permission.ALLOWED, ExternalCallOutcome.FAILED, ExecutionReason.NOT_ADMITTED); return;
+            }
+            app.startService(new Intent(app, ForceDozeService.class)
+                    .setAction(ForceDozeService.ACTION_REAPPLY_DOZE)
+                    .putExtra(ForceDozeService.EXTRA_REAPPLY_DEADLINE, deadlineElapsed));
+            complete(Permission.ALLOWED, ExternalCallOutcome.REQUESTED, ExecutionReason.REAPPLY_REQUESTED);
         }
 
         private void writeSetting(SettingValue setting) {
