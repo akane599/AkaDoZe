@@ -102,10 +102,9 @@ public class HonestUiTest {
     public void mainScreenRendersEveryStatusAndPicksTheSwitchOnDialogFromIt() throws IOException {
         String main = source("src/main/java/com/akylas/enforcedoze/MainActivity.java");
         String render = between(main, "private void renderServiceStatus()", "protected void onCreate(");
-        for (String status : new String[] {"case FORCING:", "case SENSORS_ONLY:", "case PASSIVE:", "case CHECKING:"}) {
-            assertTrue(status, render.contains(status));
-        }
-        assertTrue(render.contains("R.string.service_sensors_only") && render.contains("R.string.service_checking"));
+        // Every status's text is pinned by MainStatusRulesTest; the screen renders through that one mapping.
+        assertTrue(render.contains("textViewStatus.setText(AccessUi.mainStatusText(")
+                && render.contains("AccessUi.mainStatus(serviceEnabled, accessUsable, lastAccess"));
         String toggle = between(main, "public void onCheckedChanged(", "public void showDozeTunablesActivity()");
         assertFalse("one sessionsAvailable Boolean can't tell sensor-only from passive",
                 toggle.contains("sessionsAvailable"));
