@@ -75,7 +75,7 @@ class RuntimeDebtNoticeTest {
 
     private fun checkLedger(damaged: Boolean = false) {
         // Session suppression is deliberately false: debt also exists during an active session.
-        NoticeSink.restoresChecked(app, DebtRules.isDebt(ledger.load().entries, damaged, false))
+        NoticeSink.restoresChecked(app, DebtRules.ledgerState(ledger.load().entries, damaged))
     }
 
     @Test fun accessLostThreeFailedRestoresThenThreeVerifiesCancelExactlyOnceWithoutUi() {
@@ -160,6 +160,50 @@ class RuntimeDebtNoticeTest {
         assertEquals(2, notices.cancels)
     }
 
+    @Test fun unattemptedRestoreKeepsStarvationNoticeAfterDebtFreeCheck() {
+        ledger.save(RestoreLedger(listOf(LedgerEntry(Feature.WIFI, null, "1", 0))))
+        emit(DozeEvent(EventType.RECOVERY_DEBT, EventCodes.RESTORE_WINDOW_STARVED))
+        val debt = DebtRules.isDebt(ledger.load().entries, false, false)
+        assertFalse("An unattempted restore is not attempted debt", debt)
+        NoticeSink.restoresChecked(app, debt)
+        assertNotNull("Unattempted durable intent must retain the starvation notice", debtNotice())
+    }
+
+    @Test fun uiDebtFreeCheckCannotCancelPendingStarvation() {
+        emit(DozeEvent(EventType.RECOVERY_DEBT, EventCodes.RESTORE_WINDOW_STARVED))
+        NoticeSink.ledgerChecked(app, false)
+        NoticeSink.cancelDebt(app)
+        assertNotNull("UI debt-free reads do not establish an empty ledger", debtNotice())
+        assertTrue(app.getSharedPreferences("notices", Context.MODE_PRIVATE)
+            .getStringSet("debtNotified", emptySet())!!.contains(EventCodes.RESTORE_WINDOW_STARVED))
+    }
+
+    @Test fun runtimeStarvationSettlesOnlyAfterReadableEmptyLedger() {
+        ledger.save(RestoreLedger(listOf(LedgerEntry(Feature.WIFI, null, "1", 0))))
+        emit(DozeEvent(EventType.RECOVERY_DEBT, EventCodes.RESTORE_WINDOW_STARVED))
+        val posted = debtNotice()
+        fun check(load: () -> RestoreLedger = ledger::load, damaged: () -> Boolean = { false }) {
+            updateRuntimeDebtNotice(load, damaged, { NoticeSink.restoresChecked(app, it) },
+                { _, _ -> fail("Notice update should succeed") })
+        }
+        check()
+        assertSame("Runtime must retain unattempted pending intent", posted, debtNotice())
+        NoticeSink::class.java.getDeclaredField("instance").apply { isAccessible = true }.set(null, null)
+        check()
+        assertSame("Persisted starvation survives a recreated gate", posted, debtNotice())
+        ledger.save(RestoreLedger())
+        check(damaged = { true })
+        assertNotNull("Corrupt lines prevent empty-ledger settlement", debtNotice())
+        check(load = { throw IllegalStateException("unreadable") })
+        assertNotNull("Unreadable intent cannot settle starvation", debtNotice())
+        check()
+        assertNull("Readable empty ledger settles starvation", debtNotice())
+        check()
+        assertFalse(app.getSharedPreferences("notices", Context.MODE_PRIVATE).getBoolean("debtPosted", true))
+        emit(DozeEvent(EventType.RECOVERY_DEBT, EventCodes.RESTORE_WINDOW_STARVED))
+        assertNotNull("A later starved window is re-armed", debtNotice())
+    }
+
     @Test fun terminalSkipIsWiredToJournaledStarvationDebt() {
         val source = File("src/main/java/com/akylas/enforcedoze/service/DozeRuntime.kt").readText()
         val window = source.substringAfter("RestoreOnlyRequest(").substringBefore(").start(deadline)")
@@ -177,10 +221,10 @@ class RuntimeDebtNoticeTest {
         assertTrue(safety.contains("NoticeSink.restoresChecked(app, debt)"))
         val debtRule = source.substringAfter("internal fun updateRuntimeDebtNotice(")
         assertTrue(debtRule.contains("val ledger = load()"))
-        assertTrue(debtRule.contains("DebtRules.isDebt(ledger.entries, damaged(), false)"))
-        assertTrue("load failure cannot be treated as an empty ledger", debtRule.contains("catch (_: Exception) { true }"))
+        assertTrue(debtRule.contains("DebtRules.ledgerState(ledger.entries, damaged())"))
+        assertTrue("load failure cannot be treated as an empty ledger", debtRule.contains("catch (_: Exception) { DebtRules.LedgerState.DEBT }"))
         val notice = File("src/main/java/com/akylas/enforcedoze/ui/NoticeSink.java").readText()
-        assertTrue(notice.contains("sink.debtGate.ledgerChecked(debt)"))
+        assertTrue(notice.contains("sink.debtGate.ledgerChecked(ledger)"))
         assertTrue(notice.contains("if (event.getReason() == null) debtGate.clear(DebtRules.key(detail, event.getTarget()))"))
         assertTrue(notice.contains("if (privileged) debtGate.clear(EventCodes.ACCESS_LOST)"))
     }

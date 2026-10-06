@@ -606,13 +606,13 @@ internal fun readRuntimeCommand(control: CommandRunner, command: String): List<S
 internal fun updateRuntimeDebtNotice(
     load: () -> RestoreLedger,
     damaged: () -> Boolean,
-    notice: (Boolean) -> Unit,
+    notice: (DebtRules.LedgerState) -> Unit,
     diagnosticLogger: (String, Throwable) -> Unit,
 ) {
     val debt = try {
         val ledger = load()
-        DebtRules.isDebt(ledger.entries, damaged(), false)
-    } catch (_: Exception) { true }
+        DebtRules.ledgerState(ledger.entries, damaged())
+    } catch (_: Exception) { DebtRules.LedgerState.DEBT }
     try { notice(debt) }
     catch (error: Exception) { diagnosticLogger("Debt notice update failed", error) }
 }

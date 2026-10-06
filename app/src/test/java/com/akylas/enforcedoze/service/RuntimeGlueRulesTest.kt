@@ -2,6 +2,8 @@ package com.akylas.enforcedoze.service
 
 import com.akylas.enforcedoze.access.*
 import com.akylas.enforcedoze.doze.*
+import com.akylas.enforcedoze.ui.DebtRules.LedgerState
+import com.akylas.enforcedoze.ui.DebtRules.LedgerState.*
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -28,7 +30,7 @@ class RuntimeGlueRulesTest {
         val error = IllegalStateException("notice")
         val calls = mutableListOf<String>()
         updateRuntimeDebtNotice({ throw IllegalStateException("ledger") }, { fail("not read after load throws"); false },
-            { debt -> assertTrue("ledger exception means debt", debt); calls += "notice"; throw error },
+            { debt -> assertEquals("ledger exception means debt", DEBT, debt); calls += "notice"; throw error },
             { message, actual -> assertEquals("Debt notice update failed", message); assertSame(error, actual); calls += "log" })
         assertEquals(listOf("notice", "log"), calls)
     }
@@ -36,15 +38,15 @@ class RuntimeGlueRulesTest {
     @Test fun committedDebtRemainsInActiveSessionAndHealthyLedgerClearsNotice() {
         val entry = LedgerEntry(Feature.WIFI, "wifi", "on", 1, debt = true)
         for ((ledger, damaged, expected) in listOf(
-            Triple(RestoreLedger(), false, false),
-            Triple(RestoreLedger(), true, true),
-            Triple(RestoreLedger(listOf(entry)), false, true),
-            Triple(RestoreLedger(listOf(entry.copy(debt = false, attempts = 1))), false, true),
-            Triple(RestoreLedger(listOf(entry.copy(debt = false))), false, false),
+            Triple(RestoreLedger(), false, EMPTY),
+            Triple(RestoreLedger(), true, DEBT),
+            Triple(RestoreLedger(listOf(entry)), false, DEBT),
+            Triple(RestoreLedger(listOf(entry.copy(debt = false, attempts = 1))), false, DEBT),
+            Triple(RestoreLedger(listOf(entry.copy(debt = false))), false, CLEAN),
         )) {
             val session = SessionLifecycle(); session.activate(1, { 1 }, { false })
             assertTrue(session.active)
-            var noticed: Boolean? = null
+            var noticed: LedgerState? = null
             updateRuntimeDebtNotice({ ledger }, { damaged }, { noticed = it }, { _, _ -> fail("no notice error") })
             assertEquals("runtime debt does not suppress an active session", expected, noticed)
         }
