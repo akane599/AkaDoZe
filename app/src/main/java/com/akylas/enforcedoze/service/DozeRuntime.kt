@@ -173,16 +173,21 @@ class DozeRuntime(context: Context, val clock: AndroidClock, val journal: Journa
 
     fun importHistory() {
         try {
-            if (!grants().dump && access.level < AccessLevel.SHELL) return
-            val result = access.reads().run("dumpsys deviceidle", 8_000)
-            val now = clock.elapsedRealtime()
-            if (result.ok) journal.importHistory(result.stdout, now)
-            else journal.emit(DozeEvent(EventType.ERROR, EventCodes.HISTORY_READ_FAILED))
-        } catch (_: Exception) {
+            readHistoryInto()
+        } catch (error: Exception) {
+            diagnosticLogger("History read failed", error)
             journal.emit(DozeEvent(EventType.ERROR, EventCodes.HISTORY_READ_FAILED))
         } finally {
             try { afterHistoryImport?.run() } catch (_: Exception) { /* Presentation only. */ }
         }
+    }
+
+    private fun readHistoryInto() {
+        if (!grants().dump && access.level < AccessLevel.SHELL) return
+        val result = access.reads().run("dumpsys deviceidle", 8_000)
+        val now = clock.elapsedRealtime()
+        if (result.ok) journal.importHistory(result.stdout, now)
+        else journal.emit(DozeEvent(EventType.ERROR, EventCodes.HISTORY_READ_FAILED))
     }
 
     /** doze-worker only. Raw outputs are recorded for this run alone; BUSY while a session is active. */

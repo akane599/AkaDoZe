@@ -12,6 +12,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
@@ -52,6 +53,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * no UI state; every notification is gated on the user's notification permission.
  */
 public final class NoticeSink implements DozeEventSink {
+    private static final String TAG = "NoticeSink";
     private static final int ID_ACCESS = 8801;
     private static final int ID_DEBT = 8802;
     private static final int ID_EXTERNAL = 8803;
@@ -378,7 +380,8 @@ public final class NoticeSink implements DozeEventSink {
                             PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT))
                     .build());
         } catch (Exception unavailable) {
-            // Journal busy/unreadable: skip quietly, this is presentation only.
+            // Skip failed presentation without interrupting control work.
+            Log.w(TAG, "Session summary presentation failed", unavailable);
         }
     }
 

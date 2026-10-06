@@ -928,6 +928,7 @@ public class ForceDozeService extends Service {
             return runtime.getController().enterGroupsSafely(selectedGroups, generation, this::forceAdmitted,
                     EventCodes.FEATURE_SELECTION_FAILED);
         } catch (Exception error) {
+            Log.w(TAG, "Feature selection failed", error);
             runtime.getJournal().emit(new DozeEvent(EventType.ERROR, EventCodes.FEATURE_SELECTION_FAILED));
             return null;
         }
