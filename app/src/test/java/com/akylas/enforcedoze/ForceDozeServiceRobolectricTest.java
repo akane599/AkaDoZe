@@ -36,6 +36,7 @@ import android.provider.Settings;
 import com.akylas.enforcedoze.access.AccessLevel;
 import com.akylas.enforcedoze.access.Prefs;
 import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
@@ -83,6 +84,10 @@ public class ForceDozeServiceRobolectricTest {
             launched = intent;
             if (failLaunch) throw new IllegalStateException("test launch failure");
         }
+    }
+
+    @Before public void resetBeforeTest() throws Exception {
+        TestAppState.reset();
     }
 
     @After public void resetState() throws Exception {

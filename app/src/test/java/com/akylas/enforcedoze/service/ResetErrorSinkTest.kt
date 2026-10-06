@@ -38,10 +38,7 @@ class ResetErrorSinkTest {
     }
 
     @After fun clearAccessSingleton() {
-        AccessManager::class.java.getDeclaredField("instance").apply {
-            isAccessible = true
-            set(null, null)
-        }
+        TestAppState.reset()
     }
 
     @Test fun resetJobSinkJournalsResetFailedAndLogsExactThrowable() {

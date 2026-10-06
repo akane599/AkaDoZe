@@ -10,7 +10,7 @@ import android.util.Log;
 
 import androidx.preference.PreferenceManager;
 
-import com.akylas.enforcedoze.MyApplication;
+import com.akylas.enforcedoze.TestAppState;
 import com.akylas.enforcedoze.access.Prefs;
 import com.akylas.enforcedoze.doze.Clock;
 import com.akylas.enforcedoze.service.JournalSink;
@@ -20,6 +20,7 @@ import com.akylas.enforcedoze.doze.EventType;
 import com.akylas.enforcedoze.monitor.EventCodes;
 
 import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
@@ -35,7 +36,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -51,19 +51,13 @@ public class NoticeSinkRobolectricTest {
     private static final int ID_DEBT = 8802;
     private static final int ID_OTHER = 8801;
 
+    @Before public void resetBeforeTest() throws Exception {
+        TestAppState.reset();
+    }
+
     @After
     public void resetNoticeState() throws Exception {
-        Field instance = NoticeSink.class.getDeclaredField("instance");
-        instance.setAccessible(true);
-        instance.set(null, null);
-        for (String name : Arrays.asList("context", "dozeRuntime")) {
-            Field field = MyApplication.class.getDeclaredField(name);
-            field.setAccessible(true);
-            field.set(null, null);
-        }
-        Field debtViews = NoticeSink.class.getDeclaredField("debtViews");
-        debtViews.setAccessible(true);
-        ((AtomicInteger) debtViews.get(null)).set(0);
+        TestAppState.reset();
         RuntimeEnvironment.getApplication().getSharedPreferences("notices", Context.MODE_PRIVATE)
                 .edit().clear().commit();
     }

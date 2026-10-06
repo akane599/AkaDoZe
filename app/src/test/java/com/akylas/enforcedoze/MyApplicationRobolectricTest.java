@@ -12,6 +12,7 @@ import com.akylas.enforcedoze.service.JournalSink;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
@@ -28,6 +29,10 @@ public class MyApplicationRobolectricTest {
         void attach(Context context) { attachBaseContext(context); }
         @Override void requeryExactAlarmAccess() { requeries++; }
     }
+    @Before public void resetBeforeTest() throws Exception {
+        TestAppState.reset();
+    }
+
     @After public void resetState() throws Exception {
         TestAppState.reset();
         shadowOf(RuntimeEnvironment.getApplication().getSystemService(UserManager.class)).setUserUnlocked(true);
