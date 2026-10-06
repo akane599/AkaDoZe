@@ -4,6 +4,7 @@ import android.app.Application;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import com.akylas.enforcedoze.MyApplication;
 import com.akylas.enforcedoze.access.Prefs;
 import com.akylas.enforcedoze.service.ResetRestoreOutcome;
 import com.akylas.enforcedoze.service.SystemResetResult;
@@ -18,6 +19,8 @@ import org.robolectric.annotation.Config;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.lang.reflect.Field;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -31,9 +34,51 @@ public class ResetReportRobolectricTest {
     }
 
     @After
-    public void clearTestPreferences() {
+    public void clearTestPreferences() throws Exception {
         prefs("reset_test").edit().clear().commit();
         prefs("reset_helpers_test").edit().clear().commit();
+        Field noticeInstance = NoticeSink.class.getDeclaredField("instance");
+        noticeInstance.setAccessible(true);
+        noticeInstance.set(null, null);
+        Field debtViews = NoticeSink.class.getDeclaredField("debtViews");
+        debtViews.setAccessible(true);
+        ((AtomicInteger) debtViews.get(null)).set(0);
+        Field appContext = MyApplication.class.getDeclaredField("context");
+        appContext.setAccessible(true);
+        appContext.set(null, null);
+        resetTracker("phase", ResetReport.Tracker.Phase.IDLE);
+        resetTracker("result", null);
+        resetTracker("prefsCleared", false);
+        resetTracker("listener", null);
+    }
+
+    private static void resetTracker(String name, Object value) throws Exception {
+        Field field = ResetReport.Tracker.class.getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(ResetReport.TRACKER, value);
+    }
+
+    @Test
+    public void incompleteRestoreKeepsTheServiceSensorWhitelistPreference() {
+        SystemResetResult incomplete = new SystemResetResult(ResetRestoreOutcome.REMAINING_DEBT,
+                Collections.emptyList(), Collections.emptyList(), false);
+
+        assertTrue("Incomplete restore retains the service allow-token key",
+                ResetReport.keysToKeep(incomplete).contains("sensorWhitelistPackage"));
+    }
+
+    @Test
+    public void remainingDebtResetRetainsCustomServiceSensorWhitelistValue() {
+        SharedPreferences prefs = prefs("reset_test");
+        SharedPreferences helpers = prefs("reset_helpers_test");
+        prefs.edit().putString("sensorWhitelistPackage", "com.example.sensor-owner")
+                .putString(Prefs.RESTORE_LEDGER, "pending").commit();
+
+        assertTrue("Reset with remaining debt commits",
+                ResetReport.clearPreferences(prefs, helpers,
+                        new SystemResetResult(ResetRestoreOutcome.REMAINING_DEBT, Collections.emptyList())));
+        assertEquals("Reset retains the custom allow token the service reads",
+                "com.example.sensor-owner", prefs.getString("sensorWhitelistPackage", null));
     }
 
     @Test
