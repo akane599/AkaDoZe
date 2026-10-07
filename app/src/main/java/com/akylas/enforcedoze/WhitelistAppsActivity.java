@@ -26,6 +26,8 @@ import android.view.MenuItem;
 import android.view.View;
 
 import com.afollestad.materialdialogs.MaterialDialog;
+import com.akylas.enforcedoze.ui.amber.AmberDialogs;
+import com.akylas.enforcedoze.ui.amber.Haptics;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.nanotasks.Completion;
 import com.nanotasks.Tasks;
@@ -165,7 +167,7 @@ public class WhitelistAppsActivity extends AppCompatActivity {
     /** {@code reportProblems} false after an edit whose own dialog already said what went wrong. */
     void loadPackagesFromWhitelist(boolean reportProblems) {
         log("Loading whitelisted packages...");
-        progressDialog = new MaterialDialog.Builder(this)
+        progressDialog = AmberDialogs.builder(this)
                 .title(getString(R.string.please_wait_text))
                 .autoDismiss(false)
                 .cancelable(false)
@@ -279,7 +281,7 @@ public class WhitelistAppsActivity extends AppCompatActivity {
     }
 
     public void showManuallyAddPackageDialog() {
-        new MaterialDialog.Builder(this)
+        AmberDialogs.builder(this)
                 .title(getString(R.string.whitelist_apps_setting_text))
                 .content(R.string.manually_add_package_dialog_text)
                 .inputType(InputType.TYPE_CLASS_TEXT)
@@ -287,13 +289,14 @@ public class WhitelistAppsActivity extends AppCompatActivity {
                 .input("com.spotify.music", "", false, new MaterialDialog.InputCallback() {
                     @Override
                     public void onInput(MaterialDialog dialog, CharSequence input) {
+                        Haptics.tick(recyclerView);
                         verifyAndAddPackage(input.toString());
                     }
                 }).show();
     }
 
     public void showManuallyRemovePackageDialog() {
-        new MaterialDialog.Builder(this)
+        AmberDialogs.builder(this)
                 .title(getString(R.string.whitelist_apps_setting_text))
                 .content(R.string.manually_remove_package_dialog_text)
                 .inputType(InputType.TYPE_CLASS_TEXT)
@@ -301,6 +304,7 @@ public class WhitelistAppsActivity extends AppCompatActivity {
                 .input("com.spotify.music", "", false, new MaterialDialog.InputCallback() {
                     @Override
                     public void onInput(MaterialDialog dialog, CharSequence input) {
+                        Haptics.tick(recyclerView);
                         verifyAndRemovePackage(input.toString());
                     }
                 }).show();
