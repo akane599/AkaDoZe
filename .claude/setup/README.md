@@ -56,6 +56,10 @@ you want them, then enable them in `.claude/settings.local.json`:
   delete the `env` block so Claude Code talks to Anthropic directly, and check `sidequest models` to see where the
   GPT categories resolve. A category without a live route needs its route edited before dispatch.
 - Drop the `@android-local` plugins you didn't install.
+- The example's `permissions.allow` lists only commands that can't be widened by flags. Broad prefixes such as
+  `Bash(rg:*)` (`--pre` runs a program), `Bash(git diff:*)` / `git log` / `git show` (`--output` writes files),
+  `Bash(./gradlew:*)` (`--init-script`) or `Bash(adb:*)` pre-approve much more than they look like; add them per
+  machine only if you accept that. They are deliberately not in the tracked `.claude/settings.json`.
 
 ## 4. Sidequest routing profile
 

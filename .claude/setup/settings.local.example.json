@@ -1,4 +1,12 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git remote -v:*)",
+      "Bash(bash .claude/kit/detect-stack.sh:*)",
+      "Bash(python3 .claude/kit/scaffold.py:*)"
+    ]
+  },
   "enabledPlugins": {
     "kotlin-lsp-android@android-local": true,
     "android-kmp-playbook@android-local": true,

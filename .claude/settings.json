@@ -1,20 +1,5 @@
 {
   "permissions": {
-    "allow": [
-      "Bash(./gradlew:*)",
-      "Bash(adb:*)",
-      "Bash(emulator:*)",
-      "Bash(avdmanager:*)",
-      "Bash(sdkmanager:*)",
-      "Bash(git status:*)",
-      "Bash(git diff:*)",
-      "Bash(git log:*)",
-      "Bash(git show:*)",
-      "Bash(git remote -v:*)",
-      "Bash(rg:*)",
-      "Bash(bash .claude/kit/detect-stack.sh:*)",
-      "Bash(python3 .claude/kit/scaffold.py:*)"
-    ],
     "deny": [
       "Read(./local.properties)",
       "Read(./**/*.jks)",
