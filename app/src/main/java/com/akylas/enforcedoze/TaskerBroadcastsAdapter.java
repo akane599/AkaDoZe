@@ -8,6 +8,8 @@ import android.widget.AdapterView;
 import android.widget.BaseAdapter;
 import android.widget.TextView;
 
+import com.akylas.enforcedoze.ui.amber.Haptics;
+
 import java.util.ArrayList;
 
 public class TaskerBroadcastsAdapter extends BaseAdapter {
@@ -48,9 +50,13 @@ public class TaskerBroadcastsAdapter extends BaseAdapter {
 
         holder.broadcastName.setText(listData.get(position).getBroadcastName());
         holder.broadcastValues.setText(listData.get(position).getBroadcastValues());
-        // The card is clickable for its squircle ripple, so it forwards the tap as the list's item click (copy).
+        // The card is clickable for its squircle ripple, so it forwards the tap as the list's item click
+        // (copy to clipboard), with a confirm tick.
         View row = convertView;
-        row.setOnClickListener(v -> ((AdapterView<?>) parent).performItemClick(row, position, position));
+        row.setOnClickListener(v -> {
+            Haptics.tick(row);
+            ((AdapterView<?>) parent).performItemClick(row, position, position);
+        });
         return convertView;
     }
 
