@@ -18,6 +18,7 @@ import android.view.View;
 import android.widget.EditText;
 
 import com.afollestad.materialdialogs.MaterialDialog;
+import com.akylas.enforcedoze.ui.amber.AmberDialogs;
 import com.nanotasks.Completion;
 import com.nanotasks.Tasks;
 
@@ -63,7 +64,7 @@ public class LogActivity extends AppCompatActivity {
             return windowInsets;
         });
 
-        progressDialog = new MaterialDialog.Builder(this)
+        progressDialog = AmberDialogs.builder(this)
                 .title(R.string.please_wait_text)
                 .cancelable(false)
                 .autoDismiss(false)
@@ -85,17 +86,21 @@ public class LogActivity extends AppCompatActivity {
         if (id == R.id.action_share_log) {
             saveAndShareLog();
         } else if (id == R.id.action_share_fulllog) {
-            progressDialog = new MaterialDialog.Builder(this)
-                    .title(R.string.please_wait_text)
-                    .content(R.string.log_loading_text)
-                    .progress(true, 0)
-                    .show();
-            getFullLogcat();
+            shareFullLogcat();
         } else if (id == android.R.id.home) {
             getOnBackPressedDispatcher().onBackPressed();
             return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+
+    private void shareFullLogcat() {
+        progressDialog = AmberDialogs.builder(this)
+                .title(R.string.please_wait_text)
+                .content(R.string.log_loading_text)
+                .progress(true, 0)
+                .show();
+        getFullLogcat();
     }
 
     static String logCommand(boolean full) {

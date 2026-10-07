@@ -12,6 +12,7 @@ import android.preference.PreferenceManager;
 
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
@@ -24,6 +25,9 @@ import android.view.MenuItem;
 
 import com.afollestad.materialdialogs.MaterialDialog;
 import com.akylas.enforcedoze.service.LegacyDozeStats;
+import com.akylas.enforcedoze.ui.StatsColorRules;
+import com.akylas.enforcedoze.ui.amber.AmberDialogs;
+import com.google.android.material.color.MaterialColors;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.nanotasks.BackgroundWork;
 import com.nanotasks.Completion;
@@ -151,11 +155,14 @@ public class DozeBatteryStatsActivity extends AppCompatActivity {
     }
 
     public Drawable returnDrawableBattery(int bUsage) {
-        return (bUsage >= 3) ? ContextCompat.getDrawable(getApplicationContext(), R.drawable.ic_battery_alert_black_48dp) : ContextCompat.getDrawable(getApplicationContext(), R.drawable.ic_battery_charging_full_black_48dp);
+        boolean drain = StatsColorRules.isDrain(bUsage);
+        Drawable icon = ContextCompat.getDrawable(this, StatsColorRules.batteryIcon(drain)).mutate();
+        DrawableCompat.setTint(icon, MaterialColors.getColor(this, StatsColorRules.batteryTint(drain), TAG));
+        return icon;
     }
 
     public void clearStats() {
-        progressDialog = new MaterialDialog.Builder(this)
+        progressDialog = AmberDialogs.builder(this)
                 .title(getString(R.string.please_wait_text))
                 .cancelable(false)
                 .autoDismiss(false)

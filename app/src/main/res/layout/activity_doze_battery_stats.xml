@@ -26,10 +26,13 @@
         tools:context="com.akylas.enforcedoze.DozeBatteryStatsActivity"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
+        <!-- Session cards (material_small_image_card_custom); the bottom inset is added in code. -->
         <androidx.recyclerview.widget.RecyclerView
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:id="@+id/material_listview"/>
+            android:id="@+id/material_listview"
+            android:clipToPadding="false"
+            android:paddingTop="@dimen/space_2"/>
 
     </RelativeLayout>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

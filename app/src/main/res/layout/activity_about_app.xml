@@ -29,23 +29,20 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:padding="@dimen/space_3">
 
-            <!-- App header card -->
-            <com.google.android.material.card.MaterialCardView
+            <!-- App header card: serif name, tabular version. -->
+            <com.akylas.enforcedoze.ui.amber.AmberCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                app:cardElevation="0dp"
-                app:strokeWidth="0dp"
-                app:cardBackgroundColor="?attr/colorSurfaceVariant">
+                android:layout_marginBottom="@dimen/space_3">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
                     android:gravity="center"
-                    android:padding="32dp">
+                    android:padding="@dimen/space_5">
 
                     <ImageView
                         android:layout_width="80dp"
@@ -56,45 +53,44 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
+                        android:layout_marginTop="@dimen/space_3"
                         android:text="@string/app_name"
                         android:textAppearance="?attr/textAppearanceHeadlineMedium"
-                        android:textColor="?attr/colorOnSurfaceVariant" />
+                        android:textColor="?attr/colorOnSurface" />
 
                     <TextView
                         android:id="@+id/textVersion"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
+                        android:layout_marginTop="@dimen/space_1"
+                        android:fontFeatureSettings="tnum"
                         android:textAppearance="?attr/textAppearanceBodyMedium"
-                        android:textColor="?attr/colorOutline" />
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        tools:text="1.11.0 (build 87)" />
 
                 </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
+            </com.akylas.enforcedoze.ui.amber.AmberCardView>
 
-            <!-- Sponsor card -->
-            <com.google.android.material.card.MaterialCardView
+            <!-- Sponsor card: the one accent-tinted surface on this screen. -->
+            <com.akylas.enforcedoze.ui.amber.AmberCardView
                 android:id="@+id/sponsorCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                app:cardElevation="0dp"
-                app:strokeWidth="1dp"
-                app:strokeColor="?attr/colorPrimary"
+                android:layout_marginBottom="@dimen/space_3"
                 app:cardBackgroundColor="?attr/colorPrimaryContainer">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="20dp">
+                    android:padding="@dimen/space_4">
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="horizontal"
                         android:gravity="center_vertical"
-                        android:layout_marginBottom="8dp">
+                        android:layout_marginBottom="@dimen/space_2">
 
                         <TextView
                             android:layout_width="0dp"
@@ -115,9 +111,9 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/sponsor_card_text"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textAppearance="?attr/textAppearanceBodyMedium"
                         android:textColor="?attr/colorOnPrimaryContainer"
-                        android:layout_marginBottom="16dp" />
+                        android:layout_marginBottom="@dimen/space_3" />
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -125,18 +121,17 @@
                         android:orientation="horizontal"
                         android:gravity="end">
 
-                        <com.google.android.material.button.MaterialButton
+                        <com.akylas.enforcedoze.ui.amber.AmberButton
                             android:id="@+id/btnGithubSponsors"
-                            style="@style/Widget.Material3.Button.TonalButton"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_marginEnd="8dp"
+                            android:layout_marginEnd="@dimen/space_2"
                             android:text="@string/sponsor_github"
                             android:onClick="openGithubSponsors" />
 
-                        <com.google.android.material.button.MaterialButton
+                        <com.akylas.enforcedoze.ui.amber.AmberButton
                             android:id="@+id/btnLiberapay"
-                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            style="@style/Widget.Amber.Button.Outlined"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/sponsor_liberapay"
@@ -145,55 +140,52 @@
                     </LinearLayout>
 
                 </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
+            </com.akylas.enforcedoze.ui.amber.AmberCardView>
 
             <!-- Open source card -->
-            <com.google.android.material.card.MaterialCardView
+            <com.akylas.enforcedoze.ui.amber.AmberCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                app:cardElevation="0dp"
-                app:strokeWidth="0dp"
-                app:cardBackgroundColor="?attr/colorSurfaceVariant">
+                android:layout_marginBottom="@dimen/space_3">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="20dp">
+                    android:padding="@dimen/space_4">
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="@string/about_open_source_title"
                         android:textAppearance="?attr/textAppearanceTitleMedium"
-                        android:textColor="?attr/colorOnSurfaceVariant"
-                        android:layout_marginBottom="8dp" />
+                        android:textColor="?attr/colorOnSurface"
+                        android:layout_marginBottom="@dimen/space_2" />
 
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/about_app_opensrc_text"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textAppearance="?attr/textAppearanceBodyMedium"
                         android:textColor="?attr/colorOnSurfaceVariant"
-                        android:layout_marginBottom="12dp" />
+                        android:layout_marginBottom="@dimen/space_2" />
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="horizontal">
 
-                        <com.google.android.material.button.MaterialButton
+                        <com.akylas.enforcedoze.ui.amber.AmberButton
                             android:id="@+id/btnLicenses"
-                            style="@style/Widget.Material3.Button.TextButton"
+                            style="@style/Widget.Amber.Button.Text"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/licenses"
                             android:onClick="showLicences" />
 
-                        <com.google.android.material.button.MaterialButton
+                        <com.akylas.enforcedoze.ui.amber.AmberButton
                             android:id="@+id/btnSourceCode"
-                            style="@style/Widget.Material3.Button.TextButton"
+                            style="@style/Widget.Amber.Button.Text"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/source_code"
@@ -202,47 +194,44 @@
                     </LinearLayout>
 
                 </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
+            </com.akylas.enforcedoze.ui.amber.AmberCardView>
 
             <!-- Info & legal card -->
-            <com.google.android.material.card.MaterialCardView
+            <com.akylas.enforcedoze.ui.amber.AmberCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                app:cardElevation="0dp"
-                app:strokeWidth="0dp"
-                app:cardBackgroundColor="?attr/colorSurfaceVariant">
+                android:layout_marginBottom="@dimen/space_3">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="20dp">
+                    android:padding="@dimen/space_4">
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="@string/about_info_legal_title"
                         android:textAppearance="?attr/textAppearanceTitleMedium"
-                        android:textColor="?attr/colorOnSurfaceVariant"
-                        android:layout_marginBottom="8dp" />
+                        android:textColor="?attr/colorOnSurface"
+                        android:layout_marginBottom="@dimen/space_2" />
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="horizontal">
 
-                        <com.google.android.material.button.MaterialButton
+                        <com.akylas.enforcedoze.ui.amber.AmberButton
                             android:id="@+id/btnTranslations"
-                            style="@style/Widget.Material3.Button.TextButton"
+                            style="@style/Widget.Amber.Button.Text"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/translations"
                             android:onClick="showTranslationCreditsDialog" />
 
-                        <com.google.android.material.button.MaterialButton
+                        <com.akylas.enforcedoze.ui.amber.AmberButton
                             android:id="@+id/btnPrivacyPolicy"
-                            style="@style/Widget.Material3.Button.TextButton"
+                            style="@style/Widget.Amber.Button.Text"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/privacy_policy"
@@ -251,7 +240,7 @@
                     </LinearLayout>
 
                 </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
+            </com.akylas.enforcedoze.ui.amber.AmberCardView>
 
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
