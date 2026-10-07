@@ -70,7 +70,8 @@ public class AmberCardViewRobolectricTest {
         Object group = ReflectionHelpers.getField(view.getOverlay(), "mOverlayViewGroup");
         List<Drawable> drawables = ReflectionHelpers.getField(group, "mDrawables");
         List<GlassOverlay> glass = new ArrayList<>();
-        for (Drawable drawable : drawables) {
+        // The overlay creates its drawable list on the first add.
+        for (Drawable drawable : drawables == null ? new ArrayList<Drawable>() : drawables) {
             if (drawable instanceof GlassOverlay) {
                 glass.add((GlassOverlay) drawable);
             }
