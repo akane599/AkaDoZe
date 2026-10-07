@@ -131,7 +131,7 @@ public class AmberCardViewRobolectricTest {
 
     private static void assertPathSpans(float radiusPx, RectF bounds) {
         Path path = new Path();
-        ShapeAppearancePathProvider.getInstance().calculatePath(SquircleShapes.model(radiusPx), 1f, bounds, path);
+        new ShapeAppearancePathProvider().calculatePath(SquircleShapes.model(radiusPx), 1f, bounds, path);
         RectF drawn = new RectF();
         path.computeBounds(drawn, true);
         assertEquals(bounds.left, drawn.left, 0.01f);

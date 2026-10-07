@@ -38,6 +38,7 @@ public final class GlassOverlay extends Drawable {
     private final Shapeable shapeable;
     private final Paint noise = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint hairline = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final ShapeAppearancePathProvider pathProvider = new ShapeAppearancePathProvider();
     private final Path path = new Path();
     private final RectF pathBounds = new RectF();
     private ShapeAppearanceModel pathModel;
@@ -76,7 +77,7 @@ public final class GlassOverlay extends Drawable {
         if (model != pathModel) {
             pathBounds.set(getBounds());
             path.reset();
-            ShapeAppearancePathProvider.getInstance().calculatePath(model, 1f, pathBounds, path);
+            pathProvider.calculatePath(model, 1f, pathBounds, path);
             pathModel = model;
         }
         canvas.drawPath(path, noise);
