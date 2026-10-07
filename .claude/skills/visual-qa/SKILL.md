@@ -5,9 +5,30 @@ description: Screenshot QA of AkaDoZe's look on the emulator — every activity 
 
 # Visual QA (AkaDoZe, XML Views)
 
-The app has no screenshot-test framework, so the emulator is the visual oracle. These scripts make a
-shoot repeatable: same activities, same scales, same capture tricks, so two runs can be compared
-side by side. All scripts live in `scripts/` next to this file; run them with `bash`.
+JVM screenshot tests (below) catch theme, layout and font drift in Gradle; the emulator stays the
+oracle for everything they can't draw. These scripts make a shoot repeatable: same activities, same
+scales, same capture tricks, so two runs can be compared side by side. All scripts live in
+`scripts/` next to this file; run them with `bash`.
+
+## JVM screenshots (Roborazzi, no emulator)
+
+```bash
+bash .claude/kit/gradle-check.sh :app:verifyRoborazziDebug   # compare against the committed goldens
+bash .claude/kit/gradle-check.sh :app:recordRoborazziDebug   # rewrite goldens after an intended change
+```
+
+`app/src/test/java/com/akylas/enforcedoze/ui/amber/AmberScreenshotTest.kt` renders with Robolectric
+native graphics at `w411dp-h891dp-night-xxhdpi`: the kit components (AmberCardView with serif title,
+filled and outlined AmberButton, an `Amber.treat` chip, MaterialSwitch on/off) at font scale 1.0 and
+2.0, the same card + button under each `ThemeOverlay.Amber.Accent.*`, and AboutAppActivity and
+SettingsActivity in non-root mode. Goldens live in `app/src/test/snapshots/` (committed); a failing
+verify writes `_actual`/`_compare` PNGs to `app/build/outputs/roborazzi_compare/`. Read the compare
+PNGs before re-recording, and read the new goldens after: a re-record is a visual change to review.
+
+Roborazzi is pinned at 1.60.0: 1.61+ ship Kotlin 2.3 metadata the project's Kotlin 2.0 compiler
+rejects. Still emulator-only: the glow and other shadows, the glass hairline (Robolectric draws
+shadows poorly), haptics, RTL and accent-by-clock end to end (AccentThemer isn't registered under the
+test Application), real dialogs, and every activity other than About and Settings.
 
 ## 1. Boot safely
 

@@ -6,9 +6,12 @@ buildscript {
         google()
     }
     ext.kotlin_version = '2.0.0'
+    // 1.61.0+ ship Kotlin 2.3 metadata, which the Kotlin 2.0 compiler rejects even from Java-only use.
+    ext.roborazzi_version = '1.60.0'
     dependencies {
         classpath 'com.android.tools.build:gradle:8.13.2'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath "io.github.takahirom.roborazzi:roborazzi-gradle-plugin:$roborazzi_version"
     }
 }
 
