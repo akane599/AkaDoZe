@@ -7,6 +7,10 @@
     <!-- Commands are not selectable: AccessUi shows them through BroadcastNameBreaks so they wrap at . and _,
          and Android does not map selection offsets across a length-changing transformation. The copy and
          share buttons carry the exact command. -->
+    <!-- The message lives here, not in setMessage(): the dialog's own message panel and this view would share
+         its height unweighted, and at large font scales the message took all of it, buttons included. In one
+         ScrollView, AlertDialogLayout keeps the buttons and scrolls message and commands together. -->
+    <!-- paddingTop stands in for the 16dp title-to-message spacer the dialog shows only with setMessage(). -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -15,9 +19,20 @@
         android:paddingStart="@dimen/space_4"
         android:paddingEnd="@dimen/space_2">
 
+        <!-- Looks like the dialog message (M3 supporting text); paddingEnd tops the 8dp up to its 24dp inset. -->
+        <TextView
+            android:id="@+id/adbInstructionsMessage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingEnd="@dimen/space_3"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:text="@string/no_root_workaround_dialog_text" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:paddingTop="@dimen/space_3"
             >
 
             <TextView

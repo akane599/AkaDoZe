@@ -545,7 +545,7 @@ public final class AccessUi {
         bindCommand(activity, view, R.id.commandTxt2, R.id.copyBtn2, R.id.shareBtn2);
         new MaterialAlertDialogBuilder(activity)
                 .setTitle(R.string.no_root_workaround_dialog_title)
-                .setMessage(R.string.no_root_workaround_dialog_text)
+                // The message is in the layout, scrolling with the commands (SQ-43): no setMessage().
                 .setView(view)
                 .setPositiveButton(R.string.okay_button_text, null)
                 .show();
