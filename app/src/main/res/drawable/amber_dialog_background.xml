@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Window background for ThemeOverlay.Amber.AlertDialog: amber surface container, 24dp card corners. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetLeft="@dimen/space_3"
+    android:insetTop="@dimen/space_3"
+    android:insetRight="@dimen/space_3"
+    android:insetBottom="@dimen/space_3">
+    <shape android:shape="rectangle">
+        <corners android:radius="@dimen/corner_card" />
+        <solid android:color="@color/amber_surface_container" />
+    </shape>
+</inset>
