@@ -7,6 +7,7 @@ import android.os.UserManager;
 import com.akylas.enforcedoze.service.AndroidClock;
 import com.akylas.enforcedoze.service.DozeRuntime;
 import com.akylas.enforcedoze.service.JournalSink;
+import com.akylas.enforcedoze.ui.AccentThemer;
 import com.akylas.enforcedoze.ui.NoticeSink;
 
 public class MyApplication extends android.app.Application {
@@ -56,6 +57,8 @@ public class MyApplication extends android.app.Application {
     public void onCreate() {
         super.onCreate();
         MyApplication.context = getApplicationContext();
+        // Theme-only hook: no prefs or I/O, so it is safe before the direct-boot return.
+        registerActivityLifecycleCallbacks(new AccentThemer());
         // Default preferences are credential-protected; don't read them during locked direct boot.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
                 && !((UserManager) getSystemService(Context.USER_SERVICE)).isUserUnlocked()) {
