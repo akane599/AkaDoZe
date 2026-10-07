@@ -24,6 +24,7 @@ import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 import com.afollestad.materialdialogs.MaterialDialog;
+import com.akylas.enforcedoze.ui.amber.AmberDialogs;
 import com.nanotasks.BackgroundWork;
 import com.nanotasks.Completion;
 import com.nanotasks.Tasks;
@@ -60,7 +61,7 @@ public class PackageChooserActivity extends AppCompatActivity {
 
         pm = getPackageManager();
 
-        progressDialog = new MaterialDialog.Builder(this)
+        progressDialog = AmberDialogs.builder(this)
                 .title(getString(R.string.please_wait_text))
                 .autoDismiss(false)
                 .cancelable(false)
@@ -144,9 +145,12 @@ public class PackageChooserActivity extends AppCompatActivity {
 
         private void bindView(int position, View row) {
             TextView label = (TextView) row.findViewById(R.id.label);
-            label.setText(getItem(position).loadLabel(pm));
+            ResolveInfo app = getItem(position);
+            label.setText(app.loadLabel(pm));
+            TextView packageName = row.findViewById(R.id.packageName);
+            packageName.setText(app.activityInfo.packageName);
             ImageView icon = (ImageView) row.findViewById(R.id.icon);
-            icon.setImageDrawable(getItem(position).loadIcon(pm));
+            icon.setImageDrawable(app.loadIcon(pm));
         }
     }
 
