@@ -580,5 +580,5 @@
     <string name="damaged_feature_unknown">an unnamed setting</string>
     <string name="amber_SQ42_log_empty">No log entries yet</string>
     <string name="amber_SQ42_share_command">Share command</string>
-    <string name="amber_SQ46_tunables_forced_doze">While AkaDoZe forces Doze, Android skips the countdowns into deep Doze (inactive_to, sensing_to, locating_to). Deep idle and maintenance timings still apply.</string>
+    <string name="amber_SQ46_tunables_forced_doze">While EnforceDoze forces Doze, Android skips the countdowns into deep Doze (inactive_to, sensing_to, locating_to). Deep idle and maintenance timings still apply.</string>
 </resources>
