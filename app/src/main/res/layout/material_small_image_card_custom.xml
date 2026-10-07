@@ -45,7 +45,7 @@
                      shows it unscaled and hands the transparent side bearings to the text column. -->
                 <ImageView
                     android:id="@+id/image"
-                    android:layout_width="@dimen/space_3"
+                    android:layout_width="@dimen/space_4"
                     android:layout_height="wrap_content"
                     android:layout_gravity="center_vertical"
                     android:contentDescription="@null"
