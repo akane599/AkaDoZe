@@ -114,7 +114,9 @@ public class ConsumerLogicTest {
         DozeTunableHandler.ApplyResult applied = DozeTunableHandler.apply(control, reads, 36,
                 new Grants(false, false), "inactive_to=300000,idle_factor=2,idle_to=60,absent_to=10");
         assertEquals(Arrays.asList("cmd device_config put device_idle inactive_to 300000", "cmd device_config put device_idle idle_factor 2",
-                "cmd device_config put device_idle idle_to 60", "cmd device_config put device_idle absent_to 10"), control.commands);
+                "cmd device_config put device_idle idle_to 60", "cmd device_config put device_idle absent_to 10",
+                "settings put global device_idle_constants inactive_to=300000,idle_factor=2,idle_to=60,absent_to=10"), control.commands);
+        assertEquals(Arrays.asList("dumpsys deviceidle", "dumpsys deviceidle"), reads.commands);
         assertEquals(DozeTunableHandler.Outcome.APPLIED, applied.keys.get("inactive_to"));
         assertEquals(DozeTunableHandler.Outcome.APPLIED, applied.keys.get("idle_factor"));
         assertEquals(DozeTunableHandler.Outcome.NOT_EFFECTIVE, applied.keys.get("idle_to"));
@@ -142,7 +144,7 @@ public class ConsumerLogicTest {
 
     @Test public void privilegedTunablesSwitchToDeviceConfigAtApi31() {
         for (AccessLevel level : Arrays.asList(AccessLevel.SHELL, AccessLevel.ROOT)) {
-            for (int api : new int[] {30, 31, 33, 34}) {
+            for (int api : new int[] {30, 31, 33, 34, 35, 36}) {
                 Runner control = new Runner(level, result(0));
                 Runner reads = new Runner(level, result(0, "Settings:", "  idle_to=60000"));
                 DozeTunableHandler.ApplyResult applied = DozeTunableHandler.apply(control, reads, api,
