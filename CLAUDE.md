@@ -6,7 +6,7 @@ Android, developed on Ubuntu from the CLI. **If the STACK block still has `<plac
 
 <!-- STACK:BEGIN (filled by /bootstrap) -->
 - Origin: fork of farfromrefug/EnforceDoze, imported as akane599/AkaDoZe @ db47ccd (squashed, no upstream history) · Integration branch: Base
-- Language: mixed — 51 Java / 44 Kotlin (main) · UI: Views (XML, PreferenceFragment, material-dialogs 0.9) · screenshot tests: none
+- Language: mixed — 51 Java / 44 Kotlin (main) · UI: Views (XML, PreferenceFragment, material-dialogs 0.9) · screenshot tests: Roborazzi 1.60.0 (JVM, `app/src/test/snapshots/`)
 - JDK target 17 (machine JDK 21) · Gradle 8.13 · AGP 8.13.2 · Kotlin 2.0.0 · compileSdk 36 · targetSdk 36 · minSdk 23
 - Modules: :app · Architecture: single-module; pure Kotlin engine/policies (access/, doze/, monitor/, service/) behind Activities + ForceDozeService; SharedPreferences + restore ledger; root via libsuperuser, Shizuku API 13.1.5 · DI/DB/Net: none / platform SQLite journal / none
 - App id: com.akylas.enforcedoze · Launcher: .MainActivity · Groovy build scripts, no version catalog, repos include jcenter + jitpack
@@ -27,7 +27,7 @@ Android, developed on Ubuntu from the CLI. **If the STACK block still has `<plac
 
 ## Commands
 - Build: `./gradlew :app:assembleDebug --console=plain -q` · Unit: `:app:testDebugUnitTest` · Lint: `:app:lintDebug`
-- Screenshots: none (Views app, no screenshot framework); UI checks go through the device / android-emulator-qa.
+- Screenshots: `:app:verifyRoborazziDebug` (record with `:app:recordRoborazziDebug`; Roborazzi capped at 1.60.0 by Kotlin 2.0). Emulator visual QA: the `visual-qa` skill.
 - Device: `./gradlew :app:installDebug -q && adb shell am start -n com.akylas.enforcedoze/.MainActivity` · logs: `adb logcat -d --pid=$(adb shell pidof -s com.akylas.enforcedoze) | tail -80`
 - Machine: 12 cores, 15 GB RAM (`free -g`), KVM usable (`emulator -accel-check`). The emulator's qemu grows to ~4.5 GB RSS even with `-memory 2048` and was OOM-killed twice (2026-10-07) beside 2–3 Gradle builds: boot it only when builds have drained, and stop your own idle Gradle daemon (~4 GB) first. Gradle daemon is `-Xmx2048m`. Up to 4 Gradle jobs at once (user direction 2026-10-03, above the live rule's default of 2) and at most 3 concurrent Opus agents (usage limits). AVDs: `pixel` (API 36), `pixel-api35`, `batstats-api36`, `batstats16k`. Use the emulator for UI/visual QA. Root/Shizuku/OEM Doze behaviour still needs a physical device (docs/device-test-emulator-status.md).
 - Emulator: `emulator -avd <AVD> -no-window -no-audio &` then `adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done'`
