@@ -108,6 +108,13 @@ _Work items, stories and blockers live on the Sidequest board. This file keeps w
   - The emulator's qemu grows to ~4.5 GB RSS even at `-memory 2048`; it was OOM-killed twice beside parallel Gradle builds (machine has 15 GB). Emulator QA runs only after builds drain.
   - Sidequest dispatch/submit compute the candidate base from `origin/<integrationBranch>` while akadoze-2.0 is ahead and unpushed, so submits were refused `outside_scope`; those tickets were merged by hand and closed with `groomClose` (temporary stopgap; upstream defect to report, not a project rule).
 
+- 2026-10-07: Amber Night visual rounds closed (SQ-25 round 1 FIX → repairs SQ-33/36/37/38/39/40; SQ-41 round 2 PASS after the inline N1 fix bcc97ac). Decisions:
+  - Tabular figures (`tnum`) only on `TextAppearance.Amber.*.Numeric`, used by the stats number columns: Inter's tnum also gives the hyphen a figure-wide advance, so prose read "Wi - Fi" and "adb - d".
+  - Amber scarcity applied literally: one amber action per screen or card (About: GitHub Sponsors; ADB dialog: Okay; Monitor live card: Share). Secondary buttons and icons use `Widget.Amber.Button.{Outlined,Text,Icon}.Neutral`.
+  - Broadcast identifiers get line-break opportunities through a TransformationMethod (`ui/BroadcastNameBreaks`), so copying still yields the exact identifier.
+  - Roborazzi is pinned at 1.60.0: 1.61+ ships Kotlin 2.3 metadata, which Kotlin 2.0.0 can't read, and Kotlin isn't bumped. Goldens live in `app/src/test/snapshots/`; `AmberScreenshotTest` is Kotlin because javac can't resolve Roborazzi's Compose overloads.
+  - The emulator QA rig is now the `visual-qa` project skill; its boot script refuses while Gradle daemons run or under 6 GB is free.
+  - Low follow-ups left open: About text alignment in RTL, ADB dialog permission name breaking mid-word, Log empty-state placeholder, RTL position of "Show ADB commands"; toolbar titles truncating at font scale 2.0 predates the overhaul.
 
 ## Audit status
 | Area | Last run | Result | How |
@@ -121,7 +128,7 @@ _Work items, stories and blockers live on the Sidequest board. This file keeps w
 | Combined review | 2026-10-06 | review of Base..afc1436 → US-9 (SQ-167..SQ-181, follow-ups SQ-185..SQ-187); bound reviews SQ-182 PASS, SQ-183 PASS, SQ-184 PASS, SQ-189 FAIL→SQ-190; 843 JVM tests, lint and assembleRelease green at fd7cb73 | external review + `review-audit` (Opus) |
 | Coverage / CRAP | 2026-10-07 | At 299dd4c (US-1 integrated): 244 of 1100 checked functions at CRAP ≥ 6 vs Base (0 unmeasured); one overlaps a US-1 hunk: `SettingsActivity.ModeSwitch::renderReset` cc9 CRAP 16, touched only by S3's dialog-builder swap → SQ-34. Previous: at 0f18f77 (SQ-194): 254 functions at CRAP ≥ 6 branch-wide vs Base, none touched by SQ-192 or SQ-194 (263 at ab05e81). At fd7cb73 (US-9 close): 266 of 949 checked functions at CRAP ≥ 6 vs Base 42f8e73 (0 unmeasured). It was 309 of 926 at a11c1f1 (US-8), 344 of 880 after US-7 and 352 of 794 at bdb5dcd. No function a US-9 diff modified fails, except: two lizard span artifacts (`DozeRuntime.set@91-461`, `DozeController.enterGroupsSafely@60-286`) whose spans swallow Kotlin functions the tickets measured separately, and three Activity glue functions SQ-178 touched without changing their CC (backlog SQ-192). Older hidden offender: the restore-window completion, hand CRAP 20, backlog SQ-166 | `quartermaster crap --json` |
 | Security | — | — | `/claude-security` |
-| UI / design | 2026-10-07 | Amber Night (US-1) integrated; orchestrator visual QA done (see Emulator QA); before-vs-after `visual-evaluation` (SQ-25) and SQ-33 pending | emulator shots + `visual-evaluation` (Opus) |
+| UI / design | 2026-10-07 | Amber Night (US-1) integrated; visual-evaluation round 1 (SQ-25) FIX → 6 repairs; round 2 (SQ-41) PASS after N1 fix (bcc97ac); 4 low follow-ups open. Roborazzi goldens (8) guard the look on the JVM | emulator shots + `visual-evaluation` (Opus) |
 | Lint | 2026-10-03 | baseline captured: 160 pre-existing issues in app/lint-baseline.xml (only new issues fail) | `./gradlew :app:lintDebug -q` |
 | Device QA | — | pending on a physical device: emulator pass done (see Emulator QA); root path, real CPU suspend (F5 watchdog timing), radio settle on root, TalkBack on Main and the SQ-149 post-revoke readback still need a rooted or Shizuku phone | physical device (no KVM) |
 
