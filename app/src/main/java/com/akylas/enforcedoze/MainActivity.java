@@ -153,7 +153,7 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
     private void playLaunchGlow() {
         ViewGroup decor = (ViewGroup) getWindow().getDecorView();
         int height = getResources().getDisplayMetrics().heightPixels;
-        int primary = MaterialColors.getColor(decor, R.attr.colorPrimary);
+        int primary = MaterialColors.getColor(decor, androidx.appcompat.R.attr.colorPrimary);
         GradientDrawable gradient = new GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP,
                 new int[] {primary, ColorUtils.setAlphaComponent(primary, 0)});
         gradient.setGradientType(GradientDrawable.RADIAL_GRADIENT);
@@ -243,7 +243,7 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
                         showLockScreenTimeoutInfoDialog();
                     }
                 })
-                .setActionTextColor(MaterialColors.getColor(coordinatorLayout, R.attr.colorError))
+                .setActionTextColor(MaterialColors.getColor(coordinatorLayout, androidx.appcompat.R.attr.colorError))
                 .show();
     }
 
