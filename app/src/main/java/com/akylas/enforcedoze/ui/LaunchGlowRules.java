@@ -10,8 +10,11 @@ package com.akylas.enforcedoze.ui;
 public final class LaunchGlowRules {
     /** Total length of the glow, rise and fade together. */
     public static final long DURATION_MS = 500L;
-    /** Highest overlay alpha, reached at {@link #PEAK_AT}. */
-    public static final float PEAK_ALPHA = 0.35f;
+    /**
+     * Highest overlay alpha, reached at {@link #PEAK_AT}. The radial gradient already fades to nothing towards its
+     * rim, so on the near-black background a lower peak (0.35) read as no glow at all.
+     */
+    public static final float PEAK_ALPHA = 0.55f;
     /** Fraction of the duration at which the alpha peaks: a quick rise, then a longer fade. */
     public static final float PEAK_AT = 0.4f;
     /** Gradient radius as a fraction of the overlay height. */
@@ -28,6 +31,15 @@ public final class LaunchGlowRules {
     public static boolean shouldPlay(boolean savedInstanceStateNull, boolean firstLaunchInProcess,
                                      boolean reducedMotion) {
         return savedInstanceStateNull && firstLaunchInProcess && !reducedMotion;
+    }
+
+    /**
+     * The glow decided in onCreate starts on the first enter-animation-complete callback after it, once: never when
+     * none is pending, and never again once an animator was started (returning to the screen fires that callback
+     * too).
+     */
+    public static boolean startNow(boolean pending, boolean alreadyStarted) {
+        return pending && !alreadyStarted;
     }
 
     /** Overlay alpha at {@code fraction} (0..1) of the duration: 0, linearly up to the peak, linearly back to 0. */
