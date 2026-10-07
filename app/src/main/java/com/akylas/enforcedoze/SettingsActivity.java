@@ -329,7 +329,7 @@ public class SettingsActivity extends AppCompatActivity {
         private void finishModeSwitch(int token, String selected, Context context) {
             SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
             if (!isCurrentModeSwitch(token, selected, prefs)) return;
-            if (accessManager.getLevel() != AccessLevel.ROOT && accessManager.getLevel() != AccessLevel.SHELL) return;
+            if (!accessManager.getLevel().isPrivileged()) return;
             restartEnabledService(context, prefs);
             ForceDozeService.requestSafetyCheck(context);
         }
