@@ -23,7 +23,9 @@ for s in $SCALES; do
     adb shell am force-stop $PKG
     adb shell am start -W -n "$PKG/.$a" >/dev/null 2>&1
     sleep 3
-    # Dismiss nothing: first-run dialogs are part of what we review.
+    # Dismiss nothing of ours: first-run dialogs are part of what we review. The system's logcat-access
+    # prompt (API 33+) isn't our UI and hides the Log screen, so allow it once.
+    [ "$a" = LogActivity ] && { bash "$(dirname "$0")/tap.sh" 'Allow one-time access' >/dev/null; sleep 2; }
     adb exec-out screencap -p > "$OUT/${a##*.}_fs${s}.png"
   done
 done
