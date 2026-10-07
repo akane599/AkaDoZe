@@ -98,6 +98,8 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
     private boolean renderedServiceEnabled;
     /** The launch glow plays once per process, on the first MainActivity creation. */
     private static boolean launchedInProcess;
+    /** Decided in onCreate, started (once) when the enter animation completes: see {@link #onEnterAnimationComplete}. */
+    private boolean launchGlowPending;
     /** Running launch glow, null when none was started. Cancelled (and its overlay removed) in onDestroy. */
     private ValueAnimator launchGlow;
     /** User toggles only: updateToggleState detaches it while it sets the switch programmatically. */
@@ -139,11 +141,27 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         onCheckedChanged(button, checked);
     }
 
-    /** Fresh start, first launch in this process and motion on: see {@link LaunchGlowRules#shouldPlay}. */
+    /**
+     * Fresh start, first launch in this process and motion on: see {@link LaunchGlowRules#shouldPlay}. Only decides;
+     * the animator waits for {@link #onEnterAnimationComplete}, since started here it ran out under the splash.
+     */
     private void startLaunchGlow(Bundle savedInstanceState) {
-        MainRules.when(LaunchGlowRules.shouldPlay(savedInstanceState == null, !launchedInProcess,
-                MotionPolicy.reducedMotion(this)), this::playLaunchGlow);
+        launchGlowPending = LaunchGlowRules.shouldPlay(savedInstanceState == null, !launchedInProcess,
+                MotionPolicy.reducedMotion(this));
         launchedInProcess = true;
+    }
+
+    /**
+     * The window's entering animation is done, so the content is actually on screen (the platform documents this as
+     * the point an Activity may safely start drawing; on a cold start it follows the starting window/splash hand-off,
+     * which onCreate and the first drawn frame both precede). Starts the pending glow once; later calls, e.g. on
+     * returning from another screen, find nothing pending or an animator already started.
+     */
+    @Override
+    public void onEnterAnimationComplete() {
+        super.onEnterAnimationComplete();
+        MainRules.when(LaunchGlowRules.startNow(launchGlowPending, launchGlow != null), this::playLaunchGlow);
+        launchGlowPending = false;
     }
 
     /**

@@ -28,6 +28,25 @@ public class LaunchGlowRulesTest {
     }
 
     @Test
+    public void startsOnlyAPendingGlowThatHasNotStartedYet() {
+        for (boolean pending : BOOLS) {
+            for (boolean started : BOOLS) {
+                assertEquals("pending=" + pending + " started=" + started,
+                        pending && !started, LaunchGlowRules.startNow(pending, started));
+            }
+        }
+        assertTrue("first enter-animation-complete starts the glow decided in onCreate",
+                LaunchGlowRules.startNow(true, false));
+        assertFalse("a later enter-animation-complete never replays it", LaunchGlowRules.startNow(true, true));
+        assertFalse("nothing pending, nothing starts", LaunchGlowRules.startNow(false, false));
+    }
+
+    @Test
+    public void peaksHighEnoughToReadOnTheDarkBackground() {
+        assertEquals(0.55f, LaunchGlowRules.PEAK_ALPHA, EPS);
+    }
+
+    @Test
     public void lastsHalfASecond() {
         assertEquals(500L, LaunchGlowRules.DURATION_MS);
     }
@@ -35,10 +54,10 @@ public class LaunchGlowRulesTest {
     @Test
     public void alphaRisesFromZeroToThePeakAndFadesBackToZero() {
         assertEquals(0f, LaunchGlowRules.alpha(0f), EPS);
-        assertEquals(0.35f, LaunchGlowRules.alpha(LaunchGlowRules.PEAK_AT), EPS);
+        assertEquals(0.55f, LaunchGlowRules.alpha(LaunchGlowRules.PEAK_AT), EPS);
         assertEquals(0f, LaunchGlowRules.alpha(1f), EPS);
-        assertEquals(0.175f, LaunchGlowRules.alpha(0.2f), EPS);
-        assertEquals(0.175f, LaunchGlowRules.alpha(0.7f), EPS);
+        assertEquals(0.275f, LaunchGlowRules.alpha(0.2f), EPS);
+        assertEquals(0.275f, LaunchGlowRules.alpha(0.7f), EPS);
         float previous = -1f;
         for (int step = 0; step <= 40; step++) {
             float alpha = LaunchGlowRules.alpha(step / 100f);
