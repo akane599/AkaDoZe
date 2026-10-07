@@ -11,7 +11,7 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:layout_gravity="center_horizontal"
-        android:padding="8dp">
+        android:padding="@dimen/space_2">
 
         <NumberPicker
             android:layout_width="match_parent"
@@ -26,7 +26,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
 
-        <Button style="?android:attr/buttonBarButtonStyle"
+        <com.akylas.enforcedoze.ui.amber.AmberButton style="@style/Widget.Amber.Button.Dialog"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:id="@+id/btn_save"

@@ -9,6 +9,7 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.SharedPreferences;
+import android.content.res.Resources;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
@@ -52,6 +53,13 @@ public class DozeTunablesActivity extends AppCompatActivity {
 
     private static void log(String message) {
         logToLogcat(TAG, message);
+    }
+
+    @Override
+    protected void onApplyThemeResource(Resources.Theme theme, int resid, boolean first) {
+        super.onApplyThemeResource(theme, resid, first);
+        // The preference fragment reads preferenceTheme from this theme when it styles its list.
+        theme.applyStyle(R.style.ThemeOverlay_Amber_Settings, true);
     }
 
     @Override
