@@ -6,6 +6,9 @@ import android.content.res.Resources;
 import android.content.res.TypedArray;
 import android.util.TypedValue;
 import android.view.ContextThemeWrapper;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.widget.TextView;
 
 import com.akylas.enforcedoze.R;
 
@@ -16,6 +19,7 @@ import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 
 /** The Amber Night theme resolves its pinned tokens, and each accent overlay swaps the primary. */
 @RunWith(RobolectricTestRunner.class)
@@ -103,6 +107,38 @@ public class ThemeTokensRobolectricTest {
         } finally {
             a.recycle();
         }
+    }
+
+    private static String fontFeatures(int style) {
+        TypedArray a = appTheme().obtainStyledAttributes(style, new int[] {android.R.attr.fontFeatureSettings});
+        try {
+            return a.getString(0);
+        } finally {
+            a.recycle();
+        }
+    }
+
+    @Test
+    public void proseStylesKeepProportionalHyphensAndOnlyNumericVariantsUseTnum() {
+        // Inter's tnum gives the hyphen a figure-wide advance ("Wi - Fi", "adb  - d"), so prose stays off it.
+        int[] prose = {
+            R.style.TextAppearance_Amber_BodyLarge, R.style.TextAppearance_Amber_BodyMedium,
+            R.style.TextAppearance_Amber_BodySmall, R.style.TextAppearance_Amber_LabelLarge,
+            R.style.TextAppearance_Amber_LabelMedium, R.style.TextAppearance_Amber_LabelSmall,
+        };
+        for (int style : prose) {
+            assertNull(fontFeatures(style));
+        }
+        assertEquals("tnum", fontFeatures(R.style.TextAppearance_Amber_BodyMedium_Numeric));
+        assertEquals("tnum", fontFeatures(R.style.TextAppearance_Amber_LabelLarge_Numeric));
+    }
+
+    @Test
+    public void statsRowFiguresAreTabular() {
+        View row = LayoutInflater.from(appTheme()).inflate(R.layout.list_row_layout_stats, null);
+
+        assertEquals("tnum", ((TextView) row.findViewById(R.id.dozeStateTimestamp)).getFontFeatureSettings());
+        assertEquals("tnum", ((TextView) row.findViewById(R.id.batteryLevel)).getFontFeatureSettings());
     }
 
     @Test
