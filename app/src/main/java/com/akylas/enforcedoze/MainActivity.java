@@ -3,6 +3,9 @@ package com.akylas.enforcedoze;
 import static com.akylas.enforcedoze.Utils.logToLogcat;
 
 import android.Manifest;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -13,7 +16,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
@@ -23,10 +26,13 @@ import android.service.quicksettings.TileService;
 import androidx.annotation.NonNull;
 import androidx.appcompat.widget.Toolbar;
 import androidx.coordinatorlayout.widget.CoordinatorLayout;
+import androidx.core.graphics.ColorUtils;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.dynamicanimation.animation.DynamicAnimation;
 
+import com.google.android.material.color.MaterialColors;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.Snackbar;
 
@@ -40,6 +46,7 @@ import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.CompoundButton;
 import android.widget.TextView;
 
@@ -53,7 +60,12 @@ import com.akylas.enforcedoze.access.Reason;
 import com.akylas.enforcedoze.access.Prefs;
 import com.akylas.enforcedoze.ui.AccessCard;
 import com.akylas.enforcedoze.ui.AccessUi;
+import com.akylas.enforcedoze.ui.LaunchGlowRules;
 import com.akylas.enforcedoze.ui.MainRules;
+import com.akylas.enforcedoze.ui.amber.AmberGlow;
+import com.akylas.enforcedoze.ui.amber.Haptics;
+import com.akylas.enforcedoze.ui.amber.MotionPolicy;
+import com.akylas.enforcedoze.ui.amber.Springs;
 
 public class MainActivity extends AppCompatActivity implements CompoundButton.OnCheckedChangeListener,  SharedPreferences.OnSharedPreferenceChangeListener {
 
@@ -80,6 +92,16 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
     SwitchCompat toggleForceDozeSwitch;
     TextView textViewStatus;
     CoordinatorLayout coordinatorLayout;
+    /** The hero card around the status line and switch: glows while the service is on. */
+    private View serviceCard;
+    /** Service state the hero last showed, so only a real change springs the card. */
+    private boolean renderedServiceEnabled;
+    /** The launch glow plays once per process, on the first MainActivity creation. */
+    private static boolean launchedInProcess;
+    /** Running launch glow, null when none was started. Cancelled (and its overlay removed) in onDestroy. */
+    private ValueAnimator launchGlow;
+    /** User toggles only: updateToggleState detaches it while it sets the switch programmatically. */
+    private final CompoundButton.OnCheckedChangeListener serviceSwitchListener = this::onServiceSwitchToggled;
 
     private static void log(String message) {
         logToLogcat(TAG, message);
@@ -89,7 +111,7 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         serviceEnabled = settings.getBoolean("serviceEnabled", false);
         toggleForceDozeSwitch.setOnCheckedChangeListener(null);
         toggleForceDozeSwitch.setChecked(serviceEnabled);
-        toggleForceDozeSwitch.setOnCheckedChangeListener(this);
+        toggleForceDozeSwitch.setOnCheckedChangeListener(serviceSwitchListener);
 
         renderServiceStatus();
     }
@@ -99,6 +121,64 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         toggleForceDozeSwitch.setEnabled(AccessUi.mainSwitchEnabled(serviceEnabled, accessUsable));
         textViewStatus.setText(AccessUi.mainStatusText(
                 AccessUi.mainStatus(serviceEnabled, accessUsable, lastAccess, AccessUi.sensorsEnabled(this))));
+        MainRules.when(renderedServiceEnabled != serviceEnabled, this::pulseServiceCard);
+        renderedServiceEnabled = serviceEnabled;
+        AmberGlow.setActive(serviceCard, serviceEnabled);
+    }
+
+    /** A small spring back to full size; under reduced motion Springs snaps straight to 1, so nothing moves. */
+    private void pulseServiceCard() {
+        serviceCard.setScaleX(0.97f);
+        serviceCard.setScaleY(0.97f);
+        Springs.animate(serviceCard, DynamicAnimation.SCALE_X, 1f);
+        Springs.animate(serviceCard, DynamicAnimation.SCALE_Y, 1f);
+    }
+
+    private void onServiceSwitchToggled(CompoundButton button, boolean checked) {
+        Haptics.tick(button);
+        onCheckedChanged(button, checked);
+    }
+
+    /** Fresh start, first launch in this process and motion on: see {@link LaunchGlowRules#shouldPlay}. */
+    private void startLaunchGlow(Bundle savedInstanceState) {
+        MainRules.when(LaunchGlowRules.shouldPlay(savedInstanceState == null, !launchedInProcess,
+                MotionPolicy.reducedMotion(this)), this::playLaunchGlow);
+        launchedInProcess = true;
+    }
+
+    /**
+     * A full-bleed overlay on the decor view (outside the layout): a radial ?attr/colorPrimary gradient centred on
+     * the bottom edge that rises and fades over 500 ms, then removes itself. It never takes touches or focus.
+     */
+    private void playLaunchGlow() {
+        ViewGroup decor = (ViewGroup) getWindow().getDecorView();
+        int height = getResources().getDisplayMetrics().heightPixels;
+        int primary = MaterialColors.getColor(decor, R.attr.colorPrimary);
+        GradientDrawable gradient = new GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP,
+                new int[] {primary, ColorUtils.setAlphaComponent(primary, 0)});
+        gradient.setGradientType(GradientDrawable.RADIAL_GRADIENT);
+        gradient.setGradientCenter(0.5f, 1f);
+        gradient.setGradientRadius(LaunchGlowRules.radius(height));
+        View glow = new View(this);
+        glow.setBackground(gradient);
+        glow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        glow.setAlpha(0f);
+        decor.addView(glow, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
+        launchGlow = ValueAnimator.ofFloat(0f, 1f);
+        launchGlow.setDuration(LaunchGlowRules.DURATION_MS);
+        launchGlow.addUpdateListener(animation -> {
+            float fraction = animation.getAnimatedFraction();
+            glow.setAlpha(LaunchGlowRules.alpha(fraction));
+            glow.setTranslationY(LaunchGlowRules.offset(fraction) * height);
+        });
+        launchGlow.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                decor.removeView(glow);
+            }
+        });
+        launchGlow.start();
     }
 
     @Override
@@ -107,6 +187,7 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
 
 
         setContentView(R.layout.activity_main);
+        startLaunchGlow(savedInstanceState);
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
         View appBar = findViewById(R.id.appbarlayout);
@@ -130,6 +211,8 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         ignoreLockscreenTimeout = settings.getBoolean("ignoreLockscreenTimeout", true);
         toggleForceDozeSwitch = (SwitchCompat) findViewById(R.id.switch1);
         textViewStatus = (TextView) findViewById(R.id.textView2);
+        serviceCard = findViewById(R.id.serviceCard);
+        renderedServiceEnabled = settings.getBoolean("serviceEnabled", false);
         updateStateFromTile = new UpdateForceDozeEnabledState();
         LocalBroadcastManager.getInstance(this).registerReceiver(updateStateFromTile, new IntentFilter("update-state-from-tile"));
         toggleForceDozeSwitch.setOnCheckedChangeListener(null);
@@ -140,7 +223,7 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
 
         updateToggleState();
 
-        toggleForceDozeSwitch.setOnCheckedChangeListener(this);
+        toggleForceDozeSwitch.setOnCheckedChangeListener(serviceSwitchListener);
 
         accessManager.refresh();
         MainRules.when(MainRules.asksShizukuPermission(Utils.isShizukuMode(this),
@@ -160,7 +243,7 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
                         showLockScreenTimeoutInfoDialog();
                     }
                 })
-                .setActionTextColor(Color.RED)
+                .setActionTextColor(MaterialColors.getColor(coordinatorLayout, R.attr.colorError))
                 .show();
     }
 
@@ -263,6 +346,8 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        // Cancelling ends the animator, whose end listener removes the overlay: nothing keeps this Activity.
+        MainRules.when(launchGlow != null, () -> launchGlow.cancel());
         accessManager.removeListener(accessListener);
         LocalBroadcastManager.getInstance(this).unregisterReceiver(updateStateFromTile);
     }
