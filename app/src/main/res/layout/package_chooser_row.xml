@@ -29,6 +29,7 @@
             android:id="@+id/label"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:textAlignment="viewStart"
             android:textAppearance="?attr/textAppearanceBodyLarge"
             android:textColor="?attr/colorOnSurface"
             tools:text="Calendar"/>
@@ -37,6 +38,7 @@
             android:id="@+id/packageName"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:textAlignment="viewStart"
             android:layout_marginTop="2dp"
             android:ellipsize="end"
             android:maxLines="1"
