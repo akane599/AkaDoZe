@@ -283,33 +283,62 @@ public class SettingsActivity extends AppCompatActivity {
 
         private void onAccessChanged(AccessState state) {
             if (!isAdded()) return;
+            AccessLevel shizukuLevel = updateAccessCapabilities(state);
+            resolvePendingShizukuWait();
+            String selected = selectedMode();
+            finishPendingRootWait(selected, state);
+            if (!ModeSwitchRules.switchReady(modeSwitch.pending, selected, state.getLevel(), shizukuLevel)) return;
+            completeModeSwitch(selected);
+        }
+
+        private AccessLevel updateAccessCapabilities(AccessState state) {
             AccessLevel shizukuLevel = accessManager.getShizukuState().getLevel();
             isSuAvailable = state.getLevel() == AccessLevel.ROOT;
             isShizukuAvailable = Utils.isShizukuMode(requireContext()) && shizukuLevel != AccessLevel.NONE;
             applyCapabilities(state);
+            return shizukuLevel;
+        }
+
+        private void resolvePendingShizukuWait() {
             // Access can arrive without a prompt result (already granted, or granted from the Shizuku app),
             // and Shizuku can stop mid-wait; both are read from the transport, never a stale published level.
             if (awaitingShizukuResult) resolveShizukuWait(shizukuPromptSettled && isResumed());
-            String selected = selectedMode();
+        }
+
+        private void finishPendingRootWait(String selected, AccessState state) {
             if (awaitingRoot && Prefs.MODE_ROOT.equals(selected) && state.getLevel() == AccessLevel.ROOT) {
                 finishRootWait(true);
             }
-            if (!ModeSwitchRules.switchReady(modeSwitch.pending, selected, state.getLevel(), shizukuLevel)) return;
+        }
+
+        private void completeModeSwitch(String selected) {
             int token = modeSwitch.consume();
             Context context = requireContext().getApplicationContext();
             AsyncTask.execute(() -> {
                 accessManager.grantHelpers();
-                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
-                    SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-                    if (!modeSwitch.current(token) || !selected.equals(prefs.getString("executionMode", "root"))) return;
-                    if (accessManager.getLevel() != AccessLevel.ROOT && accessManager.getLevel() != AccessLevel.SHELL) return;
-                    if (prefs.getBoolean("serviceEnabled", false)) {
-                        context.stopService(new Intent(context, ForceDozeService.class));
-                        Utils.startForceDozeService(context);
-                    }
-                    ForceDozeService.requestSafetyCheck(context);
-                });
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
+                        finishModeSwitch(token, selected, context));
             });
+        }
+
+        private boolean isCurrentModeSwitch(int token, String selected, SharedPreferences prefs) {
+            return modeSwitch.current(token)
+                    && selected.equals(prefs.getString(Prefs.EXECUTION_MODE, Prefs.DEFAULT_EXECUTION_MODE));
+        }
+
+        private void finishModeSwitch(int token, String selected, Context context) {
+            SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+            if (!isCurrentModeSwitch(token, selected, prefs)) return;
+            if (accessManager.getLevel() != AccessLevel.ROOT && accessManager.getLevel() != AccessLevel.SHELL) return;
+            restartEnabledService(context, prefs);
+            ForceDozeService.requestSafetyCheck(context);
+        }
+
+        private void restartEnabledService(Context context, SharedPreferences prefs) {
+            if (prefs.getBoolean("serviceEnabled", false)) {
+                context.stopService(new Intent(context, ForceDozeService.class));
+                Utils.startForceDozeService(context);
+            }
         }
 
         private void removeIconSpace(PreferenceGroup group) {

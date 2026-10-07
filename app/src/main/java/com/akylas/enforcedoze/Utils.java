@@ -1,6 +1,7 @@
 package com.akylas.enforcedoze;
 
 import android.Manifest;
+import com.akylas.enforcedoze.access.Prefs;
 import com.akylas.enforcedoze.doze.ExactAlarmAccessPolicy;
 import com.akylas.enforcedoze.doze.SchedulePolicy;
 import android.app.ActivityManager;
@@ -431,7 +432,7 @@ public class Utils {
 
     public static boolean isShizukuMode(Context context) {
         return PreferenceManager.getDefaultSharedPreferences(context)
-                .getString("executionMode", "root").equals("shizuku");
+                .getString(Prefs.EXECUTION_MODE, Prefs.DEFAULT_EXECUTION_MODE).equals(Prefs.MODE_SHIZUKU);
     }
 
     private static boolean preferencesRepaired;

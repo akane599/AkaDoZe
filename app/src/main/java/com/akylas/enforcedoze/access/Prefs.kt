@@ -7,7 +7,7 @@ object Prefs {
     const val EXECUTION_MODE = "executionMode"
     const val MODE_ROOT = "root"
     const val MODE_SHIZUKU = "shizuku"
-    const val DEFAULT_EXECUTION_MODE = MODE_ROOT
+    const val DEFAULT_EXECUTION_MODE = MODE_SHIZUKU
     const val KEEP_DOZE_ENFORCED = "keepDozeEnforced"
     const val DEFAULT_KEEP_DOZE_ENFORCED = true
     const val ALLOW_EXTERNAL_BASIC_CONTROL = "allowExternalBasicControl"
