@@ -38,6 +38,7 @@ import com.akylas.enforcedoze.access.Reason;
 import com.akylas.enforcedoze.service.SelfTestKind;
 import com.akylas.enforcedoze.service.SessionAccess;
 import com.akylas.enforcedoze.service.SessionMode;
+import com.akylas.enforcedoze.ui.amber.AmberDialogs;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.lang.ref.WeakReference;
@@ -431,9 +432,33 @@ public final class AccessUi {
         return true;
     }
 
+    /** Pure grant/completion decisions; callbacks keep platform reads lazy and Android objects out. */
+    static final class GrantHelperDecision {
+        // Own SAM types: java.util.function is API 24+, minSdk is 23.
+        interface Grant<T> { T run(); }
+        interface Use<T> { void accept(T value); }
+        interface Flag { boolean get(); }
+
+        static <T> T attempt(Grant<T> grant) {
+            try {
+                return grant.run();
+            } catch (Exception error) {
+                return null;
+            }
+        }
+
+        static <T> void whenPresent(T value, Use<T> action) {
+            if (value != null) action.accept(value);
+        }
+
+        static void showResult(Flag finishing, Flag destroyed, Runnable show) {
+            if (!finishing.get() && !destroyed.get()) show.run();
+        }
+    }
+
     /** Runs the helper grants off-main and reports each item; permissions are checked, not assumed. */
     public static void grantHelpers(Activity activity, AccessManager access) {
-        MaterialDialog progress = new MaterialDialog.Builder(activity)
+        MaterialDialog progress = AmberDialogs.builder(activity)
                 .title(R.string.please_wait_text)
                 .content(R.string.granting_helpers_text)
                 .progress(true, 0)
@@ -443,39 +468,45 @@ public final class AccessUi {
         DefaultLifecycleObserver dismissOnDestroy = new DefaultLifecycleObserver() {
             @Override
             public void onDestroy(@NonNull LifecycleOwner owner) {
-                if (progress.isShowing()) progress.dismiss();
+                dismissHelperDialog(progress);
             }
         };
-        if (activity instanceof LifecycleOwner) ((LifecycleOwner) activity).getLifecycle().addObserver(dismissOnDestroy);
+        withLifecycle(activity, lifecycle -> lifecycle.getLifecycle().addObserver(dismissOnDestroy));
         WeakReference<Activity> owner = new WeakReference<>(activity);
         WeakReference<MaterialDialog> dialog = new WeakReference<>(progress);
         WeakReference<DefaultLifecycleObserver> observer = new WeakReference<>(dismissOnDestroy);
         Context app = activity.getApplicationContext();
         Handler main = new Handler(Looper.getMainLooper());
         AsyncTask.execute(() -> {
-            Map<String, CommandResult> results;
-            try {
-                results = access.grantHelpers();
-            } catch (Exception error) {
-                results = null;
-            }
-            String message = results == null ? app.getString(R.string.grant_helpers_failed) : describe(app, results);
-            main.post(() -> {
-                Activity current = owner.get();
-                MaterialDialog shown = dialog.get();
-                DefaultLifecycleObserver registered = observer.get();
-                if (current instanceof LifecycleOwner && registered != null) {
-                    ((LifecycleOwner) current).getLifecycle().removeObserver(registered);
-                }
-                if (shown != null && shown.isShowing()) shown.dismiss();
-                if (current == null || current.isFinishing() || current.isDestroyed()) return;
-                new MaterialAlertDialogBuilder(current)
-                        .setTitle(R.string.grant_helpers_result_title)
-                        .setMessage(message)
-                        .setPositiveButton(R.string.okay_button_text, null)
-                        .show();
+            Map<String, CommandResult> outcome = GrantHelperDecision.attempt(() -> {
+                Map<String, CommandResult> results = access.grantHelpers();
+                return results;
             });
+            String message = outcome == null ? app.getString(R.string.grant_helpers_failed) : describe(app, outcome);
+            main.post(() -> finishHelperGrant(owner.get(), dialog.get(), observer.get(), message));
         });
+    }
+
+    private static void withLifecycle(Activity activity, GrantHelperDecision.Use<LifecycleOwner> action) {
+        if (activity instanceof LifecycleOwner) action.accept((LifecycleOwner) activity);
+    }
+
+    private static void dismissHelperDialog(MaterialDialog dialog) {
+        GrantHelperDecision.whenPresent(dialog, shown -> MainRules.when(shown.isShowing(), shown::dismiss));
+    }
+
+    private static void finishHelperGrant(Activity current, MaterialDialog shown,
+                                           DefaultLifecycleObserver registered, String message) {
+        GrantHelperDecision.whenPresent(registered, observer ->
+                withLifecycle(current, lifecycle -> lifecycle.getLifecycle().removeObserver(observer)));
+        dismissHelperDialog(shown);
+        GrantHelperDecision.whenPresent(current, activity ->
+                GrantHelperDecision.showResult(activity::isFinishing, activity::isDestroyed, () ->
+                        new MaterialAlertDialogBuilder(activity)
+                                .setTitle(R.string.grant_helpers_result_title)
+                                .setMessage(message)
+                                .setPositiveButton(R.string.okay_button_text, null)
+                                .show()));
     }
 
     private static String describe(Context context, Map<String, CommandResult> results) {
