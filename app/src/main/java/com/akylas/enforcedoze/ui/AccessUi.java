@@ -553,6 +553,9 @@ public final class AccessUi {
 
     private static void bindCommand(Activity activity, View root, int textId, int copyId, int shareId) {
         TextView command = root.findViewById(textId);
+        // Wrap at . and _ instead of mid-word (WRITE_SEC/URE_SETTINGS). Display only: getText(), which copy and
+        // share read, keeps the exact command.
+        command.setTransformationMethod(new BroadcastNameBreaks());
         root.findViewById(copyId).setOnClickListener(v -> {
             ClipboardManager clipboard = activity.getSystemService(ClipboardManager.class);
             if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("command", command.getText()));

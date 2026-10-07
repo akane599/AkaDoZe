@@ -213,7 +213,6 @@
     <string name="package_chooser_title">Choose an app</string>
     <!-- SQ-16: screen chrome (Main, Log, Doze tunables) -->
     <string name="main_service_switch_description">EnforceDoze service</string>
-    <string name="log_output_hint">Log output</string>
     <string name="tunables_result_title_applied">Tunables applied</string>
     <string name="tunables_result_title_partial">Some tunables were not applied</string>
     <string name="tunables_result_applied">Applied (%1$d)</string>
@@ -579,4 +578,6 @@
     <string name="damaged_feature_notification_block">blocked notifications</string>
     <string name="damaged_feature_sensor_privacy">all sensors off</string>
     <string name="damaged_feature_unknown">an unnamed setting</string>
+    <string name="amber_SQ42_log_empty">No log entries yet</string>
+    <string name="amber_SQ42_share_command">Share command</string>
 </resources>

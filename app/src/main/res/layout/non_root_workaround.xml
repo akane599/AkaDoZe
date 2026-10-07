@@ -4,6 +4,9 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
     <!-- Start padding matches the dialog's 24dp title/message inset; the icon buttons carry their own padding. -->
+    <!-- Commands are not selectable: AccessUi shows them through BroadcastNameBreaks so they wrap at . and _,
+         and Android does not map selection offsets across a length-changing transformation. The copy and
+         share buttons carry the exact command. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -20,7 +23,6 @@
             <TextView
                 android:id="@+id/commandTxt1"
                 android:layout_width="match_parent"
-                android:textIsSelectable="true"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:textAppearance="?attr/textAppearanceBodyMedium"
@@ -32,6 +34,7 @@
             <com.akylas.enforcedoze.ui.amber.AmberButton
                 style="@style/Widget.Amber.Button.Icon.Neutral"
                 android:id="@+id/shareBtn1"
+                android:contentDescription="@string/amber_SQ42_share_command"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 app:icon="@drawable/share_variant"
@@ -40,6 +43,7 @@
             <com.akylas.enforcedoze.ui.amber.AmberButton
                 style="@style/Widget.Amber.Button.Icon.Neutral"
                 android:id="@+id/copyBtn1"
+                android:contentDescription="@string/copy_to_clipboard_button_text"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 app:icon="@drawable/content_copy"
@@ -57,7 +61,6 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:textIsSelectable="true"
                 android:textAppearance="?attr/textAppearanceBodyMedium"
                 android:textColor="?attr/colorOnSurface"
                 android:text="adb -d shell pm grant com.akylas.enforcedoze android.permission.WRITE_SECURE_SETTINGS"
@@ -67,6 +70,7 @@
             <com.akylas.enforcedoze.ui.amber.AmberButton
                 style="@style/Widget.Amber.Button.Icon.Neutral"
                 android:id="@+id/shareBtn2"
+                android:contentDescription="@string/amber_SQ42_share_command"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 app:icon="@drawable/share_variant"
@@ -75,6 +79,7 @@
             <com.akylas.enforcedoze.ui.amber.AmberButton
                 style="@style/Widget.Amber.Button.Icon.Neutral"
                 android:id="@+id/copyBtn2"
+                android:contentDescription="@string/copy_to_clipboard_button_text"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 app:icon="@drawable/content_copy"

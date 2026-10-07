@@ -42,7 +42,7 @@
             android:ems="10"
             android:fontFamily="monospace"
             android:gravity="top|start"
-            android:hint="@string/log_output_hint"
+            android:hint="@string/amber_SQ42_log_empty"
             android:importantForAutofill="no"
             android:inputType="textMultiLine"
             android:textAppearance="?attr/textAppearanceBodySmall"
