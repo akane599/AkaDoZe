@@ -104,4 +104,27 @@ public class ThemeTokensRobolectricTest {
             a.recycle();
         }
     }
+
+    @Test
+    public void appCompatAlertDialogsUseTheAmberOverlay() {
+        int overlay = reference(appTheme(), androidx.appcompat.R.attr.alertDialogTheme);
+        assertEquals(R.style.ThemeOverlay_Amber_AlertDialog, overlay);
+
+        // AppCompatDialog wraps the host context in the resolved overlay the same way.
+        Context dialog = new ContextThemeWrapper(appTheme(), overlay);
+        assertEquals(R.drawable.amber_dialog_background, reference(dialog, android.R.attr.windowBackground));
+        assertEquals(R.style.MaterialAlertDialog_Amber_Title_Text, reference(dialog, android.R.attr.windowTitleStyle));
+        assertEquals(R.style.Widget_Amber_Button_Dialog,
+                reference(dialog, androidx.appcompat.R.attr.buttonBarPositiveButtonStyle));
+        assertEquals(R.style.Widget_Amber_Button_Dialog,
+                reference(dialog, androidx.appcompat.R.attr.buttonBarNegativeButtonStyle));
+    }
+
+    private static int reference(Context context, int attr) {
+        TypedValue value = new TypedValue();
+        if (!context.getTheme().resolveAttribute(attr, value, false)) {
+            throw new AssertionError("unresolved attr 0x" + Integer.toHexString(attr));
+        }
+        return value.data;
+    }
 }

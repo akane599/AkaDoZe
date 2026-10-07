@@ -107,6 +107,7 @@
         <item name="materialButtonOutlinedStyle">@style/Widget.Amber.Button.Outlined</item>
         <item name="borderlessButtonStyle">@style/Widget.Amber.Button.Text</item>
         <item name="materialAlertDialogTheme">@style/ThemeOverlay.Amber.MaterialAlertDialog</item>
+        <item name="alertDialogTheme">@style/ThemeOverlay.Amber.AlertDialog</item>
 
         <!-- material-dialogs 0.9.3. md_*_font is deliberately unset (it takes asset paths); see AmberDialogs. -->
         <item name="md_dark_theme">true</item>
@@ -364,5 +365,18 @@
     <style name="TextAppearance.Amber.PreferenceCategory" parent="TextAppearance.Amber.LabelMedium">
         <item name="android:textAllCaps">true</item>
         <item name="android:letterSpacing">0.08</item>
+    </style>
+
+    <!--
+      androidx AppCompat AlertDialog (PreferenceDialogFragmentCompat, e.g. the Doze tunables "Modify value" dialog)
+      reads ?attr/alertDialogTheme, not materialAlertDialogTheme. Give it the same surface, 24dp corners, serif title
+      and buttons as ThemeOverlay.Amber.MaterialAlertDialog instead of AppCompat's colorBackgroundFloating grey.
+    -->
+    <style name="ThemeOverlay.Amber.AlertDialog" parent="ThemeOverlay.Material3.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/amber_dialog_background</item>
+        <item name="android:windowTitleStyle">@style/MaterialAlertDialog.Amber.Title.Text</item>
+        <item name="buttonBarPositiveButtonStyle">@style/Widget.Amber.Button.Dialog</item>
+        <item name="buttonBarNegativeButtonStyle">@style/Widget.Amber.Button.Dialog</item>
+        <item name="buttonBarNeutralButtonStyle">@style/Widget.Amber.Button.Dialog</item>
     </style>
 </resources>
