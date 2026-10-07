@@ -844,33 +844,43 @@ public class SettingsActivity extends AppCompatActivity {
         /** Shows the reset's phase: the wait while it runs or finishes, else its report until confirmed. */
         private void renderReset() {
             if (!isAdded()) return;
-            ResetReport.Tracker.Phase phase = ResetReport.TRACKER.phase();
-            if (phase == ResetReport.Tracker.Phase.RUNNING || phase == ResetReport.Tracker.Phase.FINISHING) {
-                dismissResetReport();
-                if (resetProgress == null || !resetProgress.isShowing()) {
-                    resetProgress = AmberDialogs.builder(requireActivity())
-                            .title(R.string.please_wait_text)
-                            .content(R.string.reset_running_text)
-                            .progress(true, 0)
-                            .cancelable(false)
-                            .show();
-                }
-            } else if (phase == ResetReport.Tracker.Phase.REPORTED) {
-                dismissResetProgress();
-                if (resetReport != null && resetReport.isShowing()) return;
-                Context context = requireContext();
-                SystemResetResult result = ResetReport.TRACKER.result();
-                boolean cleared = ResetReport.TRACKER.prefsCleared();
-                resetReport = new MaterialAlertDialogBuilder(context)
-                        .setTitle(ResetReport.title(result, cleared))
-                        .setMessage(ResetReport.message(context, result, cleared))
-                        .setCancelable(false)
-                        .setPositiveButton(R.string.okay_button_text, (dialogInterface, i) -> finishReset())
-                        .show();
-            } else {
-                dismissResetProgress();
-                dismissResetReport();
+            switch (SettingsRules.resetDisplay(ResetReport.TRACKER.phase())) {
+                case PROGRESS:
+                    showResetProgress();
+                    break;
+                case REPORT:
+                    showResetReport();
+                    break;
+                default:
+                    dismissResetProgress();
+                    dismissResetReport();
             }
+        }
+
+        private void showResetProgress() {
+            dismissResetReport();
+            if (resetProgress == null || !resetProgress.isShowing()) {
+                resetProgress = AmberDialogs.builder(requireActivity())
+                        .title(R.string.please_wait_text)
+                        .content(R.string.reset_running_text)
+                        .progress(true, 0)
+                        .cancelable(false)
+                        .show();
+            }
+        }
+
+        private void showResetReport() {
+            dismissResetProgress();
+            if (resetReport != null && resetReport.isShowing()) return;
+            Context context = requireContext();
+            SystemResetResult result = ResetReport.TRACKER.result();
+            boolean cleared = ResetReport.TRACKER.prefsCleared();
+            resetReport = new MaterialAlertDialogBuilder(context)
+                    .setTitle(ResetReport.title(result, cleared))
+                    .setMessage(ResetReport.message(context, result, cleared))
+                    .setCancelable(false)
+                    .setPositiveButton(R.string.okay_button_text, (dialogInterface, i) -> finishReset())
+                    .show();
         }
 
         /** The user saw the report: only now run the revokes Android kills this app for, then restart. */
