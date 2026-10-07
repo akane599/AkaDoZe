@@ -36,7 +36,7 @@
     },
     {
       "path": "rules/crap-gate.md",
-      "hash": "9bc500f811dce4cf1d0413f4b91034a94cbaeb2195e6083e4c13178c05b12d3e",
+      "hash": "3e66826394313e593dbdc760e7323d9fb00b90b74fb3027dc551eaff14c517d9",
       "description": "Keep changed code within the CRAP ceiling",
       "globs": [],
       "dirs": [],
