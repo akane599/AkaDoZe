@@ -151,6 +151,33 @@ public class AmberCardViewRobolectricTest {
     }
 
     @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    public void treatChipKeepsThemedMinHeightAtNormalFontScale() {
+        float themed = new Chip(appTheme()).getChipMinHeight();
+        Chip chip = new Chip(appTheme());
+        chip.setText("Motion sensing off");
+        Amber.treat(chip);
+        assertEquals(themed, chip.getChipMinHeight(), 0f);
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    public void treatChipGrowsThePillToHoldItsTextAtFontScale2() {
+        RuntimeEnvironment.setFontScale(2f);
+        try {
+            Chip chip = new Chip(appTheme());
+            chip.setText("Motion sensing off");
+            float themed = chip.getChipMinHeight();
+            Amber.treat(chip);
+            float expected = chip.getLineHeight() + 2 * dimen(R.dimen.space_1);
+            assertTrue("pill grew past the themed minimum", expected > themed);
+            assertEquals(expected, chip.getChipMinHeight(), 0.01f);
+        } finally {
+            RuntimeEnvironment.setFontScale(1f);
+        }
+    }
+
+    @Test
     public void treatCodeBuiltCardAddsSquircleAndGlass() {
         MaterialCardView card = new MaterialCardView(appTheme());
         Amber.treat(card);
