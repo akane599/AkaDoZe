@@ -329,6 +329,11 @@ public final class DozeMonitorActivity extends AppCompatActivity implements Moni
         return AccessUi.isShizukuMode(this);
     }
 
+    @Override
+    public MonitorData.Live liveSnapshot() {
+        return live;
+    }
+
     private AccessState accessState() {
         return access.getState();
     }

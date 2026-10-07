@@ -1,27 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
-<com.google.android.material.card.MaterialCardView
+<com.akylas.enforcedoze.ui.amber.AmberCardView
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/sessionCard"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="4dp"
-    android:layout_marginBottom="4dp"
-    app:cardElevation="0dp"
-    app:strokeColor="?attr/colorOutlineVariant"
-    app:strokeWidth="1dp">
+    android:layout_marginTop="@dimen/space_1"
+    android:layout_marginBottom="@dimen/space_1">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:padding="@dimen/space_3">
 
+        <!-- Date, time and duration: tabular figures so the session list lines up. -->
         <TextView
             android:id="@+id/sessionDate"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:fontFeatureSettings="tnum"
             android:textAppearance="?attr/textAppearanceTitleSmall"
             android:textColor="?attr/colorOnSurface"
             tools:text="Tue 3 Oct, 23:10 · 7h02" />
@@ -30,7 +29,7 @@
             android:id="@+id/sessionCoverage"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="@dimen/space_1"
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:textColor="?attr/colorOnSurface"
             tools:text="Deep 94% · Light 3% · Unknown 3%" />
@@ -39,7 +38,7 @@
             android:id="@+id/sessionCounts"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
+            android:layout_marginTop="@dimen/space_1"
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:textColor="?attr/colorOnSurfaceVariant"
             tools:text="2 maintenance · 0 re-forces · Sensors off ✓ · 0.9%/h" />
@@ -48,7 +47,7 @@
             android:id="@+id/sessionExtra"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
+            android:layout_marginTop="@dimen/space_1"
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:textColor="?attr/colorOnSurfaceVariant"
             android:visibility="gone"
@@ -59,10 +58,11 @@
             android:id="@+id/sessionProblems"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="@dimen/space_2"
             android:importantForAccessibility="noHideDescendants"
             android:visibility="gone"
-            app:chipSpacingVertical="4dp"
+            app:chipSpacingHorizontal="@dimen/space_2"
+            app:chipSpacingVertical="@dimen/space_1"
             tools:visibility="visible" />
     </LinearLayout>
-</com.google.android.material.card.MaterialCardView>
+</com.akylas.enforcedoze.ui.amber.AmberCardView>

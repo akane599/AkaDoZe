@@ -5,8 +5,8 @@
     android:layout_height="wrap_content"
     android:minHeight="48dp"
     android:orientation="horizontal"
-    android:paddingTop="8dp"
-    android:paddingBottom="8dp"
+    android:paddingTop="@dimen/space_2"
+    android:paddingBottom="@dimen/space_2"
     android:screenReaderFocusable="true"
     tools:targetApi="p">
 
@@ -14,7 +14,7 @@
         android:id="@+id/eventIcon"
         android:layout_width="24dp"
         android:layout_height="24dp"
-        android:layout_marginEnd="16dp"
+        android:layout_marginEnd="@dimen/space_3"
         android:importantForAccessibility="no"
         tools:src="@drawable/ic_monitor_idle" />
 

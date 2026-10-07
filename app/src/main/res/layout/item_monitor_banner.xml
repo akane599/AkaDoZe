@@ -1,26 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<com.google.android.material.card.MaterialCardView
+<com.akylas.enforcedoze.ui.amber.AmberCardView
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="4dp"
-    android:layout_marginBottom="4dp"
-    app:cardBackgroundColor="?attr/colorTertiaryContainer"
-    app:cardElevation="0dp"
-    app:strokeWidth="0dp">
+    android:layout_marginTop="@dimen/space_1"
+    android:layout_marginBottom="@dimen/space_1"
+    app:cardBackgroundColor="?attr/colorTertiaryContainer">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:padding="12dp">
+        android:padding="@dimen/space_3">
 
         <ImageView
             android:layout_width="24dp"
             android:layout_height="24dp"
-            android:layout_marginEnd="12dp"
+            android:layout_marginEnd="@dimen/space_3"
             android:importantForAccessibility="no"
             android:src="@drawable/ic_monitor_info"
             app:tint="?attr/colorOnTertiaryContainer" />
@@ -34,4 +32,4 @@
             android:textColor="?attr/colorOnTertiaryContainer"
             tools:text="@string/monitor_banner_partial" />
     </LinearLayout>
-</com.google.android.material.card.MaterialCardView>
+</com.akylas.enforcedoze.ui.amber.AmberCardView>
