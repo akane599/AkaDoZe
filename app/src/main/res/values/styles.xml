@@ -342,4 +342,27 @@
     </style>
     <style name="ThemeOverlay.App.Toolbar" parent="">
     </style>
+
+    <!--
+      Settings and Doze tunables (SQ-21). SettingsActivity and DozeTunablesActivity apply ThemeOverlay.Amber.Settings
+      before super.onCreate, so the preference fragment picks up this preferenceTheme when it styles its list.
+      Category titles are quiet labels (sans medium, uppercase, tracked) in on-surface-variant: amber stays for
+      active controls only. Dividers are hairlines in colorOutlineVariant.
+    -->
+    <style name="ThemeOverlay.Amber.Settings" parent="">
+        <item name="preferenceTheme">@style/ThemeOverlay.Amber.Preference</item>
+    </style>
+    <style name="ThemeOverlay.Amber.Preference" parent="ThemeOverlay.App.Preference">
+        <item name="preferenceCategoryTitleTextAppearance">@style/TextAppearance.Amber.PreferenceCategory</item>
+        <item name="preferenceCategoryTitleTextColor">?attr/colorOnSurfaceVariant</item>
+        <item name="preferenceFragmentCompatStyle">@style/PreferenceFragment.Amber</item>
+    </style>
+    <style name="PreferenceFragment.Amber" parent="PreferenceFragment.Material">
+        <item name="android:divider">?attr/colorOutlineVariant</item>
+        <item name="android:dividerHeight">@dimen/hairline</item>
+    </style>
+    <style name="TextAppearance.Amber.PreferenceCategory" parent="TextAppearance.Amber.LabelMedium">
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.08</item>
+    </style>
 </resources>

@@ -11,12 +11,15 @@ import android.util.AttributeSet;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.NumberPicker;
+import android.widget.TextView;
 
 import androidx.preference.Preference;
 
 import com.afollestad.materialdialogs.MaterialDialog;
+import com.akylas.enforcedoze.ui.amber.AmberDialogs;
 
 /* Created by Faiz Visram on 2014-03-11 */
 
@@ -142,6 +145,7 @@ public class NumberPickerPreference extends Preference implements
 
             // build NumberPicker
             mPicker = (NumberPicker) view.findViewById(R.id.number_picker);
+            useTabularDigits(mPicker);
             if (mStep > 1) {
                 mValues = new String[(mMax - mMin) / mStep + 1];
                 int selectedIndex = 0;
@@ -169,7 +173,7 @@ public class NumberPickerPreference extends Preference implements
             saveButton.setOnClickListener(this);
 
             // build dialog
-            mDialog = new MaterialDialog.Builder(getContext())
+            mDialog = AmberDialogs.builder(getContext())
                     .title(mTitle)
                     .customView(view, true)
                     .cancelable(true)
@@ -179,6 +183,17 @@ public class NumberPickerPreference extends Preference implements
         }
 
         mDialog.show();
+    }
+
+    /**
+     * Tabular figures for the picker's editable middle value. The wheel above and below is drawn by the
+     * platform's own Paint, which has no public font-feature API, so only the text field is reached.
+     */
+    static void useTabularDigits(ViewGroup picker) {
+        for (int i = 0; i < picker.getChildCount(); i++) {
+            View child = picker.getChildAt(i);
+            if (child instanceof TextView) ((TextView) child).setFontFeatureSettings("tnum");
+        }
     }
 
     private void save(int value) {

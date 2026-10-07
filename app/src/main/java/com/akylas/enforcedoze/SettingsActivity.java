@@ -7,6 +7,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.res.Resources;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
@@ -64,6 +65,7 @@ import com.akylas.enforcedoze.ui.AccessUi;
 import com.akylas.enforcedoze.ui.ModeSwitchRules;
 import com.akylas.enforcedoze.ui.ResetReport;
 import com.akylas.enforcedoze.ui.SettingsRules;
+import com.akylas.enforcedoze.ui.amber.AmberDialogs;
 import com.akylas.enforcedoze.service.ResetCommandId;
 import com.akylas.enforcedoze.service.SystemResetResult;
 
@@ -86,6 +88,13 @@ public class SettingsActivity extends AppCompatActivity {
 
     private static void log(String message) {
             logToLogcat(TAG, message);
+    }
+
+    @Override
+    protected void onApplyThemeResource(Resources.Theme theme, int resid, boolean first) {
+        super.onApplyThemeResource(theme, resid, first);
+        // The preference fragment reads preferenceTheme from this theme when it styles its list.
+        theme.applyStyle(R.style.ThemeOverlay_Amber_Settings, true);
     }
 
     @Override
@@ -547,7 +556,7 @@ public class SettingsActivity extends AppCompatActivity {
         }
 
         private boolean onClearDozeStatsClick(Preference preference) {
-            progressDialog1 = new MaterialDialog.Builder(getActivity())
+            progressDialog1 = AmberDialogs.builder(getActivity())
                     .title(getString(R.string.please_wait_text))
                     .cancelable(false)
                     .autoDismiss(false)
@@ -839,7 +848,7 @@ public class SettingsActivity extends AppCompatActivity {
             if (phase == ResetReport.Tracker.Phase.RUNNING || phase == ResetReport.Tracker.Phase.FINISHING) {
                 dismissResetReport();
                 if (resetProgress == null || !resetProgress.isShowing()) {
-                    resetProgress = new MaterialDialog.Builder(requireActivity())
+                    resetProgress = AmberDialogs.builder(requireActivity())
                             .title(R.string.please_wait_text)
                             .content(R.string.reset_running_text)
                             .progress(true, 0)
@@ -1000,7 +1009,7 @@ public class SettingsActivity extends AppCompatActivity {
 
         private void showModeProgress(int content, Runnable onCancel) {
             dismissModeProgress();
-            modeProgress = new MaterialDialog.Builder(requireActivity())
+            modeProgress = AmberDialogs.builder(requireActivity())
                     .title(R.string.execution_mode_setting_title)
                     .content(content)
                     .progress(true, 0)
