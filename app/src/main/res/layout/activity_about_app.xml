@@ -71,13 +71,12 @@
                 </LinearLayout>
             </com.akylas.enforcedoze.ui.amber.AmberCardView>
 
-            <!-- Sponsor card: the one accent-tinted surface on this screen. -->
+            <!-- Sponsor card: a normal tonal card; GitHub Sponsors is the screen's one amber action. -->
             <com.akylas.enforcedoze.ui.amber.AmberCardView
                 android:id="@+id/sponsorCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="@dimen/space_3"
-                app:cardBackgroundColor="?attr/colorPrimaryContainer">
+                android:layout_marginBottom="@dimen/space_3">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -98,7 +97,7 @@
                             android:layout_weight="1"
                             android:text="@string/sponsor_card_title"
                             android:textAppearance="?attr/textAppearanceTitleMedium"
-                            android:textColor="?attr/colorOnPrimaryContainer" />
+                            android:textColor="?attr/colorOnSurface" />
 
                         <ImageView
                             android:layout_width="24dp"
@@ -112,7 +111,7 @@
                         android:layout_height="wrap_content"
                         android:text="@string/sponsor_card_text"
                         android:textAppearance="?attr/textAppearanceBodyMedium"
-                        android:textColor="?attr/colorOnPrimaryContainer"
+                        android:textColor="?attr/colorOnSurfaceVariant"
                         android:layout_marginBottom="@dimen/space_3" />
 
                     <!-- Stacked full width at every font scale: side by side, labels
@@ -132,7 +131,7 @@
 
                         <com.akylas.enforcedoze.ui.amber.AmberButton
                             android:id="@+id/btnLiberapay"
-                            style="@style/Widget.Amber.Button.Outlined"
+                            style="@style/Widget.Amber.Button.Outlined.Neutral"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:text="@string/sponsor_liberapay"
@@ -178,7 +177,7 @@
 
                         <com.akylas.enforcedoze.ui.amber.AmberButton
                             android:id="@+id/btnLicenses"
-                            style="@style/Widget.Amber.Button.Text"
+                            style="@style/Widget.Amber.Button.Text.Neutral"
                             android:layout_width="match_parent"
                             android:gravity="start|center_vertical"
                             android:layout_height="wrap_content"
@@ -187,7 +186,7 @@
 
                         <com.akylas.enforcedoze.ui.amber.AmberButton
                             android:id="@+id/btnSourceCode"
-                            style="@style/Widget.Amber.Button.Text"
+                            style="@style/Widget.Amber.Button.Text.Neutral"
                             android:layout_width="match_parent"
                             android:gravity="start|center_vertical"
                             android:layout_height="wrap_content"
@@ -226,7 +225,7 @@
 
                         <com.akylas.enforcedoze.ui.amber.AmberButton
                             android:id="@+id/btnTranslations"
-                            style="@style/Widget.Amber.Button.Text"
+                            style="@style/Widget.Amber.Button.Text.Neutral"
                             android:layout_width="match_parent"
                             android:gravity="start|center_vertical"
                             android:layout_height="wrap_content"
@@ -235,7 +234,7 @@
 
                         <com.akylas.enforcedoze.ui.amber.AmberButton
                             android:id="@+id/btnPrivacyPolicy"
-                            style="@style/Widget.Amber.Button.Text"
+                            style="@style/Widget.Amber.Button.Text.Neutral"
                             android:layout_width="match_parent"
                             android:gravity="start|center_vertical"
                             android:layout_height="wrap_content"

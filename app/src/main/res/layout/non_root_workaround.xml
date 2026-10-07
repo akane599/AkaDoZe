@@ -30,7 +30,7 @@
 
 
             <com.akylas.enforcedoze.ui.amber.AmberButton
-                style="?attr/materialIconButtonStyle"
+                style="@style/Widget.Amber.Button.Icon.Neutral"
                 android:id="@+id/shareBtn1"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -38,7 +38,7 @@
                 android:layout_gravity="center_vertical" />
 
             <com.akylas.enforcedoze.ui.amber.AmberButton
-                style="?attr/materialIconButtonStyle"
+                style="@style/Widget.Amber.Button.Icon.Neutral"
                 android:id="@+id/copyBtn1"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -65,7 +65,7 @@
 
 
             <com.akylas.enforcedoze.ui.amber.AmberButton
-                style="?attr/materialIconButtonStyle"
+                style="@style/Widget.Amber.Button.Icon.Neutral"
                 android:id="@+id/shareBtn2"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -73,7 +73,7 @@
                 android:layout_gravity="center_vertical" />
 
             <com.akylas.enforcedoze.ui.amber.AmberButton
-                style="?attr/materialIconButtonStyle"
+                style="@style/Widget.Amber.Button.Icon.Neutral"
                 android:id="@+id/copyBtn2"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

@@ -42,7 +42,7 @@
 
             <com.akylas.enforcedoze.ui.amber.AmberButton
                 android:id="@+id/liveRefresh"
-                style="?attr/materialIconButtonStyle"
+                style="@style/Widget.Amber.Button.Icon.Neutral"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:contentDescription="@string/monitor_refresh"

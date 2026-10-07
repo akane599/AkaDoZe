@@ -384,4 +384,26 @@
         <item name="buttonBarNegativeButtonStyle">@style/Widget.Amber.Button.Dialog</item>
         <item name="buttonBarNeutralButtonStyle">@style/Widget.Amber.Button.Dialog</item>
     </style>
+
+    <!--
+      Neutral (non-amber) buttons for secondary actions: amber stays on a screen's one primary action. The overlay
+      re-points colorOnContainer (the M3 button content colour, colorPrimary by default) for the button only, so
+      the stock M3 selectors keep their disabled and ripple states. Outlined/Text read onSurface (the outline stroke
+      stays colorOutline); icon buttons read onSurfaceVariant (#A7A39C on #1E2024, above 3:1).
+    -->
+    <style name="ThemeOverlay.Amber.Button.Neutral" parent="ThemeOverlay.Material3.Button.TextButton">
+        <item name="colorOnContainer">?attr/colorOnSurface</item>
+    </style>
+    <style name="ThemeOverlay.Amber.Button.Icon.Neutral" parent="ThemeOverlay.Material3.Button.IconButton">
+        <item name="colorOnContainer">?attr/colorOnSurfaceVariant</item>
+    </style>
+    <style name="Widget.Amber.Button.Outlined.Neutral">
+        <item name="materialThemeOverlay">@style/ThemeOverlay.Amber.Button.Neutral</item>
+    </style>
+    <style name="Widget.Amber.Button.Text.Neutral">
+        <item name="materialThemeOverlay">@style/ThemeOverlay.Amber.Button.Neutral</item>
+    </style>
+    <style name="Widget.Amber.Button.Icon.Neutral" parent="Widget.Material3.Button.IconButton">
+        <item name="materialThemeOverlay">@style/ThemeOverlay.Amber.Button.Icon.Neutral</item>
+    </style>
 </resources>
