@@ -20,4 +20,6 @@ adb root >/dev/null 2>&1; adb wait-for-device
 adb shell settings put system screen_off_timeout 1800000
 adb shell svc power stayon true
 adb shell input keyevent KEYCODE_WAKEUP; adb shell wm dismiss-keyguard
+# a killed run can leave its font scale or animation scales behind; start every shoot from defaults
+adb shell settings put system font_scale 1.0; for k in window_animation_scale transition_animation_scale animator_duration_scale; do adb shell settings put global $k 1; done
 echo "booted $AVD (log $LOG)"
