@@ -7,8 +7,23 @@ public final class SettingsRules {
 
     private SettingsRules() { throw new AssertionError(); }
 
+    /** Running and finishing share the wait; a delivered result waits for confirmation. */
+    public static ResetDisplay resetDisplay(ResetReport.Tracker.Phase phase) {
+        switch (phase) {
+            case RUNNING:
+            case FINISHING:
+                return ResetDisplay.PROGRESS;
+            case REPORTED:
+                return ResetDisplay.REPORT;
+            default:
+                return ResetDisplay.NONE;
+        }
+    }
+
     /** Whether picking this Doze entry delay (in seconds) shows the long-delay warning. */
     public static boolean warnsLongDozeDelay(int delaySeconds) {
         return delaySeconds >= LONG_DOZE_DELAY_SECONDS;
     }
+
+    public enum ResetDisplay { NONE, PROGRESS, REPORT }
 }

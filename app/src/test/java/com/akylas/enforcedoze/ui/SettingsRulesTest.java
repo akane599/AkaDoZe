@@ -8,6 +8,18 @@ import static org.junit.Assert.assertTrue;
 
 public class SettingsRulesTest {
     @Test
+    public void resetDisplayMatchesEveryTrackerPhase() {
+        assertEquals(SettingsRules.ResetDisplay.NONE,
+                SettingsRules.resetDisplay(ResetReport.Tracker.Phase.IDLE));
+        assertEquals(SettingsRules.ResetDisplay.PROGRESS,
+                SettingsRules.resetDisplay(ResetReport.Tracker.Phase.RUNNING));
+        assertEquals(SettingsRules.ResetDisplay.REPORT,
+                SettingsRules.resetDisplay(ResetReport.Tracker.Phase.REPORTED));
+        assertEquals(SettingsRules.ResetDisplay.PROGRESS,
+                SettingsRules.resetDisplay(ResetReport.Tracker.Phase.FINISHING));
+    }
+
+    @Test
     public void longDozeDelayStartsAtFiveMinutes() {
         assertEquals(300, SettingsRules.LONG_DOZE_DELAY_SECONDS);
         assertFalse("No delay", SettingsRules.warnsLongDozeDelay(0));
