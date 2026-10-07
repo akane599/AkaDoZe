@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Amber Night theme attributes. AppTheme carries the Day values; ThemeOverlay.Amber.Accent.* swaps
+      amberGlowColor with the accent.
+    -->
+
+    <!-- Glow tint for the one active element: the current primary at ~8% alpha. -->
+    <attr name="amberGlowColor" format="color" />
+
+    <!--
+      Spring parameters for androidx.dynamicanimation SpringForce. All four are plain floats in the theme
+      (format="float"), so a single read path works on every API level:
+
+          TypedValue tv = new TypedValue();
+          context.getTheme().resolveAttribute(R.attr.amberSpringStiffnessMedium, tv, true);
+          float stiffness = tv.getFloat();   // tv.type == TypedValue.TYPE_FLOAT
+
+      or TypedArray.getFloat(index, fallback) from obtainStyledAttributes. Values in AppTheme:
+      damping 0.85; stiffness low 200, medium 400, high 1500.
+    -->
+    <attr name="amberSpringDamping" format="float" />
+    <attr name="amberSpringStiffnessLow" format="float" />
+    <attr name="amberSpringStiffnessMedium" format="float" />
+    <attr name="amberSpringStiffnessHigh" format="float" />
+</resources>

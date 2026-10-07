@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Inter (variable, OFL; licence in assets/licenses/OFL-Inter.txt). One file, three instances picked by
+  fontVariationSettings on API 26+: 450 regular, 550 medium, 650 bold. The declared fontWeight is the standard
+  slot each instance answers (textStyle bold asks for 700, textFontWeight 500 for medium). API 23-25 render the
+  file's default instance. app: attributes feed AppCompat/ResourcesCompat below API 26.
+-->
+<font-family xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <font
+        android:font="@font/inter_variable"
+        android:fontStyle="normal"
+        android:fontVariationSettings="'wght' 450"
+        android:fontWeight="400"
+        app:font="@font/inter_variable"
+        app:fontStyle="normal"
+        app:fontVariationSettings="'wght' 450"
+        app:fontWeight="400" />
+    <font
+        android:font="@font/inter_variable"
+        android:fontStyle="normal"
+        android:fontVariationSettings="'wght' 550"
+        android:fontWeight="500"
+        app:font="@font/inter_variable"
+        app:fontStyle="normal"
+        app:fontVariationSettings="'wght' 550"
+        app:fontWeight="500" />
+    <font
+        android:font="@font/inter_variable"
+        android:fontStyle="normal"
+        android:fontVariationSettings="'wght' 650"
+        android:fontWeight="700"
+        app:font="@font/inter_variable"
+        app:fontStyle="normal"
+        app:fontVariationSettings="'wght' 650"
+        app:fontWeight="700" />
+</font-family>

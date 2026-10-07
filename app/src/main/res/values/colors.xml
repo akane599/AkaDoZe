@@ -1,6 +1,106 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <color name="colorPrimary">#FF4081</color>
-    <color name="colorPrimaryDark">#181C25</color>
-    <color name="colorAccent">#FF4081</color>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!--
+      Amber Night palette. OKLCH (L C H) is the source of truth; the hex values are its sRGB rendering.
+      Contrast is WCAG 2 against the surface named in the right-hand column.
+
+      Role                          Hex        OKLCH               Contrast
+      ink (background, surface)     #0E1014    0.173 0.009 264
+      surface container lowest      #0A0C10    0.154 0.009 264
+      surface container low         #16181C    0.209 0.009 264
+      surface container             #1E2024    0.243 0.008 264
+      surface container high        #26282D    0.277 0.010 268
+      surface container highest     #2F3136    0.313 0.009 268
+      surface bright                #36383D    0.341 0.009 268
+      on surface                    #E9E4DA    0.920 0.014  85     15.0 on ink
+      on surface variant            #A7A39C    0.717 0.011  82     7.6 on ink, 5.2 on highest
+      outline                       #71757C    0.561 0.012 262     4.1 on ink, 3.2 on high (control boundaries)
+      outline variant               #2B2E33    0.300 0.010 261     decorative only
+      primary, Day 10-17            #E8A54B    0.770 0.131  71     9.0 on ink
+      primary, Morning 05-10        #E3C287    0.829 0.085  82
+      primary, Evening 17-22        #E89A50    0.750 0.130  62
+      primary, Night 22-05          #E27C43    0.690 0.145  48     6.5 on ink
+      on primary                    #1F1307    0.199 0.029  65     >= 6.2 on every primary
+      primary container (Day)       #462D0B    0.321 0.060  70
+      on primary container (Day)    #F3D2A4    0.881 0.070  76     8.9 on its container
+      primary container, Morning    #423007    0.321 0.060  82
+      on primary container, Morning #EFD4A3    0.881 0.070  82
+      primary container, Evening    #492B0F    0.321 0.060  62
+      on primary container, Evening #FACEA9    0.881 0.070  62
+      primary container, Night      #4C2916    0.321 0.060  48
+      on primary container, Night   #FFCBB0    0.881 0.070  48
+      secondary (sage)              #94BD9C    0.759 0.064 150     9.1 on ink
+      on secondary                  #101911    0.201 0.021 148     8.6 on secondary
+      secondary container           #1F3423    0.302 0.041 149
+      on secondary container        #CDE5D1    0.899 0.037 150     10.0 on its container
+      error                         #E6867A    0.720 0.120  28     7.3 on ink
+      on error                      #2D0D09    0.211 0.054  30     6.9 on error
+      error container               #4B1E19    0.300 0.070  28
+      on error container            #F7CCC5    0.880 0.050  29     9.6 on its container
+      inverse surface               #E9E4DA    0.920 0.014  85
+      inverse on surface            #1E2024    0.243 0.008 264     12.9 on inverse surface
+      inverse primary               #7C4E10    0.466 0.095  68     5.6 on inverse surface
+      glow                          primary at 8% alpha (#14 prefix)
+    -->
+
+    <!-- Legacy names kept for code: Custom Tabs reads R.color.colorPrimary (Utils, MainActivity). -->
+    <color name="colorPrimary">#E8A54B</color>
+    <color name="colorPrimaryDark">#0E1014</color>
+    <color name="colorAccent">#E8A54B</color>
+
+    <color name="amber_ink">#0E1014</color>
+    <color name="amber_surface_container_lowest">#0A0C10</color>
+    <color name="amber_surface_container_low">#16181C</color>
+    <color name="amber_surface_container">#1E2024</color>
+    <color name="amber_surface_container_high">#26282D</color>
+    <color name="amber_surface_container_highest">#2F3136</color>
+    <color name="amber_surface_bright">#36383D</color>
+    <color name="amber_on_surface">#E9E4DA</color>
+    <color name="amber_on_surface_variant">#A7A39C</color>
+    <color name="amber_outline">#71757C</color>
+    <color name="amber_outline_variant">#2B2E33</color>
+
+    <color name="amber_on_primary">#1F1307</color>
+    <color name="amber_primary_inverse">#7C4E10</color>
+
+    <color name="amber_primary_morning">#E3C287</color>
+    <color name="amber_primary_container_morning">#423007</color>
+    <color name="amber_on_primary_container_morning">#EFD4A3</color>
+    <color name="amber_glow_morning">#14E3C287</color>
+
+    <color name="amber_primary_day">#E8A54B</color>
+    <color name="amber_primary_container_day">#462D0B</color>
+    <color name="amber_on_primary_container_day">#F3D2A4</color>
+    <color name="amber_glow_day">#14E8A54B</color>
+
+    <color name="amber_primary_evening">#E89A50</color>
+    <color name="amber_primary_container_evening">#492B0F</color>
+    <color name="amber_on_primary_container_evening">#FACEA9</color>
+    <color name="amber_glow_evening">#14E89A50</color>
+
+    <color name="amber_primary_night">#E27C43</color>
+    <color name="amber_primary_container_night">#4C2916</color>
+    <color name="amber_on_primary_container_night">#FFCBB0</color>
+    <color name="amber_glow_night">#14E27C43</color>
+
+    <color name="amber_secondary">#94BD9C</color>
+    <color name="amber_on_secondary">#101911</color>
+    <color name="amber_secondary_container">#1F3423</color>
+    <color name="amber_on_secondary_container">#CDE5D1</color>
+
+    <color name="amber_error">#E6867A</color>
+    <color name="amber_on_error">#2D0D09</color>
+    <color name="amber_error_container">#4B1E19</color>
+    <color name="amber_on_error_container">#F7CCC5</color>
+
+    <!--
+      Material 1.12's dark theme gives android:textColorPrimary/Secondary/Hint/Highlight fixed selectors
+      (m3_dark_default_color_*_text, m3_dark_hint_foreground, ...) built on these library colors, not on
+      ?attr/colorOnSurface. Overriding the base colors makes plain TextViews use the warm text tokens while the
+      selectors keep their disabled-state alpha.
+    -->
+    <color name="m3_sys_color_dark_on_surface" tools:override="true">@color/amber_on_surface</color>
+    <color name="m3_sys_color_dark_on_surface_variant" tools:override="true">@color/amber_on_surface_variant</color>
+    <color name="m3_sys_color_dark_on_background" tools:override="true">@color/amber_on_surface</color>
+    <color name="m3_sys_color_dark_primary" tools:override="true">@color/amber_primary_day</color>
 </resources>
