@@ -40,10 +40,15 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.nanotasks.Completion;
 import com.nanotasks.Tasks;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.akylas.enforcedoze.access.AccessManager;
 import com.akylas.enforcedoze.access.AccessLevel;
+import com.akylas.enforcedoze.access.AccessState;
+import com.akylas.enforcedoze.access.Feature;
+import com.akylas.enforcedoze.ui.AccessUi;
 
 public class DozeTunablesActivity extends AppCompatActivity {
 
@@ -210,17 +215,48 @@ public class DozeTunablesActivity extends AppCompatActivity {
             }
         };
 
+        private final AccessManager.Listener capabilityListener = this::applyCapability;
+        /** Each tunable's own summary, restored when access returns. */
+        private final Map<String, CharSequence> baseSummaries = new HashMap<>();
+
         @Override
         public void onStart() {
             super.onStart();
             accessManager.addListener(accessListener);
+            accessManager.addListener(capabilityListener);
             accessManager.refresh();
         }
 
         @Override
         public void onStop() {
             accessManager.removeListener(accessListener);
+            accessManager.removeListener(capabilityListener);
             super.onStop();
+        }
+
+        /**
+         * Without TUNABLES (restored task, deep link) every tunable is disabled and says why, as Settings
+         * does. Only enabled state and summaries change, never the stored values.
+         */
+        private void applyCapability(AccessState state) {
+            if (!isAdded()) return;
+            Context context = requireContext();
+            applyCapability(getPreferenceScreen(),
+                    AccessUi.unavailableText(context, Feature.TUNABLES, state, Utils.isShizukuMode(context)));
+        }
+
+        private void applyCapability(PreferenceGroup group, String unavailable) {
+            for (int i = 0; i < group.getPreferenceCount(); i++) {
+                Preference pref = group.getPreference(i);
+                if (pref instanceof PreferenceGroup) applyCapability((PreferenceGroup) pref, unavailable);
+                else gate(pref, unavailable);
+            }
+        }
+
+        private void gate(Preference pref, String unavailable) {
+            if (!baseSummaries.containsKey(pref.getKey())) baseSummaries.put(pref.getKey(), pref.getSummary());
+            pref.setEnabled(unavailable == null);
+            pref.setSummary(unavailable != null ? unavailable : baseSummaries.get(pref.getKey()));
         }
 
         private void removeIconSpace(PreferenceGroup group) {
@@ -272,6 +308,8 @@ public class DozeTunablesActivity extends AppCompatActivity {
             }
 
             accessManager = AccessManager.getInstance(requireContext());
+            // Gated before the first frame; the listener keeps it current.
+            applyCapability(accessManager.getState());
         }
 
         // Access is detected asynchronously, after the menu was first prepared.

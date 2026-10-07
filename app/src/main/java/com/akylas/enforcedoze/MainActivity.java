@@ -56,12 +56,14 @@ import android.widget.TextView;
 import com.akylas.enforcedoze.access.AccessManager;
 import com.akylas.enforcedoze.access.AccessLevel;
 import com.akylas.enforcedoze.access.AccessState;
+import com.akylas.enforcedoze.access.Feature;
 import com.akylas.enforcedoze.access.Reason;
 import com.akylas.enforcedoze.access.Prefs;
 import com.akylas.enforcedoze.ui.AccessCard;
 import com.akylas.enforcedoze.ui.AccessUi;
 import com.akylas.enforcedoze.ui.LaunchGlowRules;
 import com.akylas.enforcedoze.ui.MainRules;
+import com.akylas.enforcedoze.ui.amber.AmberDialogs;
 import com.akylas.enforcedoze.ui.amber.AmberGlow;
 import com.akylas.enforcedoze.ui.amber.Haptics;
 import com.akylas.enforcedoze.ui.amber.MotionPolicy;
@@ -379,6 +381,7 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         update.requestHelpers(() -> AsyncTask.execute(() -> accessManager.grantHelpersAutomatically()));
         accessUsable = update.usable;
         update.render(this::doAfterSuCheckSetup, this::renderServiceStatus);
+        invalidateOptionsMenu();
     }
 
     public void doAfterSuCheckSetup() {
@@ -392,6 +395,9 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
     public boolean onPrepareOptionsMenu(Menu menu) {
         MainRules.when(MainRules.hidesUnsupportedDozeItem(isDozeEnabledByOEM, Utils.isDeviceRunningOnN(), isSuAvailable),
                 () -> menu.findItem(R.id.action_toggle_doze).setVisible(false));
+        // Greyed out, not hidden, while the current access can't write tunables (refreshed on access changes).
+        menu.findItem(R.id.action_show_doze_tunables).setEnabled(AccessUi.unavailableReason(Feature.TUNABLES,
+                accessManager.getState(), Utils.isShizukuMode(this)) == null);
         return super.onPrepareOptionsMenu(menu);
     }
 
@@ -454,29 +460,28 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         }
     }
 
+    /**
+     * No session writes tunables (only DozeTunablesActivity does). A forcing session steps Doze straight to
+     * IDLE, though, so the screen first says which timeouts that skips; otherwise it opens directly.
+     */
     public void showDozeTunablesActivity() {
-        if (serviceEnabled) {
-            MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this);
-            builder.setTitle("Warning");
-            builder.setMessage("Modified Doze tunables will be overriden when not using root, as ForceDoze overrides Doze tunables by default in order to put your device immediately into Doze mode.\n\nAre you sure you want to continue?");
-            builder.setPositiveButton(getString(R.string.yes_button_text), new DialogInterface.OnClickListener() {
-                @Override
-                public void onClick(DialogInterface dialogInterface, int i) {
-                    dialogInterface.dismiss();
-//                    toggleForceDozeSwitch.setChecked(false);
-                    startActivity(new Intent(MainActivity.this, DozeTunablesActivity.class));
-                }
-            });
-            builder.setNegativeButton(getString(R.string.no_button_text), new DialogInterface.OnClickListener() {
-                @Override
-                public void onClick(DialogInterface dialogInterface, int i) {
-                    dialogInterface.dismiss();
-                }
-            });
-            builder.show();
-        } else {
-            startActivity(new Intent(MainActivity.this, DozeTunablesActivity.class));
-        }
+        boolean forcing = AccessUi.serviceStatus(serviceEnabled, accessManager.getState(),
+                AccessUi.sensorsEnabled(this)) == AccessUi.ServiceStatus.FORCING;
+        MainRules.when(forcing, this::showForcedDozeTunablesNote);
+        MainRules.when(!forcing, this::openDozeTunables);
+    }
+
+    private void showForcedDozeTunablesNote() {
+        AmberDialogs.builder(this)
+                .content(R.string.amber_SQ46_tunables_forced_doze)
+                .positiveText(R.string.okay_button_text)
+                .negativeText(R.string.cancel_button_text)
+                .onPositive((dialog, which) -> openDozeTunables())
+                .show();
+    }
+
+    private void openDozeTunables() {
+        startActivity(new Intent(MainActivity.this, DozeTunablesActivity.class));
     }
 
     public void openDonatePage() {
