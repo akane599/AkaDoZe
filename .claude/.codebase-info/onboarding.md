@@ -19,11 +19,16 @@ Other notes:
 - **Device testing.** Doze sessions need Shizuku or root. Without them you only get APP level: grant `DUMP` /
   `WRITE_SECURE_SETTINGS` with `adb shell pm grant com.akylas.enforcedoze android.permission.…` to see readback and
   recovery.
-- **Visual QA (no screenshot tests).** Boot one headless AVD (`pixel` API 36, `amber-api23` for the minSdk look) only
-  after Gradle builds have drained, since qemu needs ~4.5 GB. Then run
-  `/home/akane/AkaDoZe-amber-assets/qa/qa-full.sh <apk> <outdir>`: every activity at font scale 1.0/1.3/2.0, the four
-  accent phases and launch-glow frames. `qa/tap.sh <regex>` opens dialogs through `uiautomator dump`, and
-  `qa/sheet.py` builds contact sheets. For RTL, use `adb shell cmd locale set-app-locales com.akylas.enforcedoze
+- **JVM screenshots.** Roborazzi 1.60.0 on Robolectric: `:app:verifyRoborazziDebug` compares
+  `AmberScreenshotTest` (Amber kit components at font scale 1.0/2.0, the four accent overlays, About and Settings)
+  against `app/src/test/snapshots/`; `:app:recordRoborazziDebug` re-records after an intended look change. No glow or
+  shadows render there. Roborazzi stays at 1.60.0: 1.61+ ships Kotlin 2.3 metadata, which Kotlin 2.0.0 can't read.
+- **Emulator visual QA** is the `visual-qa` project skill (`.claude/skills/visual-qa/`). `scripts/emu-boot.sh` boots one
+  headless AVD (`pixel` API 36, `amber-api23` for the minSdk look) and refuses while a Gradle/Kotlin daemon runs or
+  under 6 GB is free, since qemu needs ~4.5 GB. `scripts/qa-full.sh <apk> <outdir>` shoots every activity at font
+  scale 1.0/1.3/2.0 (stats screens seeded with synthetic sessions), RTL, the four accent phases and the launch glow
+  (`glow-slow.sh`, stills at 10× animator scale). `tap.sh <regex>` opens dialogs through `uiautomator dump`, and
+  `sheet.py` builds contact sheets. For RTL, use `adb shell cmd locale set-app-locales com.akylas.enforcedoze
   --locales ar`; `debug.force_rtl` doesn't apply without a configuration change. Haptics, OEM glow shadows and
   root-mode screens still need a phone (`docs/device-test-1.11.0.md`).
 - **Release checklist.** `docs/device-test-1.11.0.md`. The in-app Doze Monitor has "Test Doze now" and "Test sensor

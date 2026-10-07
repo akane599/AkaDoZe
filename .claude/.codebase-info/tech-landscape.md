@@ -27,11 +27,11 @@ default; release signing from env vars when `-PuseExternalSigning` is passed.
 | UI | `androidx.appcompat:appcompat:1.7.0`, `com.google.android.material:material:1.12.0`, `androidx.dynamicanimation:dynamicanimation:1.0.0` (springs; declared explicitly in US-1, it was already on the classpath transitively), `com.afollestad.material-dialogs:core:0.9.3.0`, `androidx.preference:preference-ktx:1.2.1`, `androidx.browser:browser:1.8.0` |
 | Privilege | `eu.chainfire:libsuperuser:1.1.0.+` (dynamic version), `dev.rikka.shizuku:api` + `provider` 13.1.5 |
 | Misc | `androidx.media2:media2-session:1.3.0` (media controller for playing-app detection), `androidx.localbroadcastmanager:1.1.0`, `com.fabiendevos:nanotasks:1.1.0` (async tasks), `com.jakewharton:process-phoenix:2.1.2` (app restart) |
-| Test | `junit:junit:4.13.2`, `org.robolectric:robolectric:4.16` (testImplementation; Robolectric resolves from jcenter) |
+| Test | `junit:junit:4.13.2`, `org.robolectric:robolectric:4.16` (testImplementation; Robolectric resolves from jcenter), `io.github.takahirom.roborazzi:roborazzi` + `roborazzi-junit-rule` 1.60.0 and the Roborazzi Gradle plugin (`ext.roborazzi_version` in `build.gradle`; capped at 1.60.0 by Kotlin 2.0.0) |
 
 AkaDoZe 2.0 added no new runtime libraries; Amber Night only declared the already-transitive dynamicanimation. It bundles
 two variable fonts in `res/font/` (Inter and Source Serif 4, subset with fonttools to about 975 KB uncompressed and
-467 KB gzipped, OFL texts in `assets/licenses/`). US-8 added Robolectric as a test-only dependency; the release and debug runtime
+467 KB gzipped, OFL texts in `assets/licenses/`). US-8 added Robolectric and SQ-35 Roborazzi as test-only dependencies (Roborazzi lifts the test runtime's kotlin-stdlib to 2.0.21); the release and debug runtime
 classpaths are unchanged. Storage is platform SQLite (`android.database.sqlite`, see database.md) and
 SharedPreferences. There is no DI, Room, networking, coroutines, Compose or formatter config.
 

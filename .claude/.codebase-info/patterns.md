@@ -50,7 +50,7 @@
 
 ## Testing
 
-`app/src/test/java/com/akylas/enforcedoze/` has 120 JVM sources with 1001 `@Test` methods (JUnit 4.13.2 plus Robolectric 4.16,
+`app/src/test/java/com/akylas/enforcedoze/` has 122 JVM sources with 1015 `@Test` methods (JUnit 4.13.2 plus Robolectric 4.16 and Roborazzi 1.60.0,
 no mocking library):
 
 | Package | Files | Tests |
@@ -93,7 +93,9 @@ The suites use these styles:
 
   The Amber Night kit and theme have Robolectric tests too (`ui/amber/*RobolectricTest`, `ThemeTokensRobolectricTest`,
   `ui/AccentThemerRobolectricTest` at `@Config(sdk = {28, 36})`), and screens with new glue have `DozeStatsRobolectricTest`,
-  `LogActivityRobolectricTest`, `NumberPickerPreferenceRobolectricTest` and `TaskerBroadcastsAdapterRobolectricTest`. There are no screenshot tests; the look is checked on the emulator (see onboarding.md).
+  `LogActivityRobolectricTest`, `NumberPickerPreferenceRobolectricTest` and `TaskerBroadcastsAdapterRobolectricTest`. `ui/amber/AmberScreenshotTest.kt` (the one Kotlin test that has to be Kotlin: javac can't resolve Roborazzi's Compose
+  overloads) holds 8 Roborazzi goldens in `app/src/test/snapshots/`; the rest of the look is checked on the emulator
+  (see onboarding.md).
   SettingsActivity is hosted only in Shizuku mode with no binder, and its key → enabled/visible/summary goldens pin the
   preference wiring. MainActivity isn't hosted, because its `onCreate` starts AccessManager discovery; its glue is cc1
   over `AccessUi` rules. ForceDozeService is built without `onCreate`, with its narrow adapter methods overridden. Its five CC-1 adapters

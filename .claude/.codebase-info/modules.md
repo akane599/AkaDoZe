@@ -81,13 +81,16 @@ Amber Night (dark-only design, US-1) adds pure, JVM-tested rules and the theme w
   = outer − padding). `AmberCardView` adds `GlassOverlay` (seeded 3 % noise tile + gradient hairline, drawn through
   the `ViewOverlay`). Cards keep `clipToOutline=false`, so children need ≥16dp padding; setting
   `android:background` on an `AmberButton` throws.
-- `Amber.treat(Chip|MaterialCardView)` for views built in code (`MonitorAdapter`).
+- `Amber.treat(Chip|MaterialCardView)` for views built in code (`MonitorAdapter`); a treated chip's `chipMinHeight`
+  grows to its line height + 2×`space_1`, so large font scales don't overflow the pill.
 - Motion: `Springs` (one `SpringAnimation` per view+property, kept in a view tag from `res/values/ids.xml`),
   `MotionPolicy` (reduced motion = `ANIMATOR_DURATION_SCALE` 0 on every API; springs then snap), `Haptics`
   (CONFIRM on API 30+, CONTEXT_CLICK below), `AmberGlow` (outline shadow colour + `glow_elevation` on API 28+,
   elevation 0 when inactive, no-op below 28).
 - `AmberDialogs.builder(ctx)`: the material-dialogs 0.9 builder with the bundled typefaces; every
-  `new MaterialDialog.Builder(` in the app goes through it. M3 dialogs are themed by `materialAlertDialogTheme`.
+  `new MaterialDialog.Builder(` in the app goes through it. M3 dialogs are themed by `materialAlertDialogTheme`; AppCompat
+  `AlertDialog`s (AndroidX preference dialogs such as the Tunables "Modify value") by `alertDialogTheme` →
+  `ThemeOverlay.Amber.AlertDialog` with `drawable/amber_dialog_background.xml`.
 
 ## Directory layout
 
@@ -103,7 +106,8 @@ app/
     │   └── res/  layout/ (28), xml/ (prefs, tunables, shortcuts, backup + data-extraction rules, file_paths), values*/
     │       font/ (Inter + Source Serif 4 variable TTFs, amber_sans/amber_serif families), anim/amber_activity_*
     │   assets/licenses/OFL-*.txt   # font licences, bundled with the APK (not yet shown in the About licenses dialog)
-    ├── test/java/com/akylas/enforcedoze/  # 120 JVM test sources, mirrors main packages (see patterns.md)
+    ├── test/java/com/akylas/enforcedoze/  # 122 JVM test sources, mirrors main packages (see patterns.md)
+    ├── test/snapshots/                    # Roborazzi goldens (AmberScreenshotTest)
     ├── test/resources/doze/deviceidle.txt # parser fixture
     └── androidTest/…/ApplicationTest.java # template stub
 docs/doze-feature-ledger.md    # command / readback matrix per feature and API band
