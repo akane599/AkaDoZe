@@ -9,14 +9,19 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.core.view.ViewCompat;
 import androidx.core.widget.ImageViewCompat;
+import androidx.dynamicanimation.animation.DynamicAnimation;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.akylas.enforcedoze.R;
 import com.akylas.enforcedoze.monitor.JournalEvent;
 import com.akylas.enforcedoze.monitor.Problem;
 import com.akylas.enforcedoze.monitor.SessionSummary;
+import com.akylas.enforcedoze.ui.amber.Amber;
+import com.akylas.enforcedoze.ui.amber.AmberGlow;
+import com.akylas.enforcedoze.ui.amber.Springs;
 import com.google.android.material.chip.Chip;
 import com.google.android.material.chip.ChipGroup;
 import com.google.android.material.color.MaterialColors;
@@ -40,6 +45,8 @@ final class MonitorAdapter extends RecyclerView.Adapter<MonitorAdapter.Holder> {
         void bindTests(View card);
         void openSession(SessionSummary summary);
         boolean shizukuMode();
+        /** The last live reading, or null before the first one. */
+        @Nullable MonitorData.Live liveSnapshot();
     }
 
     static final class Row {
@@ -66,6 +73,8 @@ final class MonitorAdapter extends RecyclerView.Adapter<MonitorAdapter.Holder> {
 
     private final Host host;
     private List<Row> rows = new ArrayList<>();
+    /** The live state the card last showed, so a rebind of the same state doesn't replay its entrance. */
+    @Nullable private String lastLiveKey;
 
     MonitorAdapter(Host host) {
         this.host = host;
@@ -143,6 +152,29 @@ final class MonitorAdapter extends RecyclerView.Adapter<MonitorAdapter.Holder> {
         }
     }
 
+    /** Every row binds through here; the live card then gets its accent, glow and (on a real change) entrance. */
+    @Override
+    public void onBindViewHolder(@NonNull Holder holder, int position, @NonNull List<Object> payloads) {
+        super.onBindViewHolder(holder, position, payloads);
+        if (rows.get(position).type == LIVE) accentLive(holder.itemView, host.liveSnapshot());
+    }
+
+    private void accentLive(View card, @Nullable MonitorData.Live live) {
+        ImageView icon = card.findViewById(R.id.liveIcon);
+        icon.setImageResource(MonitorMotionRules.liveIcon(live));
+        AmberGlow.setActive(card, MonitorMotionRules.forced(live));
+        String key = MonitorMotionRules.liveKey(live);
+        if (MonitorMotionRules.changed(lastLiveKey, key)) springIn(icon);
+        lastLiveKey = key;
+    }
+
+    private static void springIn(View icon) {
+        icon.setScaleX(MonitorMotionRules.ENTRANCE_SCALE);
+        icon.setScaleY(MonitorMotionRules.ENTRANCE_SCALE);
+        Springs.animate(icon, DynamicAnimation.SCALE_X, 1f);
+        Springs.animate(icon, DynamicAnimation.SCALE_Y, 1f);
+    }
+
     private void bindSession(View view, SessionSummary summary, boolean clickable) {
         Context context = view.getContext();
         String date = MonitorFormat.sessionDate(context, summary.getStartWallTime());
@@ -151,21 +183,37 @@ final class MonitorAdapter extends RecyclerView.Adapter<MonitorAdapter.Holder> {
         ((TextView) view.findViewById(R.id.sessionCoverage)).setText(
                 clickable ? MonitorFormat.coverage(context, summary) : MonitorFormat.coverageDetail(context, summary));
         ((TextView) view.findViewById(R.id.sessionCounts)).setText(MonitorFormat.counts(context, summary));
+        bindExtra(view.findViewById(R.id.sessionExtra), summary, clickable);
+        List<String> problems = bindProblems(view.findViewById(R.id.sessionProblems), summary);
 
-        TextView extra = view.findViewById(R.id.sessionExtra);
+        // One spoken sentence per card: readable percentages and durations instead of "7h02 · ✓".
+        String spoken = context.getString(R.string.monitor_session_cd, date,
+                MonitorFormat.durationSpoken(context, summary.getDurationMs()),
+                MonitorFormat.coverageSpoken(context, summary), MonitorFormat.countsSpoken(context, summary));
+        if (!problems.isEmpty()) spoken = spoken + " " + android.text.TextUtils.join(", ", problems) + ".";
+        if (clickable) spoken = spoken + " " + context.getString(R.string.monitor_session_open);
+        view.setContentDescription(spoken);
+        bindSessionClick(view, summary, clickable);
+    }
+
+    private static void bindExtra(TextView extra, SessionSummary summary, boolean clickable) {
         if (clickable) {
             extra.setVisibility(View.GONE);
-        } else {
-            Long firstDeep = summary.getTimeToFirstDeepIdleMs();
-            String text = firstDeep == null ? context.getString(R.string.monitor_detail_never_deep)
-                    : context.getString(R.string.monitor_detail_first_deep, MonitorFormat.duration(context, firstDeep));
-            String exits = MonitorFormat.exits(context, summary);
-            if (exits != null) text = text + "\n" + exits;
-            extra.setText(text);
-            extra.setVisibility(View.VISIBLE);
+            return;
         }
+        Context context = extra.getContext();
+        Long firstDeep = summary.getTimeToFirstDeepIdleMs();
+        String text = firstDeep == null ? context.getString(R.string.monitor_detail_never_deep)
+                : context.getString(R.string.monitor_detail_first_deep, MonitorFormat.duration(context, firstDeep));
+        String exits = MonitorFormat.exits(context, summary);
+        if (exits != null) text = text + "\n" + exits;
+        extra.setText(text);
+        extra.setVisibility(View.VISIBLE);
+    }
 
-        ChipGroup chips = view.findViewById(R.id.sessionProblems);
+    /** Rebuilds the problem chips and returns their labels for the spoken sentence. */
+    private static List<String> bindProblems(ChipGroup chips, SessionSummary summary) {
+        Context context = chips.getContext();
         chips.removeAllViews();
         List<String> problems = new ArrayList<>();
         for (Problem problem : summary.getProblems()) {
@@ -176,18 +224,14 @@ final class MonitorAdapter extends RecyclerView.Adapter<MonitorAdapter.Holder> {
             chip.setClickable(false);
             chip.setFocusable(false);
             chip.setEnsureMinTouchTargetSize(false);
+            Amber.treat(chip);
             chips.addView(chip);
         }
         chips.setVisibility(problems.isEmpty() ? View.GONE : View.VISIBLE);
+        return problems;
+    }
 
-        // One spoken sentence per card: readable percentages and durations instead of "7h02 · ✓".
-        String spoken = context.getString(R.string.monitor_session_cd, date,
-                MonitorFormat.durationSpoken(context, summary.getDurationMs()),
-                MonitorFormat.coverageSpoken(context, summary), MonitorFormat.countsSpoken(context, summary));
-        if (!problems.isEmpty()) spoken = spoken + " " + android.text.TextUtils.join(", ", problems) + ".";
-        if (clickable) spoken = spoken + " " + context.getString(R.string.monitor_session_open);
-        view.setContentDescription(spoken);
-
+    private void bindSessionClick(View view, SessionSummary summary, boolean clickable) {
         if (clickable) {
             view.setOnClickListener(v -> host.openSession(summary));
         } else {
@@ -201,8 +245,7 @@ final class MonitorAdapter extends RecyclerView.Adapter<MonitorAdapter.Holder> {
         Context context = view.getContext();
         ImageView icon = view.findViewById(R.id.eventIcon);
         icon.setImageResource(MonitorFormat.eventIcon(event));
-        int tint = MaterialColors.getColor(view, MonitorFormat.isProblem(event)
-                ? androidx.appcompat.R.attr.colorError : com.google.android.material.R.attr.colorOnSurfaceVariant);
+        int tint = MaterialColors.getColor(view, MonitorMotionRules.eventTint(event));
         ImageViewCompat.setImageTintList(icon, ColorStateList.valueOf(tint));
 
         ((TextView) view.findViewById(R.id.eventLabel)).setText(MonitorFormat.eventLabel(context, event, host.shizukuMode()));

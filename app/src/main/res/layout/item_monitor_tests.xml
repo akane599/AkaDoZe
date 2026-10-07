@@ -1,21 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<com.google.android.material.card.MaterialCardView
+<com.akylas.enforcedoze.ui.amber.AmberCardView
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="8dp"
-    android:layout_marginBottom="8dp"
-    app:cardElevation="0dp"
-    app:strokeColor="?attr/colorOutlineVariant"
-    app:strokeWidth="1dp">
+    android:layout_marginTop="@dimen/space_2"
+    android:layout_marginBottom="@dimen/space_2">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:padding="@dimen/space_3">
 
         <TextView
             android:id="@+id/testsTitle"
@@ -28,18 +25,20 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="@dimen/space_1"
             android:text="@string/monitor_tests_intro"
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:textColor="?attr/colorOnSurfaceVariant" />
 
-        <Button
+        <!-- Tonal, not filled: the tests are secondary to the live state above. -->
+        <com.akylas.enforcedoze.ui.amber.AmberButton
             android:id="@+id/testDoze"
             style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="@string/monitor_test_doze" />
+            android:layout_marginTop="@dimen/space_3"
+            android:text="@string/monitor_test_doze"
+            app:shapeAppearance="@style/ShapeAppearance.Amber.Medium" />
 
         <TextView
             android:id="@+id/testDozeUnavailable"
@@ -51,13 +50,14 @@
             tools:text="Test Doze now: Needs Shizuku access"
             tools:visibility="visible" />
 
-        <Button
+        <com.akylas.enforcedoze.ui.amber.AmberButton
             android:id="@+id/testSensors"
             style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="@string/monitor_test_sensors" />
+            android:layout_marginTop="@dimen/space_2"
+            android:text="@string/monitor_test_sensors"
+            app:shapeAppearance="@style/ShapeAppearance.Amber.Medium" />
 
         <TextView
             android:id="@+id/testSensorsUnavailable"
@@ -72,7 +72,7 @@
             android:id="@+id/testProgress"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/space_3"
             android:indeterminate="true"
             android:visibility="gone" />
 
@@ -81,7 +81,7 @@
             android:id="@+id/testStatus"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="@dimen/space_1"
             android:accessibilityLiveRegion="polite"
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:textColor="?attr/colorOnSurfaceVariant"
@@ -91,7 +91,7 @@
             android:id="@+id/testResult"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/space_3"
             android:orientation="vertical"
             android:visibility="gone"
             tools:visibility="visible">
@@ -109,14 +109,14 @@
                 android:id="@+id/testResultText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
+                android:layout_marginTop="@dimen/space_1"
                 android:textAppearance="?attr/textAppearanceBodyMedium"
                 android:textColor="?attr/colorOnSurfaceVariant"
                 tools:text="@string/monitor_result_doze_passed" />
 
-            <Button
+            <com.akylas.enforcedoze.ui.amber.AmberButton
                 android:id="@+id/testRawToggle"
-                style="@style/Widget.Material3.Button.TextButton"
+                style="@style/Widget.Amber.Button.Text"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="start"
@@ -135,7 +135,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:fontFamily="monospace"
-                    android:padding="8dp"
+                    android:padding="@dimen/space_2"
                     android:textAppearance="?attr/textAppearanceBodySmall"
                     android:textColor="?attr/colorOnSurface"
                     android:textDirection="ltr"
@@ -144,4 +144,4 @@
             </HorizontalScrollView>
         </LinearLayout>
     </LinearLayout>
-</com.google.android.material.card.MaterialCardView>
+</com.akylas.enforcedoze.ui.amber.AmberCardView>

@@ -5,8 +5,8 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:accessibilityLiveRegion="polite"
-    android:paddingTop="8dp"
-    android:paddingBottom="8dp"
+    android:paddingTop="@dimen/space_2"
+    android:paddingBottom="@dimen/space_2"
     android:textAppearance="?attr/textAppearanceBodyMedium"
     android:textColor="?attr/colorOnSurfaceVariant"
     tools:text="@string/monitor_sessions_empty" />
