@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Toolbar action icon tint: unchanged when enabled, dimmed (AppCompat's abc_tint_default rule) when disabled. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:alpha="?android:attr/disabledAlpha" android:color="?attr/colorControlNormal" android:state_enabled="false" />
+    <item android:color="?attr/colorControlNormal" />
+</selector>
