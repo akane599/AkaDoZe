@@ -12,7 +12,7 @@
             android:persistent="false"
             android:title="@string/access_settings_title" />
         <ListPreference
-            android:defaultValue="root"
+            android:defaultValue="shizuku"
             android:entries="@array/execution_mode_entries"
             android:entryValues="@array/execution_mode_values"
             android:key="executionMode"
