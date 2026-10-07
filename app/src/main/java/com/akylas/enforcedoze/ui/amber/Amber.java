@@ -7,9 +7,6 @@ import com.google.android.material.chip.Chip;
 
 /** Amber finish for views built in code, where a layout can't name {@link AmberCardView}. */
 public final class Amber {
-    private Amber() {
-    }
-
     /** Squircle corners at the chip's resolved size. */
     public static void treat(@NonNull Chip chip) {
         chip.setShapeAppearanceModel(SquircleShapes.squircle(chip.getShapeAppearanceModel()));

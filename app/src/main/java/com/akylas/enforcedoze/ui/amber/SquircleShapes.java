@@ -11,9 +11,6 @@ public final class SquircleShapes {
     /** Figma's "iOS" corner smoothing. */
     public static final float SMOOTHING = 0.6f;
 
-    private SquircleShapes() {
-    }
-
     /** Radius of a corner nested {@code padding} inside an {@code outer} corner, never negative. */
     public static float innerRadius(float outer, float padding) {
         return Math.max(0f, outer - padding);
