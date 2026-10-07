@@ -27,6 +27,21 @@
   run self-tests and restore system state, and it shares a report. An optional summary notification
   appears after screen-on.
 
+### Amber Night look
+- **A new, always-dark design.** Ink-black surfaces, warm off-white text and a single amber accent used only
+  for the active element and the main action. Cards are tonal "smoked glass" with squircle corners, a faint
+  noise texture and a hairline edge.
+- **New type.** Titles are set in Source Serif 4 and everything else in Inter, both bundled (SIL Open Font
+  License, see Licenses). Numbers use tabular figures, so counters and times don't jitter.
+- **The accent follows the time of day:** pale gold in the morning, amber by day, orange in the evening and a
+  deeper orange at night. A screen picks its accent when it opens.
+- **Motion and touch.** Spring animations on the service switch and live monitor state, a short haptic tick
+  on toggles, a soft amber glow on the Main card while the service is on (Android 9+), and a brief glow rising
+  from the bottom edge on launch. Everything snaps instantly when Android's animations are turned off.
+- Redrawn line icons (with duotone active states in the Doze monitor), sage green for verified and battery
+  figures, and restyled dialogs, settings, app lists, stats, log and About screens. Layouts were checked at
+  font scale 2.0 and in right-to-left languages.
+
 ### Android 16 / platform
 - Foreground service declares its special-use type; start denials are caught and journaled.
 - Edge-to-edge insets on every screen; AppCompat toolbars; back handling via the dispatcher.
