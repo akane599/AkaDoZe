@@ -1,67 +1,71 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical">
 
-    <androidx.cardview.widget.CardView
+    <!-- Doze session card: surface, corners and glass come from Widget.Amber.Card. -->
+    <com.akylas.enforcedoze.ui.amber.AmberCardView
         android:id="@+id/cardView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="8dp"
-        app:cardBackgroundColor="?attr/colorSurface"
-        app:cardCornerRadius="4dp"
-        app:cardElevation="2dp">
+        android:layout_marginStart="@dimen/space_3"
+        android:layout_marginTop="@dimen/space_1"
+        android:layout_marginEnd="@dimen/space_3"
+        android:layout_marginBottom="@dimen/space_1">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical">
+            android:orientation="vertical"
+            android:padding="@dimen/space_3">
 
             <!-- Title Section -->
             <TextView
                 android:id="@+id/title"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:padding="16dp"
+                android:textAppearance="?attr/textAppearanceTitleMedium"
                 android:textColor="?attr/colorOnSurface"
-                android:textSize="16sp"
-                android:textStyle="bold" />
+                tools:text="Doze Session" />
 
             <!-- Image and Description Section -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_2"
                 android:orientation="horizontal">
 
+                <!-- Tinted in code by StatsColorRules: sage for a good session, colorError for a drain. -->
                 <ImageView
                     android:id="@+id/image"
                     android:layout_width="wrap_content"
-                    android:layout_height="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
                     android:adjustViewBounds="true"
                     android:contentDescription="@null"
-                    android:padding="16dp"
-                    android:scaleType="fitCenter"
-                    android:tint="?attr/colorOnSurface" />
+                    android:scaleType="fitCenter" />
 
+                <!-- Times, durations and battery percentages: tabular figures so the cards line up. -->
                 <TextView
                     android:id="@+id/supportingText"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_gravity="center_vertical"
+                    android:layout_marginStart="@dimen/space_3"
                     android:layout_weight="1"
-                    android:paddingTop="16dp"
-                    android:paddingEnd="16dp"
-                    android:paddingBottom="16dp"
-                    android:textColor="?attr/colorOnSurface"
-                    android:textSize="14sp" />
+                    android:fontFeatureSettings="tnum"
+                    android:lineSpacingExtra="@dimen/space_1"
+                    android:textAppearance="?attr/textAppearanceBodyMedium"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    tools:text="Start Time: 23:10\nEnd Time: 06:12\nTime spent: 7h 2m\nBattery used: 2%" />
 
             </LinearLayout>
 
         </LinearLayout>
 
-    </androidx.cardview.widget.CardView>
+    </com.akylas.enforcedoze.ui.amber.AmberCardView>
 
 </LinearLayout>

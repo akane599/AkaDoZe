@@ -22,18 +22,20 @@
     <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:paddingBottom="@dimen/activity_vertical_margin"
-        android:paddingLeft="@dimen/activity_horizontal_margin"
-        android:paddingRight="@dimen/activity_horizontal_margin"
-        android:paddingTop="@dimen/activity_vertical_margin"
+        android:paddingStart="@dimen/space_2"
+        android:paddingTop="@dimen/space_2"
+        android:paddingEnd="@dimen/space_2"
         tools:context="com.akylas.enforcedoze.DozeStatsActivity"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
+        <!-- Compact Doze event log: flat list_row_layout_stats rows split by decorative hairlines. -->
         <ListView
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:id="@+id/listView"
             android:layout_alignParentTop="true"
-            android:layout_centerHorizontal="true" />
+            android:layout_centerHorizontal="true"
+            android:divider="?attr/colorOutlineVariant"
+            android:dividerHeight="@dimen/hairline" />
     </RelativeLayout>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

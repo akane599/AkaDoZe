@@ -20,6 +20,7 @@ import android.view.MenuItem;
 import android.widget.ListView;
 
 import com.afollestad.materialdialogs.MaterialDialog;
+import com.akylas.enforcedoze.ui.amber.AmberDialogs;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.nanotasks.BackgroundWork;
 import com.nanotasks.Completion;
@@ -107,7 +108,7 @@ public class DozeStatsActivity extends AppCompatActivity {
     }
 
     public void clearStats() {
-        progressDialog = new MaterialDialog.Builder(this)
+        progressDialog = AmberDialogs.builder(this)
                 .title(getString(R.string.please_wait_text))
                 .cancelable(false)
                 .autoDismiss(false)
