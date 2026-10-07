@@ -9,9 +9,6 @@ import android.provider.Settings;
  * same on every API level ({@code ValueAnimator.areAnimatorsEnabled()} only exists from API 26).
  */
 public final class MotionPolicy {
-    private MotionPolicy() {
-    }
-
     /** Pure rule: motion is reduced exactly when the animator duration scale is 0. */
     public static boolean reducedMotion(float animatorDurationScale) {
         return animatorDurationScale == 0f;

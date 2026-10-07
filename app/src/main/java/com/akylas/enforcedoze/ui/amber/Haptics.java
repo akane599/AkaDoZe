@@ -1,5 +1,6 @@
 package com.akylas.enforcedoze.ui.amber;
 
+import android.annotation.SuppressLint;
 import android.os.Build;
 import android.view.HapticFeedbackConstants;
 import android.view.View;
@@ -9,13 +10,16 @@ import android.view.View;
  * view's {@code hapticFeedbackEnabled} are respected.
  */
 public final class Haptics {
-    private Haptics() {
-    }
-
     /** A short tick: CONFIRM on API 30+, CONTEXT_CLICK below. Returns whether feedback was performed. */
     public static boolean tick(View view) {
-        return view.performHapticFeedback(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+        return view.performHapticFeedback(constantFor(Build.VERSION.SDK_INT));
+    }
+
+    /** The tick's feedback constant on {@code sdk}: CONFIRM exists from API 30, CONTEXT_CLICK from 23. */
+    @SuppressLint("InlinedApi")
+    static int constantFor(int sdk) {
+        return sdk >= Build.VERSION_CODES.R
                 ? HapticFeedbackConstants.CONFIRM
-                : HapticFeedbackConstants.CONTEXT_CLICK);
+                : HapticFeedbackConstants.CONTEXT_CLICK;
     }
 }

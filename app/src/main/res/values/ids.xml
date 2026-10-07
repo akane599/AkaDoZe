@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Springs: the view's per-property SpringAnimation map, so a (view, property) pair reuses one spring. -->
+    <item name="amber_springs" type="id" />
+</resources>

@@ -4,10 +4,13 @@ import android.app.Application;
 import android.content.Context;
 import android.graphics.Typeface;
 import android.os.Build;
+import android.os.Looper;
 import android.provider.Settings;
 import android.view.ContextThemeWrapper;
+import android.view.HapticFeedbackConstants;
 import android.view.View;
 
+import androidx.core.content.res.ResourcesCompat;
 import androidx.dynamicanimation.animation.DynamicAnimation;
 import androidx.dynamicanimation.animation.SpringAnimation;
 
@@ -16,7 +19,9 @@ import com.akylas.enforcedoze.R;
 import com.google.android.material.color.MaterialColors;
 
 import java.lang.reflect.Field;
+import java.time.Duration;
 
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
@@ -30,6 +35,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
+import static org.robolectric.Shadows.shadowOf;
 
 /**
  * The motion half of the Amber kit against the real AppTheme. Runtimes are the cached 28 and 36 images; API levels
@@ -55,6 +61,17 @@ public class MotionKitRobolectricTest {
         } finally {
             ReflectionHelpers.setStaticField(Build.VERSION.class, "SDK_INT", real);
         }
+    }
+
+    /**
+     * dynamicanimation keeps one AnimationHandler per thread, bound to the Choreographer it first saw. Robolectric
+     * swaps the Choreographer between tests, so a handler left from an earlier test never gets frames again.
+     */
+    @Before
+    public void resetSpringFrameHandler() throws Exception {
+        Class<?> handler = Class.forName("androidx.dynamicanimation.animation.AnimationHandler");
+        ThreadLocal<?> perThread = ReflectionHelpers.getStaticField(handler, "sAnimatorHandler");
+        perThread.remove();
     }
 
     @Test
@@ -168,23 +185,70 @@ public class MotionKitRobolectricTest {
     }
 
     @Test
-    @Config(sdk = 28)
-    public void hapticsTickDoesNotThrowOnApi23() {
-        View view = new View(appTheme());
-        withSdkInt(23, () -> Haptics.tick(view));
+    public void hapticsConstantIsContextClickOn23To29AndConfirmFrom30() {
+        assertEquals(HapticFeedbackConstants.CONTEXT_CLICK, Haptics.constantFor(23));
+        assertEquals(HapticFeedbackConstants.CONTEXT_CLICK, Haptics.constantFor(29));
+        assertEquals(HapticFeedbackConstants.CONFIRM, Haptics.constantFor(30));
+        assertEquals(HapticFeedbackConstants.CONFIRM, Haptics.constantFor(36));
     }
 
     @Test
-    public void hapticsTickDoesNotThrowOnApi30Plus() {
+    @Config(sdk = 28)
+    public void hapticsTickPerformsContextClickOnApi23() {
+        View view = new View(appTheme());
+        withSdkInt(23, () -> Haptics.tick(view));
+        assertEquals(HapticFeedbackConstants.CONTEXT_CLICK, shadowOf(view).lastHapticFeedbackPerformed());
+    }
+
+    @Test
+    public void hapticsTickPerformsConfirmOnApi30Plus() {
         View view = new View(appTheme());
         Haptics.tick(view);
-        withSdkInt(30, () -> Haptics.tick(view));
+        assertEquals(HapticFeedbackConstants.CONFIRM, shadowOf(view).lastHapticFeedbackPerformed());
+    }
+
+    @Test
+    public void consecutiveSpringsOnOnePropertyReuseOneAnimationAndEndOnTheLastTarget() {
+        setAnimatorScale(1f);
+        View view = new View(appTheme());
+        // A slow spring to 200, then, while it runs, a fast one to 100: two independent springs would let the slow
+        // one finish last at the stale 200.
+        SpringAnimation first = Springs.animate(view, DynamicAnimation.TRANSLATION_X, 200f,
+                R.attr.amberSpringStiffnessLow);
+        assertTrue(first.isRunning());
+        SpringAnimation second = Springs.animate(view, DynamicAnimation.TRANSLATION_X, 100f,
+                R.attr.amberSpringStiffnessHigh);
+
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(10));
+        assertFalse("spring settled", second.isRunning());
+        assertEquals("settles on the last target", 100f, view.getTranslationX(), 0f);
+        assertSame("one spring per (view, property)", first, second);
+    }
+
+    @Test
+    public void snapDuringARunningSpringEndsAtTheSnapValue() {
+        setAnimatorScale(1f);
+        View view = new View(appTheme());
+        SpringAnimation running = Springs.animate(view, DynamicAnimation.TRANSLATION_X, 200f);
+        assertTrue(running.isRunning());
+
+        setAnimatorScale(0f);
+        assertNull(Springs.animate(view, DynamicAnimation.TRANSLATION_X, 7f));
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(10));
+        assertEquals("stays at the snap value", 7f, view.getTranslationX(), 0f);
+        assertFalse("running spring cancelled", running.isRunning());
     }
 
     private static void assertAmberFonts(MaterialDialog.Builder builder) throws Exception {
-        assertNotNull("regular font", builder.getRegularFont());
+        Typeface family = ResourcesCompat.getFont(appTheme(), R.font.amber_sans);
+        assertNotNull(family);
+        assertTypeface("regular font", AmberDialogs.weighted(family, 400), builder.getRegularFont());
         Field medium = MaterialDialog.Builder.class.getDeclaredField("mediumFont");
         medium.setAccessible(true);
-        assertNotNull("medium font", medium.get(builder));
+        assertTypeface("medium font", AmberDialogs.weighted(family, 500), (Typeface) medium.get(builder));
+    }
+
+    private static void assertTypeface(String what, Typeface expected, Typeface actual) {
+        assertEquals(what, expected, actual);
     }
 }

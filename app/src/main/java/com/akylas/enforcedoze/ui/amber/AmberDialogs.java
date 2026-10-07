@@ -15,9 +15,6 @@ public final class AmberDialogs {
     private static final int WEIGHT_MEDIUM = 500;
     private static final int WEIGHT_REGULAR = 400;
 
-    private AmberDialogs() {
-    }
-
     /** Drop-in for {@code new MaterialDialog.Builder(context)}. */
     public static MaterialDialog.Builder builder(Context context) {
         Typeface family = ResourcesCompat.getFont(context, R.font.amber_sans);

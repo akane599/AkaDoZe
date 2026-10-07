@@ -27,11 +27,14 @@ import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
+import org.robolectric.annotation.GraphicsMode;
 import org.robolectric.util.ReflectionHelpers;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -102,10 +105,35 @@ public class AmberCardViewRobolectricTest {
         GlassOverlay glass = glassOf(card);
         assertEquals(new Rect(0, 0, 300, 200), glass.getBounds());
 
+        card.layout(0, 0, 120, 80);
+        assertEquals("a relayout at a new size moves the overlay with it", new Rect(0, 0, 120, 80), glass.getBounds());
+
         glass.setAlpha(128);
         glass.setColorFilter(null);
         glass.draw(new Canvas(Bitmap.createBitmap(300, 200, Bitmap.Config.ARGB_8888)));
         assertEquals(PixelFormat.TRANSLUCENT, glass.getOpacity());
+    }
+
+    private static byte[] alphaOf(Bitmap tile) {
+        ByteBuffer pixels = ByteBuffer.allocate(tile.getByteCount());
+        tile.copyPixelsToBuffer(pixels);
+        return pixels.array();
+    }
+
+    /** Real Skia (native graphics) so both tile writers are exercised as on a device. */
+    @Test
+    @Config(sdk = 28)
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    public void noiseTileCarriesTheSameNoiseThroughBothPixelWriters() {
+        byte[] preO = alphaOf(GlassOverlay.NoiseTile.create(25));
+        byte[] fromO = alphaOf(GlassOverlay.NoiseTile.create(26));
+
+        int opaque = 0;
+        for (byte alpha : preO) {
+            opaque += alpha != 0 ? 1 : 0;
+        }
+        assertTrue("pre-O tile has noise, " + opaque + " non-zero pixels", opaque > preO.length / 2);
+        assertArrayEquals(preO, fromO);
     }
 
     @Test
