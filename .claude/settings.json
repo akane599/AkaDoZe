@@ -1,0 +1,102 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew:*)",
+      "Bash(adb:*)",
+      "Bash(emulator:*)",
+      "Bash(avdmanager:*)",
+      "Bash(sdkmanager:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git remote -v:*)",
+      "Bash(rg:*)",
+      "Bash(bash .claude/kit/detect-stack.sh:*)",
+      "Bash(python3 .claude/kit/scaffold.py:*)"
+    ],
+    "deny": [
+      "Read(./local.properties)",
+      "Read(./**/*.jks)",
+      "Read(./**/*.keystore)",
+      "Read(./**/google-services.json)",
+      "Read(./.env*)",
+      "Read(./.claude-plugin-config.json)",
+      "Bash(git push --force:*)",
+      "Bash(rm -rf:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/compact-checkpoint.md\"; [ -f \"$f\" ] && cat \"$f\" || true"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/kit/compact-checkpoint.py",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/kit/ui-guard.py\"; [ -f \"$f\" ] || exit 0; python3 \"$f\" || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"$CLAUDE_PROJECT_DIR/.claude/kit/format-on-edit\" ] || exit 0; f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in *.kt|*.kts) command -v ktlint >/dev/null && ktlint -F \"$f\" >/dev/null 2>&1 || true;; esac"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "sidequest@eigenwise-toolshed": true,
+    "model-gateway@eigenwise-toolshed": true,
+    "live-rules@eigenwise-toolshed": true,
+    "codebase-mapper@eigenwise-toolshed": true,
+    "quartermaster@eigenwise-toolshed": true,
+    "claude-security@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true,
+    "context7@claude-plugins-official": true,
+    "session-report@claude-plugins-official": true,
+    "jdtls-lsp@claude-plugins-official": true
+  },
+  "extraKnownMarketplaces": {
+    "eigenwise-toolshed": {
+      "source": {
+        "source": "github",
+        "repo": "Eigenwise/eigenwise-toolshed"
+      }
+    },
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
+    }
+  }
+}

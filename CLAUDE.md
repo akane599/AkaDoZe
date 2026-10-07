@@ -22,6 +22,7 @@ Android, developed on Ubuntu from the CLI. **If the STACK block still has `<plac
 - **End of a session or story:** `/wrap-up` turns corrections and decisions into rules, CLAUDE.md lines and the decision log (you approve each). Personal preferences go to auto memory ("remember that …").
 - **Conventions** live in `.claude/live-rules/rules/` and are injected into every session and executor, so they're not repeated here. **Project map:** `.claude/.codebase-info/` (codebase-mapper).
 - **Board:** "show the Sidequest board"; side issues mentioned mid-task get filed, not worked.
+- **New PC:** `.claude/setup/README.md` (tools, plugins, machine-local settings, `restore-sidequest-profile.py` for the routing profile).
 - **Plugin health / updates:** `/quartermaster:toolshed-doctor`, `/quartermaster:update-toolshed`. After a few weeks of real work: `/quartermaster:resupply`.
 - **Compaction:** your last instructions are saved before compaction and re-injected after; re-read them before acting.
 
