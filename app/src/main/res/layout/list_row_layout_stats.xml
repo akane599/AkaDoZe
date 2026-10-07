@@ -16,8 +16,7 @@
         android:id="@+id/dozeStateTimestamp"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:fontFeatureSettings="tnum"
-        android:textAppearance="?attr/textAppearanceBodyMedium"
+        android:textAppearance="@style/TextAppearance.Amber.BodyMedium.Numeric"
         android:textColor="?attr/colorOnSurface"
         tools:text="Entered Doze mode at 23:10:42" />
 
@@ -27,8 +26,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="@dimen/space_1"
-        android:fontFeatureSettings="tnum"
-        android:textAppearance="?attr/textAppearanceLabelLarge"
+        android:textAppearance="@style/TextAppearance.Amber.LabelLarge.Numeric"
         android:textColor="?attr/colorSecondary"
         tools:text="Battery level: 87%" />
 

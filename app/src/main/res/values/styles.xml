@@ -73,7 +73,7 @@
         <item name="amberSpringStiffnessMedium">400.0</item>
         <item name="amberSpringStiffnessHigh">1500.0</item>
 
-        <!-- Typography: 1.25 scale, serif for display/headline/titleLarge, sans with tnum elsewhere. -->
+        <!-- Typography: 1.25 scale, serif for display/headline/titleLarge, sans elsewhere; tnum only on the *.Numeric variants. -->
         <item name="textAppearanceDisplayLarge">@style/TextAppearance.Amber.DisplayLarge</item>
         <item name="textAppearanceDisplayMedium">@style/TextAppearance.Amber.DisplayMedium</item>
         <item name="textAppearanceDisplaySmall">@style/TextAppearance.Amber.DisplaySmall</item>
@@ -204,21 +204,18 @@
     <style name="TextAppearance.Amber.BodyLarge" parent="TextAppearance.Material3.BodyLarge">
         <item name="fontFamily">@font/amber_sans</item>
         <item name="android:fontFamily">@font/amber_sans</item>
-        <item name="android:fontFeatureSettings">tnum</item>
         <item name="android:textSize">17.5sp</item>
         <item name="android:letterSpacing">0</item>
     </style>
     <style name="TextAppearance.Amber.BodyMedium" parent="TextAppearance.Material3.BodyMedium">
         <item name="fontFamily">@font/amber_sans</item>
         <item name="android:fontFamily">@font/amber_sans</item>
-        <item name="android:fontFeatureSettings">tnum</item>
         <item name="android:textSize">14sp</item>
         <item name="android:letterSpacing">0.005</item>
     </style>
     <style name="TextAppearance.Amber.BodySmall" parent="TextAppearance.Material3.BodySmall">
         <item name="fontFamily">@font/amber_sans</item>
         <item name="android:fontFamily">@font/amber_sans</item>
-        <item name="android:fontFeatureSettings">tnum</item>
         <item name="android:textSize">11.2sp</item>
         <item name="android:letterSpacing">0.01</item>
     </style>
@@ -226,7 +223,6 @@
     <style name="TextAppearance.Amber.LabelLarge" parent="TextAppearance.Material3.LabelLarge">
         <item name="fontFamily">@font/amber_sans</item>
         <item name="android:fontFamily">@font/amber_sans</item>
-        <item name="android:fontFeatureSettings">tnum</item>
         <item name="android:textSize">14sp</item>
         <item name="android:letterSpacing">0.01</item>
         <item name="android:textFontWeight" tools:targetApi="28">500</item>
@@ -234,7 +230,6 @@
     <style name="TextAppearance.Amber.LabelMedium" parent="TextAppearance.Material3.LabelMedium">
         <item name="fontFamily">@font/amber_sans</item>
         <item name="android:fontFamily">@font/amber_sans</item>
-        <item name="android:fontFeatureSettings">tnum</item>
         <item name="android:textSize">11.2sp</item>
         <item name="android:letterSpacing">0.03</item>
         <item name="android:textFontWeight" tools:targetApi="28">500</item>
@@ -242,10 +237,20 @@
     <style name="TextAppearance.Amber.LabelSmall" parent="TextAppearance.Material3.LabelSmall">
         <item name="fontFamily">@font/amber_sans</item>
         <item name="android:fontFamily">@font/amber_sans</item>
-        <item name="android:fontFeatureSettings">tnum</item>
         <item name="android:textSize">11.2sp</item>
         <item name="android:letterSpacing">0.03</item>
         <item name="android:textFontWeight" tools:targetApi="28">500</item>
+    </style>
+
+    <!--
+      Tabular figures only where columns of numbers are compared (stats rows). Inter's tnum also gives the
+      hyphen a figure-wide advance, so prose ("Wi-Fi", "adb -d", "10-07") must stay on the base styles.
+    -->
+    <style name="TextAppearance.Amber.BodyMedium.Numeric">
+        <item name="android:fontFeatureSettings">tnum</item>
+    </style>
+    <style name="TextAppearance.Amber.LabelLarge.Numeric">
+        <item name="android:fontFeatureSettings">tnum</item>
     </style>
 
     <!-- Rounded fallbacks: chip/inner 8dp, button 16dp, card 24dp. -->

@@ -38,15 +38,16 @@
                 android:layout_marginTop="@dimen/space_2"
                 android:orientation="horizontal">
 
-                <!-- Tinted in code by StatsColorRules: sage for a good session, colorError for a drain. -->
+                <!-- Tinted in code by StatsColorRules: sage for a good session, colorError for a drain.
+                     The 48dp battery drawable's glyph is ~23dp wide, so a 24dp column with scaleType center
+                     shows it unscaled and hands the transparent side bearings to the text column. -->
                 <ImageView
                     android:id="@+id/image"
-                    android:layout_width="wrap_content"
+                    android:layout_width="@dimen/space_3"
                     android:layout_height="wrap_content"
                     android:layout_gravity="center_vertical"
-                    android:adjustViewBounds="true"
                     android:contentDescription="@null"
-                    android:scaleType="fitCenter" />
+                    android:scaleType="center" />
 
                 <!-- Times, durations and battery percentages: tabular figures so the cards line up. -->
                 <TextView
@@ -54,11 +55,10 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_gravity="center_vertical"
-                    android:layout_marginStart="@dimen/space_3"
+                    android:layout_marginStart="@dimen/space_2"
                     android:layout_weight="1"
-                    android:fontFeatureSettings="tnum"
                     android:lineSpacingExtra="@dimen/space_1"
-                    android:textAppearance="?attr/textAppearanceBodyMedium"
+                    android:textAppearance="@style/TextAppearance.Amber.BodyMedium.Numeric"
                     android:textColor="?attr/colorOnSurfaceVariant"
                     tools:text="Start Time: 23:10\nEnd Time: 06:12\nTime spent: 7h 2m\nBattery used: 2%" />
 
