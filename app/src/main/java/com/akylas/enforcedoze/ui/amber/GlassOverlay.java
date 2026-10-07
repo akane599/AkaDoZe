@@ -13,6 +13,7 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
+import android.os.Build;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -23,6 +24,7 @@ import com.google.android.material.shape.ShapeAppearanceModel;
 import com.google.android.material.shape.ShapeAppearancePathProvider;
 import com.google.android.material.shape.Shapeable;
 
+import java.nio.ByteBuffer;
 import java.util.Random;
 
 /**
@@ -107,20 +109,35 @@ public final class GlassOverlay extends Drawable {
     }
 
     /** One shared 128px ALPHA_8 tile of seeded uniform noise, built on first use. */
-    private static final class NoiseTile {
+    static final class NoiseTile {
         static final int SIZE = 128;
         static final long SEED = 0x416D626572L;
-        static final Bitmap BITMAP = create();
+        static final Bitmap BITMAP = create(Build.VERSION.SDK_INT);
 
-        private static Bitmap create() {
-            Random random = new Random(SEED);
-            int[] colors = new int[SIZE * SIZE];
-            for (int i = 0; i < colors.length; i++) {
-                colors[i] = random.nextInt(256) << 24 | 0xFFFFFF;
-            }
+        /**
+         * Builds the tile for {@code sdk}. Before O, setPixels has no ALPHA_8 conversion and silently writes nothing,
+         * so the alpha bytes go in raw. From O, setPixels handles ALPHA_8; it is kept there because Robolectric's
+         * legacy bitmap rejects an ALPHA_8 copyPixelsFromBuffer.
+         */
+        static Bitmap create(int sdk) {
+            byte[] alpha = new byte[SIZE * SIZE];
+            new Random(SEED).nextBytes(alpha);
             Bitmap tile = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ALPHA_8);
-            tile.setPixels(colors, 0, SIZE, 0, 0, SIZE, SIZE);
+            if (sdk < Build.VERSION_CODES.O) {
+                tile.copyPixelsFromBuffer(ByteBuffer.wrap(alpha));
+            } else {
+                tile.setPixels(colors(alpha), 0, SIZE, 0, 0, SIZE, SIZE);
+            }
             return tile;
+        }
+
+        /** White at each byte's alpha. */
+        private static int[] colors(byte[] alpha) {
+            int[] colors = new int[alpha.length];
+            for (int i = 0; i < alpha.length; i++) {
+                colors[i] = (alpha[i] & 0xFF) << 24 | 0xFFFFFF;
+            }
+            return colors;
         }
     }
 }

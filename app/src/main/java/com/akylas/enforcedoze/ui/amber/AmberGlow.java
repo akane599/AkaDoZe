@@ -17,10 +17,11 @@ import com.google.android.material.color.MaterialColors;
  * casts no shadow, which falls back to no glow. That is acceptable.
  */
 public final class AmberGlow {
-    private AmberGlow() {
-    }
-
-    /** Active: shadow tinted with {@code ?attr/amberGlowColor} at {@code @dimen/glow_elevation}. Inactive: elevation 0. */
+    /**
+     * Active: shadow tinted with {@code ?attr/amberGlowColor} at {@code @dimen/glow_elevation}. Inactive: elevation 0.
+     * For cards and other non-MaterialButton views only: M3's button state-list animator resets {@code elevation} on
+     * every press, which drops the glow.
+     */
     public static void setActive(View view, boolean active) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
             return;
