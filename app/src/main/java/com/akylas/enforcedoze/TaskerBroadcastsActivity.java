@@ -23,6 +23,7 @@ import androidx.preference.PreferenceManager;
 
 import com.akylas.enforcedoze.access.ExternalControlPolicy;
 import com.akylas.enforcedoze.access.Prefs;
+import com.akylas.enforcedoze.ui.amber.Haptics;
 
 public class TaskerBroadcastsActivity extends AppCompatActivity {
 
@@ -98,6 +99,7 @@ public class TaskerBroadcastsActivity extends AppCompatActivity {
                 ClipboardManager clipboard = (ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
                 ClipData broadcastData = ClipData.newPlainText("fd_broadcast", ((TextView)view.findViewById(R.id.broadcastName)).getText());
                 clipboard.setPrimaryClip(broadcastData);
+                Haptics.tick(view);
                 Toast.makeText(getApplicationContext(), R.string.tasker_copied_toast, Toast.LENGTH_SHORT).show();
             }
         });

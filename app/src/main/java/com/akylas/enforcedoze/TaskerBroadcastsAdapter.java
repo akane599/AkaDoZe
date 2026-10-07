@@ -4,6 +4,7 @@ import android.content.Context;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.AdapterView;
 import android.widget.BaseAdapter;
 import android.widget.TextView;
 
@@ -36,7 +37,7 @@ public class TaskerBroadcastsAdapter extends BaseAdapter {
     public View getView(int position, View convertView, ViewGroup parent) {
         ViewHolder holder;
         if (convertView == null) {
-            convertView = layoutInflater.inflate(R.layout.list_row_layout_broadcasts, null);
+            convertView = layoutInflater.inflate(R.layout.list_row_layout_broadcasts, parent, false);
             holder = new ViewHolder();
             holder.broadcastName = (TextView) convertView.findViewById(R.id.broadcastName);
             holder.broadcastValues = (TextView) convertView.findViewById(R.id.broadcastValues);
@@ -47,6 +48,9 @@ public class TaskerBroadcastsAdapter extends BaseAdapter {
 
         holder.broadcastName.setText(listData.get(position).getBroadcastName());
         holder.broadcastValues.setText(listData.get(position).getBroadcastValues());
+        // The card is clickable for its squircle ripple, so it forwards the tap as the list's item click (copy).
+        View row = convertView;
+        row.setOnClickListener(v -> ((AdapterView<?>) parent).performItemClick(row, position, position));
         return convertView;
     }
 

@@ -17,25 +17,22 @@
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"/>
     </com.google.android.material.appbar.AppBarLayout>
-    <RelativeLayout
+
+    <!-- Padding lives on the list (clipToPadding=false) so cards scroll under the navigation bar.
+         The transparent divider is only the space_2 gap between cards; cards draw their own pressed ripple. -->
+    <ListView
+        android:id="@+id/listViewBroadcasts"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        tools:context="com.akylas.enforcedoze.TaskerBroadcastsActivity"
-        app:layout_behavior="@string/appbar_scrolling_view_behavior">
-
-        <!-- Padding lives on the list (clipToPadding=false) so rows scroll under the navigation bar. -->
-        <ListView
-            android:id="@+id/listViewBroadcasts"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:layout_alignParentTop="true"
-            android:layout_centerHorizontal="true"
-            android:clipToPadding="false"
-            android:scrollbarStyle="outsideOverlay"
-            android:paddingBottom="@dimen/activity_vertical_margin"
-            android:paddingLeft="@dimen/activity_horizontal_margin"
-            android:paddingRight="@dimen/activity_horizontal_margin"
-            android:paddingTop="@dimen/activity_vertical_margin" />
-    </RelativeLayout>
+        android:clipToPadding="false"
+        android:divider="@android:color/transparent"
+        android:dividerHeight="@dimen/space_2"
+        android:listSelector="@android:color/transparent"
+        android:nestedScrollingEnabled="true"
+        android:scrollbarStyle="outsideOverlay"
+        android:paddingBottom="@dimen/space_3"
+        android:paddingLeft="@dimen/space_3"
+        android:paddingRight="@dimen/space_3"
+        android:paddingTop="@dimen/space_2"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior" />
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
-
