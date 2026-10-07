@@ -98,10 +98,12 @@ _Work items, stories and blockers live on the Sidequest board. This file keeps w
 - 2026-10-06: `.github/workflows/ci.yml` runs the full gate (unit tests, assembleDebug, lintDebug, assembleRelease) on every push and pull request, on JDK 21 (Robolectric's SDK 36 runtime needs it). It passes no keystore secrets, so CI release APKs are debug-signed. The manual fastlane `release.yml` is unchanged. (f6f0bda)
 - 2026-10-06: Preview APKs ship as a GitHub pre-release (`akadoze-2.0-f6f0bda`: release and debug APKs plus SHA256SUMS), not as files committed to git. They're built locally, so every preview is signed with the same debug key and installs as an update; CI runners generate a new debug key on every run. The workflow's actions moved to their current majors (checkout v7, setup-java v6, setup-gradle v6, upload-artifact v7), because setup-java v4 is deprecated and annotated every run. (d4d1435)
 
+- 2026-10-07: Amber Night visual overhaul plan audited (SQ-10 GPT-6.1 Sol REWORK, SQ-11 Opus APPROVE WITH FIXES; stricter taken). Dark-only; bundled variable Source Serif 4 + Inter (Cyrillic coverage for bg/ru/uk) subset to ~467 KB; squircles via explicit AmberCardView/AmberButton subclasses instead of a global viewInflaterClass hook (it misses qualified Material tags and code-built Chips, and AppCompat silently falls back on R8 breakage); window anims instead of theme MaterialSharedAxis (not XML-inflatable); glow needs elevation; material-dialogs fonts via typeface(Typeface, Typeface) (md_*_font are asset paths); notification/tile icons excluded; no backdrop blur (no in-window blur for Views). Plan: /home/akane/AkaDoZe-amber-assets/PLAN.md.
+
 ## Audit status
 | Area | Last run | Result | How |
 |---|---|---|---|
-| Plan audit | 2026-10-03 | REWORK → plan reworked (AkaDoZe 2.0; SQ-3, SQ-4) | `/plan-audit` |
+| Plan audit | 2026-10-07 | REWORK → plan reworked (Amber Night; SQ-10 Sol REWORK, SQ-11 Opus APPROVE WITH FIXES). Previous: 2026-10-03 REWORK (AkaDoZe 2.0; SQ-3, SQ-4) | `/plan-audit` |
 | Story review | 2026-10-03 | US-1 whole-story review SQ-19: 1 BLOCKER, 1 FIX, 6 NIT → fixed in SQ-39/SQ-40, rest deferred to SQ-41; per-ticket reviews SQ-25, SQ-30, SQ-31, SQ-36, SQ-42; 2026-10-04 US-2 (external six-reviewer pass) bound reviews SQ-54 FAIL, SQ-56 FAIL, SQ-57 PASS, SQ-63 FAIL, SQ-66 PASS; suggestions held in SQ-53 | `review-audit` (Opus) |
 | Bug hunt | 2026-10-04 | 4 areas (restore engine/ledger, runtime/concurrency, access/automation, service/UI/journal); 20 verified; 14 fix tickets in US-3 (SQ-71..SQ-84, with SQ-89/SQ-90 replacing rejected SQ-71/SQ-78; SQ-71 also covers the reset-recreation finding), +1 found while fixing (SQ-85); 1 folded into SQ-41, 5 low/device-only held in SQ-92; reviews SQ-87 FAIL, SQ-88 PASS, SQ-91 PASS | `/bug-hunt` |
 | Code audit | 2026-10-05 | `/code-audit` (8 reviewers, fable/high, run in a separate environment) over 61f061a..112cf3c: 7 verified findings (1 P2, 6 P3), fixed in US-4 (SQ-93..SQ-99); bound reviews SQ-100 PASS, SQ-101 PASS; low review notes held in SQ-92 | `/code-audit` |
@@ -115,5 +117,5 @@ _Work items, stories and blockers live on the Sidequest board. This file keeps w
 | Device QA | — | pending on a physical device: emulator pass done (see Emulator QA); root path, real CPU suspend (F5 watchdog timing), radio settle on root, TalkBack on Main and the SQ-149 post-revoke readback still need a rooted or Shizuku phone | physical device (no KVM) |
 
 ## Environment notes
-- 12 cores / ~22 GB RAM / no KVM: up to 4 Gradle jobs at once (user direction 2026-10-03), no emulator here; device QA needs a physical device with root or Shizuku.
+- 12 cores / ~22 GB RAM / KVM usable (the earlier "no KVM" note came from an older environment; corrected 2026-10-07): up to 4 Gradle jobs at once (user direction 2026-10-03). One headless emulator at a time (AVDs pixel API 36, pixel-api35, batstats-*; API 23 image installed). Root-mode and real-suspend checks still need a physical rooted phone.
 - Build pulls from jcenter (read-only mirror) and jitpack; resolves today but is a supply-chain/availability risk.
