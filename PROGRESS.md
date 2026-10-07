@@ -117,5 +117,5 @@ _Work items, stories and blockers live on the Sidequest board. This file keeps w
 | Device QA | — | pending on a physical device: emulator pass done (see Emulator QA); root path, real CPU suspend (F5 watchdog timing), radio settle on root, TalkBack on Main and the SQ-149 post-revoke readback still need a rooted or Shizuku phone | physical device (no KVM) |
 
 ## Environment notes
-- 12 cores / ~22 GB RAM / KVM usable (the earlier "no KVM" note came from an older environment; corrected 2026-10-07): up to 4 Gradle jobs at once (user direction 2026-10-03). One headless emulator at a time (AVDs pixel API 36, pixel-api35, batstats-*; API 23 image installed). Root-mode and real-suspend checks still need a physical rooted phone.
+- 12 cores / 15 GB RAM (measured 2026-10-07; the earlier ~22 GB figure was wrong) / KVM usable (the earlier "no KVM" note came from an older environment; corrected 2026-10-07): up to 4 Gradle jobs at once (user direction 2026-10-03). One headless emulator at a time (AVDs pixel API 36, pixel-api35, batstats-*; API 23 image installed). Root-mode and real-suspend checks still need a physical rooted phone.
 - Build pulls from jcenter (read-only mirror) and jitpack; resolves today but is a supply-chain/availability risk.

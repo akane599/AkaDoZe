@@ -166,6 +166,22 @@ before, and nothing should be reset.
   not enforcing anything", the switch stays enabled and turns the service off (then reads disabled and greys out);
   TalkBack reads the status and the switch's enabled state.
 
+- *Amber Night look on a real phone (US-1, 2026-10-07).* The emulator pass covered every screen at font scale
+  1.0/1.3/2.0, RTL, the four accent phases and the dialogs (`AkaDoZe-amber-assets/shots/after/`). These need
+  hardware:
+  - Haptics: the Main service switch, monitor actions and app-list toggles give one short tick (CONFIRM on
+    Android 11+, a context click below). Nothing buzzes twice, and nothing buzzes with system touch feedback off.
+  - Glow and shadows: with the service on, the Main hero card shows a soft amber glow (Android 9+). On OEM skins
+    (One UI, MIUI, ColorOS) it must not render as a grey or black drop shadow; below Android 9 there is no glow.
+  - Launch glow: cold start (force-stop, then open from the launcher). A brief amber glow rises from the bottom
+    edge once the screen is visible; it doesn't replay on rotation or when returning from another screen, and it
+    doesn't play at all with Developer options → Animator duration scale off.
+  - Root-mode screens: with root granted, Main, the access card, Settings' root-only rows and the grant-helper
+    progress dialog use the dark tonal surfaces, serif titles and amber actions (the emulator only showed
+    DUMP/Shizuku-less states).
+  - Android 6–7 (API 23–25): cards show the faint noise texture and hairline, fonts fall back to the default weight
+    instances, and the time-of-day accent still applies (the overlay is applied in `onActivityCreated` there).
+
 **If something fails:** Doze monitor → "Share report", plus
 `adb logcat -d --pid=$(adb shell pidof -s com.akylas.enforcedoze) | tail -200`.
 

@@ -629,12 +629,6 @@
             column="1"/>
     </issue>
 
-    <issue
-        id="UnusedResources"
-        message="The resource `R.drawable.ic_add_white_48dp` appears to be unused">
-        <location
-            file="src/main/res/drawable-hdpi/ic_add_white_48dp.png"/>
-    </issue>
 
     <issue
         id="UnusedResources"
@@ -650,26 +644,8 @@
             file="src/main/res/mipmap-hdpi/ic_launcher_round.webp"/>
     </issue>
 
-    <issue
-        id="UnusedResources"
-        message="The resource `R.drawable.ic_remove_white_24dp` appears to be unused">
-        <location
-            file="src/main/res/drawable-hdpi/ic_remove_white_24dp.png"/>
-    </issue>
 
-    <issue
-        id="UnusedResources"
-        message="The resource `R.drawable.ic_remove_white_48dp` appears to be unused">
-        <location
-            file="src/main/res/drawable-hdpi/ic_remove_white_48dp.png"/>
-    </issue>
 
-    <issue
-        id="UnusedResources"
-        message="The resource `R.drawable.ic_settings_black_18dp` appears to be unused">
-        <location
-            file="src/main/res/drawable-hdpi/ic_settings_black_18dp.png"/>
-    </issue>
 
     <issue
         id="UnusedResources"
@@ -1239,12 +1215,6 @@
             column="48"/>
     </issue>
 
-    <issue
-        id="IconDensities"
-        message="Missing the following drawables in `drawable-mdpi`: ic_settings_black_18dp.png (found in drawable-hdpi, drawable-xhdpi, drawable-xxhdpi, drawable-xxxhdpi)">
-        <location
-            file="src/main/res/drawable-mdpi"/>
-    </issue>
 
     <issue
         id="IconDuplicates"
