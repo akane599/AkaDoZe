@@ -466,7 +466,7 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
                 .setStyle(new CustomTabs.Style(getApplicationContext())
                         .setShowTitle(true)
                         .setExitAnimation(android.R.anim.slide_in_left, android.R.anim.slide_out_right)
-                        .setToolbarColor(R.color.colorPrimary))
+                        .setToolbarColor(R.color.colorPrimaryDark))
                 .openUrl("https://github.com/farfromrefug", this);
     }
 

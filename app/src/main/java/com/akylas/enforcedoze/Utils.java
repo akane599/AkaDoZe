@@ -476,7 +476,7 @@ public class Utils {
                 .setStyle(new CustomTabs.Style(activity.getApplicationContext())
                         .setShowTitle(true)
                         .setExitAnimation(android.R.anim.slide_in_left, android.R.anim.slide_out_right)
-                        .setToolbarColor(R.color.colorPrimary))
+                        .setToolbarColor(R.color.colorPrimaryDark))
                 .openUrl(url, activity);
     }
 
