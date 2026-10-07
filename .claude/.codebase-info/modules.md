@@ -1,9 +1,9 @@
 # Modules and Files
 
-*Last Updated: 2026-10-06*
+*Last Updated: 2026-10-07*
 
 Single Gradle module `:app`, base package `com.akylas.enforcedoze` at
-`app/src/main/java/com/akylas/enforcedoze/`: 111 sources (56 Java, 55 Kotlin) in seven packages.
+`app/src/main/java/com/akylas/enforcedoze/`: 128 sources (73 Java, 55 Kotlin) in eight packages.
 
 ## Root package (43 Java, 2 Kotlin): Android shell
 
@@ -56,7 +56,7 @@ runtime only inside the admitted callback) ·
 `RestoreOnlyRequest.kt` (9 s receiver window + the single process-level `RestoreContinuation`) · `SystemReset.kt`
 (readback-verified reset plan and result types; deferred revokes report per-command status markers).
 
-## `ui/` (14 Java): new screens and presentation
+## `ui/` (20 Java) and `ui/amber/` (11 Java): new screens, presentation and the Amber Night kit
 
 `AccessCard.java` (Main access/debt card) · `AccessUi.java` (capability/session presentation, Main status text and the
 pure `AccessUpdate` access-change decision) · `DozeMonitorActivity.java`
@@ -65,6 +65,29 @@ pure `AccessUpdate` access-change decision) · `DozeMonitorActivity.java`
 unit-tested; `MainRules` holds the Main screen's permission order, Shizuku prompt, lockscreen-timeout notice and Doze-item visibility) ·
 `DamagedRecords.java` (dismissible damaged ledger lines) · `ResetReport.java` (Settings reset result text and pref
 clearing) · `WhitelistUi.java` (whitelist outcomes as text).
+
+Amber Night (dark-only design, US-1) adds pure, JVM-tested rules and the theme wiring to `ui/`:
+- `AccentClock.java`: hour → `Phase` (morning 05–10, day 10–17, evening 17–22, night 22–05), no resource ids.
+- `AccentThemer.java`: `ActivityLifecycleCallbacks` registered first thing in `MyApplication.onCreate` (before the
+  direct-boot return). It applies `ThemeOverlay.Amber.Accent.*` with `getTheme().applyStyle(overlay, true)` in
+  `onActivityPreCreated` (API 29+) or `onActivityCreated` (below). The hour source is injectable for tests.
+- `LaunchGlowRules.java` (Main's once-per-process launch glow: when it plays, its 500 ms curve, and `startNow`; the
+  animator starts in `MainActivity.onEnterAnimationComplete`), `MonitorMotionRules.java` (spring only on a real
+  live-state change), `StatsColorRules.java` (sage figures on the stats screens), `AccessUi.GrantHelperDecision`.
+
+`ui/amber/` is the view kit the layouts name directly (no global inflater hook):
+- `AmberCardView` (extends `MaterialCardView`) and `AmberButton` (extends `MaterialButton`): squircle shape via
+  `SquircleShapes` / `SquircleCornerTreatment` (G2-like cubic corners, footprint clamped to min(w,h)/2, nested radius
+  = outer − padding). `AmberCardView` adds `GlassOverlay` (seeded 3 % noise tile + gradient hairline, drawn through
+  the `ViewOverlay`). Cards keep `clipToOutline=false`, so children need ≥16dp padding; setting
+  `android:background` on an `AmberButton` throws.
+- `Amber.treat(Chip|MaterialCardView)` for views built in code (`MonitorAdapter`).
+- Motion: `Springs` (one `SpringAnimation` per view+property, kept in a view tag from `res/values/ids.xml`),
+  `MotionPolicy` (reduced motion = `ANIMATOR_DURATION_SCALE` 0 on every API; springs then snap), `Haptics`
+  (CONFIRM on API 30+, CONTEXT_CLICK below), `AmberGlow` (outline shadow colour + `glow_elevation` on API 28+,
+  elevation 0 when inactive, no-op below 28).
+- `AmberDialogs.builder(ctx)`: the material-dialogs 0.9 builder with the bundled typefaces; every
+  `new MaterialDialog.Builder(` in the app goes through it. M3 dialogs are themed by `materialAlertDialogTheme`.
 
 ## Directory layout
 
@@ -76,9 +99,11 @@ app/
 └── src/
     ├── main/
     │   ├── AndroidManifest.xml
-    │   ├── java/com/akylas/enforcedoze/   # root + access/ doze/ doze/parse/ monitor/ service/ ui/
+    │   ├── java/com/akylas/enforcedoze/   # root + access/ doze/ doze/parse/ monitor/ service/ ui/ ui/amber/
     │   └── res/  layout/ (28), xml/ (prefs, tunables, shortcuts, backup + data-extraction rules, file_paths), values*/
-    ├── test/java/com/akylas/enforcedoze/  # 101 JVM test sources, mirrors main packages (see patterns.md)
+    │       font/ (Inter + Source Serif 4 variable TTFs, amber_sans/amber_serif families), anim/amber_activity_*
+    │   assets/licenses/OFL-*.txt   # font licences, bundled with the APK (not yet shown in the About licenses dialog)
+    ├── test/java/com/akylas/enforcedoze/  # 120 JVM test sources, mirrors main packages (see patterns.md)
     ├── test/resources/doze/deviceidle.txt # parser fixture
     └── androidTest/…/ApplicationTest.java # template stub
 docs/doze-feature-ledger.md    # command / readback matrix per feature and API band

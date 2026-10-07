@@ -31,8 +31,8 @@
 - **A new, always-dark design.** Ink-black surfaces, warm off-white text and a single amber accent used only
   for the active element and the main action. Cards are tonal "smoked glass" with squircle corners, a faint
   noise texture and a hairline edge.
-- **New type.** Titles are set in Source Serif 4 and everything else in Inter, both bundled (SIL Open Font
-  License, see Licenses). Numbers use tabular figures, so counters and times don't jitter.
+- **New type.** Titles are set in Source Serif 4 and everything else in Inter, both bundled under the SIL Open
+  Font License (licence texts ship in the app). Numbers use tabular figures, so counters and times don't jitter.
 - **The accent follows the time of day:** pale gold in the morning, amber by day, orange in the evening and a
   deeper orange at night. A screen picks its accent when it opens.
 - **Motion and touch.** Spring animations on the service switch and live monitor state, a short haptic tick

@@ -1,6 +1,6 @@
 # Onboarding
 
-*Last Updated: 2026-10-06*
+*Last Updated: 2026-10-07*
 
 ## Build and verify
 
@@ -19,6 +19,13 @@ Other notes:
 - **Device testing.** Doze sessions need Shizuku or root. Without them you only get APP level: grant `DUMP` /
   `WRITE_SECURE_SETTINGS` with `adb shell pm grant com.akylas.enforcedoze android.permission.…` to see readback and
   recovery.
+- **Visual QA (no screenshot tests).** Boot one headless AVD (`pixel` API 36, `amber-api23` for the minSdk look) only
+  after Gradle builds have drained, since qemu needs ~4.5 GB. Then run
+  `/home/akane/AkaDoZe-amber-assets/qa/qa-full.sh <apk> <outdir>`: every activity at font scale 1.0/1.3/2.0, the four
+  accent phases and launch-glow frames. `qa/tap.sh <regex>` opens dialogs through `uiautomator dump`, and
+  `qa/sheet.py` builds contact sheets. For RTL, use `adb shell cmd locale set-app-locales com.akylas.enforcedoze
+  --locales ar`; `debug.force_rtl` doesn't apply without a configuration change. Haptics, OEM glow shadows and
+  root-mode screens still need a phone (`docs/device-test-1.11.0.md`).
 - **Release checklist.** `docs/device-test-1.11.0.md`. The in-app Doze Monitor has "Test Doze now" and "Test sensor
   restriction".
 
@@ -52,5 +59,6 @@ whitelist & settings" is on. Every call is journaled; see the Monitor.
 | New setting | `res/xml/prefs.xml`, `strings.xml`, `access/Prefs.kt` key, `ForceDozeService.reloadSettings` / `FeatureSelection`, the capability in `CapabilityResolver`, and `ExternalControlPolicy` if automation may set it |
 | Schedules | `doze/SchedulePolicy.kt`, `Utils.applyForceDozeSchedule`, `CustomDozePeriodReceiver` |
 | Tunables | `DozeTunableHandler`, `DozeTunablesActivity`, `res/xml/prefs_doze_tunables.xml` |
+| Look and feel (colours, type, shapes, motion) | `res/values/styles.xml`, `colors.xml` (OKLCH table), `dimens.xml`, `integers.xml`, `res/font/`; accent phases in `ui/AccentClock.java` + `ThemeOverlay.Amber.Accent.*`; kit in `ui/amber/` (+ `ThemeTokensRobolectricTest`). UI work is Claude-only |
 | User-visible text | `app/src/main/res/values/strings.xml` (translations come from Weblate). UI work is Claude-only |
 | Release | `app/build.gradle` versionCode / versionName, `CHANGELOG.md`, `fastlane/` |

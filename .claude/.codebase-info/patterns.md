@@ -1,6 +1,6 @@
 # Patterns, Style and Known Oddities
 
-*Last Updated: 2026-10-06*
+*Last Updated: 2026-10-07*
 
 ## Patterns
 
@@ -8,7 +8,9 @@
   - `doze/DozeController.kt`, `SafetyNet.kt`, `WatchdogPolicy.kt`, `SchedulePolicy.kt`;
   - `access/CapabilityResolver.kt`, `ExternalControlPolicy.kt`;
   - `service/SessionLifecycle.kt`, `FeatureSelection.kt`;
-  - `ui/DebtRules.java`, `ModeSwitchRules.java`, `SettingsRules.java`, `MainRules.java`, `AccessUi.AccessUpdate`.
+  - `ui/DebtRules.java`, `ModeSwitchRules.java`, `SettingsRules.java`, `MainRules.java`, `AccessUi.AccessUpdate`,
+    `AccessUi.GrantHelperDecision`, and the Amber Night rules `AccentClock`, `LaunchGlowRules`, `MonitorMotionRules`,
+    `StatsColorRules`, `ui/amber/MotionPolicy` and `SquircleShapes`.
 
   Android classes (`ForceDozeService`, Activities, `JournalDb`, `SharedPrefsLedgerStore`) only adapt.
 - **Readback is the oracle.** A command's exit code never proves an effect, so every mutation is confirmed by a state read
@@ -30,6 +32,12 @@
   - `forcedoze:restore` (30 s cap) covers the teardown follow-up and every restore-only window.
 - **minSdk 23 SAMs**: no `java.util.function` in production; use project interfaces (`MyApplication.Factory`/`Callback`,
   `ExternalControlReceiver.Admission.Policy`/`Summary`) or Kotlin function types.
+- **Amber Night UI (dark-only).** Colours, type, shapes and motion come from theme attrs and tokens in
+  `res/values/styles.xml`, `colors.xml` (an OKLCH source table), `dimens.xml` (`space_1…space_6`) and
+  `integers.xml` (spring stiffness). Activities get the time-of-day accent from `ui/AccentThemer`. Cards and buttons
+  are `ui.amber.AmberCardView` / `AmberButton` in layouts, and material-dialogs go through `AmberDialogs.builder`. Glue
+  that would add a decision (cc ≥ 2) to an Activity or adapter moves it into a pure `*Rules` helper instead, and
+  Activities wire it with `MainRules.when(condition, action)`.
 - **Singletons**: `AccessManager`, `MyApplication.getDozeRuntime()`, `MyApplication.getJournal()`, `DozeTunableHandler.getInstance`,
   `NotificationService.getInstance`.
 
@@ -42,18 +50,19 @@
 
 ## Testing
 
-`app/src/test/java/com/akylas/enforcedoze/` has 103 JVM sources with 903 `@Test` methods (JUnit 4.13.2 plus Robolectric 4.16,
+`app/src/test/java/com/akylas/enforcedoze/` has 120 JVM sources with 1001 `@Test` methods (JUnit 4.13.2 plus Robolectric 4.16,
 no mocking library):
 
 | Package | Files | Tests |
 |---------|-------|-------|
-| root | 8 | 96 |
+| root | 13 | 111 |
 | access | 17 | 92 |
 | doze | 12 | 151 |
 | doze/parse | 7 | 36 |
 | monitor | 9 | 73 |
 | service | 36 | 323 |
-| ui | 14 | 132 |
+| ui | 21 | 176 |
+| ui/amber | 5 | 39 |
 
 The suites use these styles:
 - fake-backed behaviour tests: `FakeRunner` (a `CommandRunner`), `FakeClock` and an in-memory ledger store, in
@@ -82,6 +91,9 @@ The suites use these styles:
     calls `TestAppState.selectNonRootMode` and then `accessWithoutRoot` / `runtimeWithoutRoot`. Those assert Shizuku
     mode before construction and no pending root probe after it. Nothing else in `app/src/test` constructs them.
 
+  The Amber Night kit and theme have Robolectric tests too (`ui/amber/*RobolectricTest`, `ThemeTokensRobolectricTest`,
+  `ui/AccentThemerRobolectricTest` at `@Config(sdk = {28, 36})`), and screens with new glue have `DozeStatsRobolectricTest`,
+  `LogActivityRobolectricTest`, `NumberPickerPreferenceRobolectricTest` and `TaskerBroadcastsAdapterRobolectricTest`. There are no screenshot tests; the look is checked on the emulator (see onboarding.md).
   SettingsActivity is hosted only in Shizuku mode with no binder, and its key → enabled/visible/summary goldens pin the
   preference wiring. MainActivity isn't hosted, because its `onCreate` starts AccessManager discovery; its glue is cc1
   over `AccessUi` rules. ForceDozeService is built without `onCreate`, with its narrow adapter methods overridden. Its five CC-1 adapters

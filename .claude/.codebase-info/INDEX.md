@@ -1,15 +1,15 @@
 # Codebase Map — AkaDoZe (EnforceDoze fork)
 
-*Last Updated: 2026-10-06*
+*Last Updated: 2026-10-07*
 
 AkaDoZe is an Android app that forces Doze right after screen-off and restricts motion sensors. It can also apply
 optional radio, location, biometrics, app-suspend and notification-block toggles while the device dozes. It works through
 root (libsuperuser) or Shizuku, and every change is verified by readback and undone from a durable restore ledger. The
 package is `com.akylas.enforcedoze`, and the current version is 1.11.0 (AkaDoZe 2.0).
 
-**Stack:** Java (57 files) + Kotlin (55) · XML Views + AndroidX Preference · platform SQLite · Groovy Gradle 8.13 / AGP 8.13.2 · minSdk 23, target/compile 36
-**Shape:** a single `:app` module in seven packages. The root package is the Android shell; pure Kotlin logic lives in
-`access/`, `doze/` (+ `parse/`), `monitor/` and `service/`; the newer screens are in `ui/`.
+**Stack:** Java (73 files) + Kotlin (55) · XML Views + AndroidX Preference, dark-only "Amber Night" Material3 theme (`ui/amber/` kit) · platform SQLite · Groovy Gradle 8.13 / AGP 8.13.2 · minSdk 23, target/compile 36
+**Shape:** a single `:app` module in eight packages. The root package is the Android shell; pure Kotlin logic lives in
+`access/`, `doze/` (+ `parse/`), `monitor/` and `service/`; the newer screens are in `ui/`, and the design kit in `ui/amber/`.
 
 ## Documents
 
