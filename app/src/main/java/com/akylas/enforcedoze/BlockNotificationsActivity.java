@@ -27,6 +27,8 @@ import android.view.MenuItem;
 import android.view.View;
 
 import com.afollestad.materialdialogs.MaterialDialog;
+import com.akylas.enforcedoze.ui.amber.AmberDialogs;
+import com.akylas.enforcedoze.ui.amber.Haptics;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.nanotasks.BackgroundWork;
 import com.nanotasks.Completion;
@@ -145,7 +147,7 @@ public class BlockNotificationsActivity extends AppCompatActivity {
 
     public void loadPackagesFromBlockList() {
         log("Loading blocked packages...");
-        progressDialog = new MaterialDialog.Builder(this)
+        progressDialog = AmberDialogs.builder(this)
                 .title(getString(R.string.please_wait_text))
                 .autoDismiss(false)
                 .cancelable(false)
@@ -195,26 +197,28 @@ public class BlockNotificationsActivity extends AppCompatActivity {
     }
 
     public void showManuallyAddPackageDialog() {
-        new MaterialDialog.Builder(this)
+        AmberDialogs.builder(this)
                 .title(getString(R.string.block_app_notif_dialog_title))
                 .content(R.string.name_of_package_notif_block)
                 .inputType(InputType.TYPE_CLASS_TEXT)
                 .input("com.spotify.music", "", false, new MaterialDialog.InputCallback() {
                     @Override
                     public void onInput(MaterialDialog dialog, CharSequence input) {
+                        Haptics.tick(recyclerView);
                         verifyAndAddPackage(input.toString());
                     }
                 }).show();
     }
 
     public void showManuallyRemovePackageDialog() {
-        new MaterialDialog.Builder(this)
+        AmberDialogs.builder(this)
                 .title(getString(R.string.block_app_notif_dialog_title))
                 .content(R.string.name_of_package_notif_block_remove)
                 .inputType(InputType.TYPE_CLASS_TEXT)
                 .input("com.spotify.music", "", false, new MaterialDialog.InputCallback() {
                     @Override
                     public void onInput(MaterialDialog dialog, CharSequence input) {
+                        Haptics.tick(recyclerView);
                         verifyAndRemovePackage(input.toString());
                     }
                 }).show();
