@@ -35,6 +35,7 @@
                 android:id="@+id/liveTitle"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:textAlignment="viewStart"
                 android:layout_weight="1"
                 android:text="@string/monitor_live_title"
                 android:textAppearance="?attr/textAppearanceTitleMedium"
@@ -57,6 +58,7 @@
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:textAlignment="viewStart"
             android:textColor="?attr/colorOnSurface"
             tools:text="Access: Shizuku (shell)" />
 
@@ -65,6 +67,7 @@
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:textAlignment="viewStart"
             android:layout_marginTop="@dimen/space_1"
             android:textColor="?attr/colorError"
             android:visibility="gone"
@@ -76,6 +79,7 @@
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:textAlignment="viewStart"
             android:layout_marginTop="@dimen/space_1"
             android:textColor="?attr/colorOnSurface"
             tools:text="Deep Doze: Active" />
@@ -85,6 +89,7 @@
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:textAlignment="viewStart"
             android:textColor="?attr/colorOnSurface"
             tools:text="Light Doze: Active" />
 
@@ -93,6 +98,7 @@
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:textAlignment="viewStart"
             android:textColor="?attr/colorOnSurface"
             tools:text="Forced idle: No" />
 
@@ -101,6 +107,7 @@
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:textAlignment="viewStart"
             android:textColor="?attr/colorOnSurface"
             tools:text="Quick Doze: No" />
 
@@ -109,6 +116,7 @@
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:textAlignment="viewStart"
             android:textColor="?attr/colorOnSurface"
             tools:text="Motion sensors: Normal (not restricted)" />
 
@@ -117,6 +125,7 @@
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:textAlignment="viewStart"
             android:textColor="?attr/colorOnSurface"
             tools:text="Keep Doze enforced: On" />
 
@@ -125,6 +134,7 @@
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:textAlignment="viewStart"
             android:text="@string/monitor_live_debt_none"
             android:textColor="?attr/colorOnSurface" />
 
@@ -150,6 +160,7 @@
                     android:textAppearance="?attr/textAppearanceBodyMedium"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:textAlignment="viewStart"
                     android:accessibilityLiveRegion="polite"
                     android:textColor="?attr/colorOnErrorContainer"
                     tools:text="@string/access_debt_generic" />
@@ -173,6 +184,7 @@
             android:textAppearance="?attr/textAppearanceBodySmall"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:textAlignment="viewStart"
             android:layout_marginTop="@dimen/space_2"
             android:accessibilityLiveRegion="polite"
             android:textColor="?attr/colorOnSurfaceVariant"
