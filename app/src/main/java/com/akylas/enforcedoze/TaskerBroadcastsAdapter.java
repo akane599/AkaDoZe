@@ -8,6 +8,7 @@ import android.widget.AdapterView;
 import android.widget.BaseAdapter;
 import android.widget.TextView;
 
+import com.akylas.enforcedoze.ui.BroadcastNameBreaks;
 import com.akylas.enforcedoze.ui.amber.Haptics;
 
 import java.util.ArrayList;
@@ -42,6 +43,9 @@ public class TaskerBroadcastsAdapter extends BaseAdapter {
             convertView = layoutInflater.inflate(R.layout.list_row_layout_broadcasts, parent, false);
             holder = new ViewHolder();
             holder.broadcastName = (TextView) convertView.findViewById(R.id.broadcastName);
+            // Wrap the identifier at '.'/'_' at large font scales. Display only: getText(), which the list's
+            // copy-to-clipboard click reads, keeps the original name.
+            holder.broadcastName.setTransformationMethod(new BroadcastNameBreaks());
             holder.broadcastValues = (TextView) convertView.findViewById(R.id.broadcastValues);
             convertView.setTag(holder);
         } else {

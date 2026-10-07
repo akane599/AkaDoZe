@@ -1,10 +1,13 @@
 package com.akylas.enforcedoze;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import android.app.Application;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.view.ContextThemeWrapper;
 import android.view.View;
@@ -64,6 +67,34 @@ public class TaskerBroadcastsAdapterRobolectricTest {
 
         assertEquals(1, clicked[0]);
         assertSame(row, clickedView[0]);
+    }
+
+    @Test
+    public void identifierIsLaidOutWithBreaksAfterDotsAndUnderscores() {
+        View row = adapter.getView(1, null, list);
+        row.measure(View.MeasureSpec.makeMeasureSpec(400, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        row.layout(0, 0, 400, row.getMeasuredHeight());
+
+        TextView name = row.findViewById(R.id.broadcastName);
+        assertEquals("com.​akylas.​enforcedoze.​ADD_​WHITELIST",
+                name.getLayout().getText().toString());
+    }
+
+    @Test
+    public void copiedIdentifierIsTheOriginalWithoutZeroWidthSpaces() {
+        Context context = list.getContext();
+        ClipboardManager clipboard = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+        // Same read as TaskerBroadcastsActivity's item click: the tapped row's broadcastName text.
+        list.setOnItemClickListener((parent, view, position, id) -> clipboard.setPrimaryClip(
+                ClipData.newPlainText("fd_broadcast", ((TextView) view.findViewById(R.id.broadcastName)).getText())));
+        View row = adapter.getView(0, null, list);
+
+        row.performClick();
+
+        String copied = clipboard.getPrimaryClip().getItemAt(0).getText().toString();
+        assertEquals("com.akylas.enforcedoze.ENABLE_FORCEDOZE", copied);
+        assertFalse(copied.contains("​"));
     }
 
     @Test
