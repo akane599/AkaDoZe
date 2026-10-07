@@ -15,9 +15,6 @@ final class MonitorMotionRules {
     /** Scale the live icon springs up from when the live state changes. */
     static final float ENTRANCE_SCALE = 0.6f;
 
-    private MonitorMotionRules() {
-    }
-
     /** What the live card shows of the system's Doze state; null until the first read. */
     @Nullable
     static String liveKey(@Nullable MonitorData.Live live) {
