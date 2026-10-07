@@ -1,26 +1,313 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Base application theme. -->
-    <style name="AppThemeBase" parent="Theme.Material3.Light.NoActionBar">
+    <!--
+      Amber Night: the app is always dark, so there is no values-night variant. values-v23/v27/v29 override
+      AppThemeOverlay only for system-bar flags.
+    -->
+    <style name="AppThemeBase" parent="Theme.Material3.Dark.NoActionBar">
     </style>
     <style name="AppThemeOverlay" parent="AppThemeBase">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 
     <style name="AppTheme" parent="AppThemeOverlay">
         <item name="appBarLayoutStyle">@style/Widget.App.AppBarLayout</item>
         <item name="toolbarStyle">@style/Widget.App.Toolbar</item>
         <item name="preferenceTheme">@style/ThemeOverlay.App.Preference</item>
-        <item name="colorPrimary">@color/colorPrimary</item>
-        <item name="colorPrimaryVariant">@color/colorPrimaryDark</item>
-        <item name="colorAccent">@color/colorAccent</item>
         <item name="windowActionModeOverlay">true</item>
         <item name="android:windowActivityTransitions">true</item>
         <item name="android:windowContentTransitions">true</item>
         <item name="android:windowAllowEnterTransitionOverlap">true</item>
         <item name="android:windowAllowReturnTransitionOverlap">true</item>
+        <item name="android:windowAnimationStyle">@style/Animation.Amber.Activity</item>
+
+        <!-- Surfaces (see the OKLCH table in colors.xml). -->
+        <item name="android:colorBackground">@color/amber_ink</item>
+        <item name="android:windowBackground">@color/amber_ink</item>
+        <item name="colorOnBackground">@color/amber_on_surface</item>
+        <item name="colorSurface">@color/amber_ink</item>
+        <item name="colorSurfaceDim">@color/amber_ink</item>
+        <item name="colorSurfaceBright">@color/amber_surface_bright</item>
+        <item name="colorSurfaceContainerLowest">@color/amber_surface_container_lowest</item>
+        <item name="colorSurfaceContainerLow">@color/amber_surface_container_low</item>
+        <item name="colorSurfaceContainer">@color/amber_surface_container</item>
+        <item name="colorSurfaceContainerHigh">@color/amber_surface_container_high</item>
+        <item name="colorSurfaceContainerHighest">@color/amber_surface_container_highest</item>
+        <item name="colorSurfaceVariant">@color/amber_surface_container_high</item>
+        <item name="colorOnSurface">@color/amber_on_surface</item>
+        <item name="colorOnSurfaceVariant">@color/amber_on_surface_variant</item>
+        <item name="colorOutline">@color/amber_outline</item>
+        <item name="colorOutlineVariant">@color/amber_outline_variant</item>
+        <item name="colorSurfaceInverse">@color/amber_on_surface</item>
+        <item name="colorOnSurfaceInverse">@color/amber_surface_container</item>
+
+        <!-- Accent: Day values. ThemeOverlay.Amber.Accent.* replaces the five accent items per phase. -->
+        <item name="colorPrimary">@color/amber_primary_day</item>
+        <item name="colorAccent">?attr/colorPrimary</item>
+        <item name="colorPrimaryContainer">@color/amber_primary_container_day</item>
+        <item name="colorOnPrimaryContainer">@color/amber_on_primary_container_day</item>
+        <item name="amberGlowColor">@color/amber_glow_day</item>
+        <item name="colorOnPrimary">@color/amber_on_primary</item>
+        <item name="colorPrimaryInverse">@color/amber_primary_inverse</item>
+        <item name="colorPrimaryVariant">@color/colorPrimaryDark</item>
+
+        <!-- Sage secondary; tertiary reuses it so no stock purple leaks into tertiary-coloured widgets. -->
+        <item name="colorSecondary">@color/amber_secondary</item>
+        <item name="colorOnSecondary">@color/amber_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/amber_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/amber_on_secondary_container</item>
+        <item name="colorTertiary">@color/amber_secondary</item>
+        <item name="colorOnTertiary">@color/amber_on_secondary</item>
+        <item name="colorTertiaryContainer">@color/amber_secondary_container</item>
+        <item name="colorOnTertiaryContainer">@color/amber_on_secondary_container</item>
+
+        <item name="colorError">@color/amber_error</item>
+        <item name="colorOnError">@color/amber_on_error</item>
+        <item name="colorErrorContainer">@color/amber_error_container</item>
+        <item name="colorOnErrorContainer">@color/amber_on_error_container</item>
+
+        <!-- Springs (floats; see attrs.xml for how to read them). -->
+        <item name="amberSpringDamping">0.85</item>
+        <item name="amberSpringStiffnessLow">200.0</item>
+        <item name="amberSpringStiffnessMedium">400.0</item>
+        <item name="amberSpringStiffnessHigh">1500.0</item>
+
+        <!-- Typography: 1.25 scale, serif for display/headline/titleLarge, sans with tnum elsewhere. -->
+        <item name="textAppearanceDisplayLarge">@style/TextAppearance.Amber.DisplayLarge</item>
+        <item name="textAppearanceDisplayMedium">@style/TextAppearance.Amber.DisplayMedium</item>
+        <item name="textAppearanceDisplaySmall">@style/TextAppearance.Amber.DisplaySmall</item>
+        <item name="textAppearanceHeadlineLarge">@style/TextAppearance.Amber.HeadlineLarge</item>
+        <item name="textAppearanceHeadlineMedium">@style/TextAppearance.Amber.HeadlineMedium</item>
+        <item name="textAppearanceHeadlineSmall">@style/TextAppearance.Amber.HeadlineSmall</item>
+        <item name="textAppearanceTitleLarge">@style/TextAppearance.Amber.TitleLarge</item>
+        <item name="textAppearanceTitleMedium">@style/TextAppearance.Amber.TitleMedium</item>
+        <item name="textAppearanceTitleSmall">@style/TextAppearance.Amber.TitleSmall</item>
+        <item name="textAppearanceBodyLarge">@style/TextAppearance.Amber.BodyLarge</item>
+        <item name="textAppearanceBodyMedium">@style/TextAppearance.Amber.BodyMedium</item>
+        <item name="textAppearanceBodySmall">@style/TextAppearance.Amber.BodySmall</item>
+        <item name="textAppearanceLabelLarge">@style/TextAppearance.Amber.LabelLarge</item>
+        <item name="textAppearanceLabelMedium">@style/TextAppearance.Amber.LabelMedium</item>
+        <item name="textAppearanceLabelSmall">@style/TextAppearance.Amber.LabelSmall</item>
+
+        <!-- Rounded fallback shapes; AmberCardView/AmberButton swap in squircles. -->
+        <item name="shapeAppearanceCornerSmall">@style/ShapeAppearance.Amber.Small</item>
+        <item name="shapeAppearanceCornerMedium">@style/ShapeAppearance.Amber.Medium</item>
+        <item name="shapeAppearanceCornerLarge">@style/ShapeAppearance.Amber.Large</item>
+        <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.Amber.Small</item>
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.Amber.Medium</item>
+        <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.Amber.Large</item>
+
+        <!--
+          Widget defaults. MaterialSwitch keeps its stock style: its M3 tints already resolve the checked track
+          to ?attr/colorPrimary (amber) and the checked thumb to ?attr/colorOnPrimary, with disabled states.
+        -->
+        <item name="materialCardViewStyle">@style/Widget.Amber.Card</item>
+        <item name="materialButtonStyle">@style/Widget.Amber.Button</item>
+        <item name="materialButtonOutlinedStyle">@style/Widget.Amber.Button.Outlined</item>
+        <item name="borderlessButtonStyle">@style/Widget.Amber.Button.Text</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.Amber.MaterialAlertDialog</item>
+
+        <!-- material-dialogs 0.9.3. md_*_font is deliberately unset (it takes asset paths); see AmberDialogs. -->
+        <item name="md_dark_theme">true</item>
+        <item name="md_background_color">@color/amber_surface_container</item>
+        <item name="md_title_color">@color/amber_on_surface</item>
+        <item name="md_content_color">@color/amber_on_surface_variant</item>
+        <item name="md_item_color">@color/amber_on_surface</item>
+        <item name="md_divider_color">@color/amber_outline_variant</item>
+        <item name="md_positive_color">?attr/colorPrimary</item>
+        <item name="md_neutral_color">?attr/colorPrimary</item>
+        <item name="md_negative_color">?attr/colorPrimary</item>
+        <item name="md_widget_color">?attr/colorPrimary</item>
+        <item name="md_link_color">?attr/colorPrimary</item>
     </style>
 
-    <style name="Transparent.NoTitleBar" parent="Theme.Material3.Light.NoActionBar">
+    <!-- Time-of-day accents, applied over AppTheme with Theme.applyStyle(..., true). -->
+    <style name="ThemeOverlay.Amber.Accent" parent="" />
+    <style name="ThemeOverlay.Amber.Accent.Morning">
+        <item name="colorPrimary">@color/amber_primary_morning</item>
+        <item name="colorAccent">@color/amber_primary_morning</item>
+        <item name="colorPrimaryContainer">@color/amber_primary_container_morning</item>
+        <item name="colorOnPrimaryContainer">@color/amber_on_primary_container_morning</item>
+        <item name="amberGlowColor">@color/amber_glow_morning</item>
+    </style>
+    <style name="ThemeOverlay.Amber.Accent.Day">
+        <item name="colorPrimary">@color/amber_primary_day</item>
+        <item name="colorAccent">@color/amber_primary_day</item>
+        <item name="colorPrimaryContainer">@color/amber_primary_container_day</item>
+        <item name="colorOnPrimaryContainer">@color/amber_on_primary_container_day</item>
+        <item name="amberGlowColor">@color/amber_glow_day</item>
+    </style>
+    <style name="ThemeOverlay.Amber.Accent.Evening">
+        <item name="colorPrimary">@color/amber_primary_evening</item>
+        <item name="colorAccent">@color/amber_primary_evening</item>
+        <item name="colorPrimaryContainer">@color/amber_primary_container_evening</item>
+        <item name="colorOnPrimaryContainer">@color/amber_on_primary_container_evening</item>
+        <item name="amberGlowColor">@color/amber_glow_evening</item>
+    </style>
+    <style name="ThemeOverlay.Amber.Accent.Night">
+        <item name="colorPrimary">@color/amber_primary_night</item>
+        <item name="colorAccent">@color/amber_primary_night</item>
+        <item name="colorPrimaryContainer">@color/amber_primary_container_night</item>
+        <item name="colorOnPrimaryContainer">@color/amber_on_primary_container_night</item>
+        <item name="amberGlowColor">@color/amber_glow_night</item>
+    </style>
+
+    <!--
+      Type scale 1.25 from 14sp: 11.2 / 14 / 17.5 / 21.9 / 27.3 / 34.2 / 42.7sp. fontFamily and
+      android:fontFamily are both set so AppCompat applies the XML font family below API 26. Medium weight comes
+      from android:textFontWeight (API 28+); older releases fall back to the regular instance.
+    -->
+    <style name="TextAppearance.Amber.Serif" parent="TextAppearance.Material3.HeadlineSmall">
+        <item name="fontFamily">@font/amber_serif</item>
+        <item name="android:fontFamily">@font/amber_serif</item>
+        <item name="android:letterSpacing">-0.02</item>
+    </style>
+    <style name="TextAppearance.Amber.DisplayLarge" parent="TextAppearance.Amber.Serif">
+        <item name="android:textSize">42.7sp</item>
+    </style>
+    <style name="TextAppearance.Amber.DisplayMedium" parent="TextAppearance.Amber.Serif">
+        <item name="android:textSize">42.7sp</item>
+    </style>
+    <style name="TextAppearance.Amber.DisplaySmall" parent="TextAppearance.Amber.Serif">
+        <item name="android:textSize">42.7sp</item>
+    </style>
+    <style name="TextAppearance.Amber.HeadlineLarge" parent="TextAppearance.Amber.Serif">
+        <item name="android:textSize">42.7sp</item>
+    </style>
+    <style name="TextAppearance.Amber.HeadlineMedium" parent="TextAppearance.Amber.Serif">
+        <item name="android:textSize">34.2sp</item>
+    </style>
+    <style name="TextAppearance.Amber.HeadlineSmall" parent="TextAppearance.Amber.Serif">
+        <item name="android:textSize">27.3sp</item>
+    </style>
+    <style name="TextAppearance.Amber.TitleLarge" parent="TextAppearance.Amber.Serif">
+        <item name="android:textSize">21.9sp</item>
+    </style>
+
+    <style name="TextAppearance.Amber.TitleMedium" parent="TextAppearance.Material3.TitleMedium">
+        <item name="fontFamily">@font/amber_sans</item>
+        <item name="android:fontFamily">@font/amber_sans</item>
+        <item name="android:textSize">17.5sp</item>
+        <item name="android:letterSpacing">0</item>
+        <item name="android:textFontWeight" tools:targetApi="28">500</item>
+    </style>
+    <style name="TextAppearance.Amber.TitleSmall" parent="TextAppearance.Material3.TitleSmall">
+        <item name="fontFamily">@font/amber_sans</item>
+        <item name="android:fontFamily">@font/amber_sans</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:letterSpacing">0.005</item>
+        <item name="android:textFontWeight" tools:targetApi="28">500</item>
+    </style>
+
+    <style name="TextAppearance.Amber.BodyLarge" parent="TextAppearance.Material3.BodyLarge">
+        <item name="fontFamily">@font/amber_sans</item>
+        <item name="android:fontFamily">@font/amber_sans</item>
+        <item name="android:fontFeatureSettings">tnum</item>
+        <item name="android:textSize">17.5sp</item>
+        <item name="android:letterSpacing">0</item>
+    </style>
+    <style name="TextAppearance.Amber.BodyMedium" parent="TextAppearance.Material3.BodyMedium">
+        <item name="fontFamily">@font/amber_sans</item>
+        <item name="android:fontFamily">@font/amber_sans</item>
+        <item name="android:fontFeatureSettings">tnum</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:letterSpacing">0.005</item>
+    </style>
+    <style name="TextAppearance.Amber.BodySmall" parent="TextAppearance.Material3.BodySmall">
+        <item name="fontFamily">@font/amber_sans</item>
+        <item name="android:fontFamily">@font/amber_sans</item>
+        <item name="android:fontFeatureSettings">tnum</item>
+        <item name="android:textSize">11.2sp</item>
+        <item name="android:letterSpacing">0.01</item>
+    </style>
+
+    <style name="TextAppearance.Amber.LabelLarge" parent="TextAppearance.Material3.LabelLarge">
+        <item name="fontFamily">@font/amber_sans</item>
+        <item name="android:fontFamily">@font/amber_sans</item>
+        <item name="android:fontFeatureSettings">tnum</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:letterSpacing">0.01</item>
+        <item name="android:textFontWeight" tools:targetApi="28">500</item>
+    </style>
+    <style name="TextAppearance.Amber.LabelMedium" parent="TextAppearance.Material3.LabelMedium">
+        <item name="fontFamily">@font/amber_sans</item>
+        <item name="android:fontFamily">@font/amber_sans</item>
+        <item name="android:fontFeatureSettings">tnum</item>
+        <item name="android:textSize">11.2sp</item>
+        <item name="android:letterSpacing">0.03</item>
+        <item name="android:textFontWeight" tools:targetApi="28">500</item>
+    </style>
+    <style name="TextAppearance.Amber.LabelSmall" parent="TextAppearance.Material3.LabelSmall">
+        <item name="fontFamily">@font/amber_sans</item>
+        <item name="android:fontFamily">@font/amber_sans</item>
+        <item name="android:fontFeatureSettings">tnum</item>
+        <item name="android:textSize">11.2sp</item>
+        <item name="android:letterSpacing">0.03</item>
+        <item name="android:textFontWeight" tools:targetApi="28">500</item>
+    </style>
+
+    <!-- Rounded fallbacks: chip/inner 8dp, button 16dp, card 24dp. -->
+    <style name="ShapeAppearance.Amber.Small" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">@dimen/corner_inner</item>
+    </style>
+    <style name="ShapeAppearance.Amber.Medium" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">@dimen/corner_button</item>
+    </style>
+    <style name="ShapeAppearance.Amber.Large" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">@dimen/corner_card</item>
+    </style>
+
+    <style name="Widget.Amber.Card" parent="Widget.Material3.CardView.Filled">
+        <item name="cardBackgroundColor">?attr/colorSurfaceContainerLow</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeWidth">0dp</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.Amber.Large</item>
+    </style>
+
+    <!-- Filled amber: the stock M3 selectors already map to colorPrimary / colorOnPrimary with disabled states. -->
+    <style name="Widget.Amber.Button" parent="Widget.Material3.Button">
+        <item name="shapeAppearance">@style/ShapeAppearance.Amber.Medium</item>
+    </style>
+    <!-- Stroke uses m3_button_outline_color_selector: ?attr/colorOutline, onSurface 12% when disabled. -->
+    <style name="Widget.Amber.Button.Outlined" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="shapeAppearance">@style/ShapeAppearance.Amber.Medium</item>
+    </style>
+    <style name="Widget.Amber.Button.Text" parent="Widget.Material3.Button.TextButton">
+        <item name="shapeAppearance">@style/ShapeAppearance.Amber.Medium</item>
+    </style>
+
+    <!-- MaterialAlertDialogBuilder (MaterialListPreference): same surface as md_background_color, 24dp corners. -->
+    <style name="ThemeOverlay.Amber.MaterialAlertDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="alertDialogStyle">@style/MaterialAlertDialog.Amber</item>
+        <item name="materialAlertDialogTitleTextStyle">@style/MaterialAlertDialog.Amber.Title.Text</item>
+        <item name="buttonBarPositiveButtonStyle">@style/Widget.Amber.Button.Dialog</item>
+        <item name="buttonBarNegativeButtonStyle">@style/Widget.Amber.Button.Dialog</item>
+        <item name="buttonBarNeutralButtonStyle">@style/Widget.Amber.Button.Dialog</item>
+    </style>
+    <style name="MaterialAlertDialog.Amber" parent="MaterialAlertDialog.Material3">
+        <item name="backgroundTint">@color/amber_surface_container</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.Amber.Large</item>
+    </style>
+    <style name="MaterialAlertDialog.Amber.Title.Text" parent="MaterialAlertDialog.Material3.Title.Text">
+        <item name="android:textAppearance">?attr/textAppearanceTitleLarge</item>
+    </style>
+    <style name="Widget.Amber.Button.Dialog" parent="Widget.Material3.Button.TextButton.Dialog">
+        <item name="shapeAppearance">@style/ShapeAppearance.Amber.Medium</item>
+    </style>
+
+    <!-- Window transitions: scale 0.96 to 1 with a fade, 250ms, fast_out_slow_in. -->
+    <style name="Animation.Amber.Activity" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/amber_activity_open_enter</item>
+        <item name="android:activityOpenExitAnimation">@anim/amber_activity_open_exit</item>
+        <item name="android:activityCloseEnterAnimation">@anim/amber_activity_close_enter</item>
+        <item name="android:activityCloseExitAnimation">@anim/amber_activity_close_exit</item>
+    </style>
+
+    <style name="Transparent.NoTitleBar" parent="Theme.Material3.Dark.NoActionBar">
         <!--on below line we are setting background as transparent color-->
         <item name="android:background">@android:color/transparent</item>
         <!--on below line we are displaying the windowNotitle as true as we are not displaying our status bar-->
@@ -43,16 +330,16 @@
         <item name="android:widgetLayout">@layout/my_material_switch_layout</item>
     </style>
 
+    <!-- Toolbar sits on colorSurface with the serif titleLarge. -->
     <style name="Widget.App.Toolbar" parent="Widget.Material3.Toolbar">
         <item name="materialThemeOverlay">@style/ThemeOverlay.App.Toolbar</item>
-        <!--        <item name="titleTextColor">@android:color/white</item>-->
-        <!--        <item name="navigationIconTint">@android:color/white</item>-->
+        <item name="titleTextAppearance">?attr/textAppearanceTitleLarge</item>
     </style>
+    <!-- On colorSurface at rest, colorSurfaceContainer once lifted. -->
     <style name="Widget.App.AppBarLayout" parent="Widget.Material3.AppBarLayout">
-        <!-- Change the background color of the AppBarLayout so the AppBarLayout is green.
-                The toolbar is transparent by default so you will see this color through the toolbar. -->
+        <item name="android:background">?attr/colorSurface</item>
+        <item name="liftOnScrollColor">?attr/colorSurfaceContainer</item>
     </style>
     <style name="ThemeOverlay.App.Toolbar" parent="">
-        <!--        <item name="colorControlNormal">@android:color/white</item>-->
     </style>
 </resources>
