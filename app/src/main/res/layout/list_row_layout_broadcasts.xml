@@ -16,6 +16,7 @@
             android:id="@+id/broadcastName"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:hyphenationFrequency="none"
             android:textAppearance="?attr/textAppearanceTitleSmall"
             android:textColor="?attr/colorOnSurface"
             tools:text="com.akylas.enforcedoze.ENABLE_FORCEDOZE" />
@@ -25,7 +26,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/space_2"
-            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
             android:textColor="?attr/colorOnSurfaceVariant"
             tools:text="@string/tasker_no_values" />
     </LinearLayout>
