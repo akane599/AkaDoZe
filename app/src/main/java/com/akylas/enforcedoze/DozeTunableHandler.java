@@ -189,36 +189,68 @@ public class DozeTunableHandler {
     public static ApplyResult apply(CommandRunner control, CommandRunner reads, int apiLevel,
                                     Grants grants, String tunables) {
         List<String> fallback = CommandCatalog.apply(Feature.TUNABLES, apiLevel, null, tunables);
+        Map<String, String> requested = requestedTunables(tunables);
+        FeatureStatus status = CapabilityResolver.status(Feature.TUNABLES, control.getLevel(), apiLevel, grants);
+        if (status instanceof FeatureStatus.Unavailable || fallback == null) {
+            return unavailableResult(requested, status);
+        }
+        if (usesDeviceConfig(control.getLevel(), apiLevel)) {
+            return applyDeviceConfig(control, reads, requested, fallback);
+        }
+        for (String command : fallback) control.run(command);
+        return readbackResult(reads, requested);
+    }
+
+    private static Map<String, String> requestedTunables(String tunables) {
         Map<String, String> requested = new LinkedHashMap<>();
         for (String pair : tunables.split(",")) {
             String[] fields = pair.split("=", -1);
             if (fields.length == 2) requested.put(fields[0], fields[1]);
         }
+        return requested;
+    }
+
+    private static ApplyResult unavailableResult(Map<String, String> requested, FeatureStatus status) {
         Map<String, Outcome> outcomes = new LinkedHashMap<>();
-        FeatureStatus status = CapabilityResolver.status(Feature.TUNABLES, control.getLevel(), apiLevel, grants);
-        if (status instanceof FeatureStatus.Unavailable || fallback == null) {
-            for (String key : requested.keySet()) outcomes.put(key, Outcome.UNAVAILABLE);
-            return new ApplyResult(outcomes, status instanceof FeatureStatus.Unavailable
-                    ? ((FeatureStatus.Unavailable) status).getReason() : Reason.API_TOO_OLD);
+        for (String key : requested.keySet()) outcomes.put(key, Outcome.UNAVAILABLE);
+        return new ApplyResult(outcomes, status instanceof FeatureStatus.Unavailable
+                ? ((FeatureStatus.Unavailable) status).getReason() : Reason.API_TOO_OLD);
+    }
+
+    private static boolean usesDeviceConfig(AccessLevel level, int apiLevel) {
+        return apiLevel >= DEVICE_CONFIG_MIN_API
+                && (level == AccessLevel.SHELL || level == AccessLevel.ROOT);
+    }
+
+    private static ApplyResult applyDeviceConfig(CommandRunner control, CommandRunner reads,
+                                                Map<String, String> requested, List<String> fallback) {
+        for (Map.Entry<String, String> pair : requested.entrySet()) {
+            control.run("cmd device_config put device_idle " + pair.getKey() + " " + pair.getValue());
         }
-        boolean deviceConfig = apiLevel >= DEVICE_CONFIG_MIN_API
-                && (control.getLevel() == AccessLevel.SHELL || control.getLevel() == AccessLevel.ROOT);
-        if (deviceConfig) {
-            for (Map.Entry<String, String> pair : requested.entrySet()) {
-                control.run("cmd device_config put device_idle " + pair.getKey() + " " + pair.getValue());
-            }
-        } else {
+        ApplyResult result = readbackResult(reads, requested);
+        if (result.keys.containsValue(Outcome.NOT_EFFECTIVE) || result.keys.containsValue(Outcome.UNVERIFIED)) {
+            // Shell writes can be denied by DeviceConfig's allowlist. Settings replaces the whole
+            // string, so retry the full validated request once, never only the ineffective keys.
             for (String command : fallback) control.run(command);
+            return readbackResult(reads, requested);
         }
+        return result;
+    }
+
+    private static ApplyResult readbackResult(CommandRunner reads, Map<String, String> requested) {
         CommandResult readback = reads.run("dumpsys deviceidle");
         Map<String, String> actual = DozeStateParser.parse(readback.getStdout()).getSettings();
+        Map<String, Outcome> outcomes = new LinkedHashMap<>();
         for (Map.Entry<String, String> pair : requested.entrySet()) {
             outcomes.put(pair.getKey(), !readback.getOk() ? Outcome.UNVERIFIED
                     : equivalentValue(pair.getValue(), actual.get(pair.getKey())) ? Outcome.APPLIED : Outcome.NOT_EFFECTIVE);
         }
-        Reason reason = outcomes.containsValue(Outcome.UNVERIFIED) ? Reason.UNVERIFIED
+        return new ApplyResult(outcomes, readbackReason(outcomes));
+    }
+
+    private static Reason readbackReason(Map<String, Outcome> outcomes) {
+        return outcomes.containsValue(Outcome.UNVERIFIED) ? Reason.UNVERIFIED
                 : outcomes.containsValue(Outcome.NOT_EFFECTIVE) ? Reason.NOT_EFFECTIVE_ON_THIS_VERSION : null;
-        return new ApplyResult(outcomes, reason);
     }
 
     // dumpsys formats timeout values using TimeUtils, while factors are decimal numbers.
